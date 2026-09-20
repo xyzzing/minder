@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "MINDER_HOOK_TRACE=1 python3 __MINDER_SHARE__/hook.py --transport dsh --session-start",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "MINDER_HOOK_TRACE=1 python3 __MINDER_SHARE__/hook.py --transport dsh",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

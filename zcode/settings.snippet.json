@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "events": {
+      "PostToolUse": [
+        {
+          "matcher": "Edit|Write|MultiEdit|Bash",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "python3",
+              "args": ["__MINDER_SHARE__/hook.py", "--transport", "zcode"],
+              "enabled": true,
+              "timeoutMs": 65000
+            }
+          ]
+        }
+      ],
+      "SessionStart": [
+        {
+          "matcher": "startup|clear|compact",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "python3",
+              "args": ["__MINDER_SHARE__/hook.py", "--transport", "zcode",
+                        "--session-start"],
+              "enabled": true,
+              "timeoutMs": 5000
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

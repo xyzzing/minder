@@ -1,0 +1,13 @@
+{
+  "alias": "qwen-auto",
+  "class": "auto",
+  "upstream_model": null,
+  "upstream_params": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "max_tokens": 32768
+  },
+  "sampler_overrides": {"min_p": null, "dry_multiplier": null, "xtc_probability": null},
+  "note": "per-request effort scheduling (off/low/high) by tool-activity; minder escalation forces high"
+}

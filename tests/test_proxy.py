@@ -1,0 +1,527 @@
+"""Turnstile proxy tests (AT-7a/b/c, AT-8, AT-9/10 fail-open, AT-16, AT-17)."""
+import json
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
+
+import pytest
+
+import proxy
+from mock_upstream import MockUpstream
+
+CONFIG_DIR = proxy.CONFIG_DIR
+
+
+def write_caps(mechanism, budget=True, effort=True, channel="ctk"):
+    caps = {"fingerprint": {"model_id": "qwen27b-fusion"}, "kwargs_accepted":
+            mechanism == "kwargs",
+            "thinking": {"mechanism": mechanism, "markers":
+                         ["<think>", "</think>"],
+                         "thinking_budget_supported": budget,
+                         "field": "reasoning_content"},
+            "softswitch_tokens": {"on": "/think", "off": "/no_think"},
+            "effort_supported": effort, "effort_channel": channel,
+            "effort_levels": ["low", "medium", "high"]}
+    (CONFIG_DIR / "model_caps.json").write_text(json.dumps(caps))
+    return caps
+
+
+def clear_caps():
+    f = CONFIG_DIR / "model_caps.json"
+    if f.exists():
+        f.unlink()
+
+
+@pytest.fixture
+def proxy_over_mock():
+    def start(behavior="default"):
+        mock = MockUpstream(behavior)
+        mock.__enter__()
+        proxy.UPSTREAM = mock.url
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), proxy.Handler)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        return mock, srv, f"http://127.0.0.1:{srv.server_address[1]}"
+
+    yield start
+
+
+def stop(mock, srv):
+    srv.shutdown()
+    srv.server_close()
+    mock.__exit__(None, None, None)
+
+
+def chat_request(url, body, headers=None):
+    hdrs = {"Content-Type": "application/json"}
+    hdrs.update(headers or {})
+    req = urllib.request.Request(
+        url + "/v1/chat/completions", data=json.dumps(body).encode(),
+        headers=hdrs)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.status, json.loads(r.read())
+
+
+def body_with_marker(user="fix the parser"):
+    """The digest lands on an assistant message (block reason transcript)."""
+    return {"model": "qwen-exec", "messages": [
+        {"role": "user", "content": user},
+        {"role": "assistant", "content": "[minder] ESCALATION L1 — think "
+         "before retrying.\n- FAILED 2x: edit:/x/a.py"}]}
+
+
+def last_user(body):
+    return next(m for m in reversed(body["messages"])
+                if m["role"] == "user")
+
+
+def msg_tool_call(name, args="{}"):
+    return {"role": "assistant", "content": "",
+            "tool_calls": [{"function": {"name": name, "arguments": args}}]}
+
+
+def msg_tool_result(content):
+    return {"role": "tool", "content": content}
+
+
+def test_at8a_kwargs_exec_vs_think(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        st, resp = chat_request(url, {"model": "qwen-exec", "messages": [
+            {"role": "user", "content": "What is 2+2?"}]})
+        body = mock.requests[-1]
+        assert body["temperature"] == 0.15 and body["top_k"] == 20
+        assert body["max_tokens"] == 8192
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+        st, resp = chat_request(url, body_with_marker())
+        body = mock.requests[-1]
+        # escalation upgrades to think preset atomically (AT-8)
+        assert body["temperature"] == 0.6 and body["max_tokens"] == 32768
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "thinking_budget": 16384}
+        assert not last_user(body)["content"].rstrip().endswith("/think")
+    finally:
+        stop(mock, srv)
+
+
+def test_at8b_softswitch_never_both(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("softswitch")
+        chat_request(url, {"model": "qwen-exec", "messages": [
+            {"role": "user", "content": "What is 2+2? /think"}]})
+        body = mock.requests[-1]
+        assert "chat_template_kwargs" not in body  # never both (Law #3)
+        assert last_user(body)["content"].endswith("/no_think")
+
+        chat_request(url, body_with_marker("fix the parser /no_think"))
+        body = mock.requests[-1]
+        assert "chat_template_kwargs" not in body
+        # prior token stripped, on-token appended (AT-7b)
+        assert last_user(body)["content"] == "fix the parser /think"
+    finally:
+        stop(mock, srv)
+
+
+def test_at7c_none_mechanism_params_untouched_ledger(proxy_over_mock,
+                                                     tmp_path):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("none")
+        events = tmp_path / "events.jsonl"
+        import minder
+        monkey_target = minder.STATE_DIR
+        minder.STATE_DIR = tmp_path
+        # §6.8.2: escalated request under mechanism=none → think params still
+        # applied, adapter no-ops (no kwargs), ledger l1_degraded.
+        st, resp = chat_request(url, {"model": "qwen-exec", "messages": [
+            {"role": "user", "content": body_with_marker()["messages"][-1]
+             ["content"]}]})
+        body = mock.requests[-1]
+        assert body["temperature"] == 0.6            # think params applied
+        assert body["max_tokens"] == 32768
+        assert "chat_template_kwargs" not in body    # adapter no-ops
+        ledger = events.read_text()
+        assert "l1_degraded" in ledger
+        # plain exec request: exec params, no degradation noise
+        chat_request(url, {"model": "qwen-exec", "messages": [
+            {"role": "user", "content": "What is 2+2?"}]})
+        body = mock.requests[-1]
+        assert body["temperature"] == 0.15
+        assert "chat_template_kwargs" not in body
+        minder.STATE_DIR = monkey_target
+    finally:
+        stop(mock, srv)
+
+
+def test_caps_missing_forwards_without_mechanism(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        clear_caps()
+        chat_request(url, {"model": "qwen-exec", "messages": [
+            {"role": "user", "content": "hi"}]})
+        body = mock.requests[-1]
+        assert body["temperature"] == 0.15
+        assert "chat_template_kwargs" not in body
+    finally:
+        stop(mock, srv)
+
+
+def test_at16_upstream_model_rewrite(proxy_over_mock, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        monkeypatch.setitem(proxy.PRESETS["qwen-exec"], "upstream_model",
+                            "qwen27b-fusion")
+        chat_request(url, {"model": "qwen-exec", "messages": [
+            {"role": "user", "content": "hi"}]})
+        assert mock.requests[-1]["model"] == "qwen27b-fusion"
+    finally:
+        stop(mock, srv)
+
+
+def test_at17_models_synthesis(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        with urllib.request.urlopen(url + "/v1/models", timeout=10) as r:
+            payload = json.loads(r.read())
+        ids = {m["id"] for m in payload["data"]}
+        assert {"qwen-exec", "qwen-think", "frontier",
+                "qwen27b-fusion"} <= ids
+        owned = {m["id"]: m.get("owned_by") for m in payload["data"]}
+        assert owned["qwen-exec"] == "minder"
+        assert owned["qwen27b-fusion"] != "minder"
+    finally:
+        stop(mock, srv)
+
+
+def test_frontier_alias_never_forwarded(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        req = urllib.request.Request(
+            url + "/v1/chat/completions",
+            data=json.dumps({"model": "frontier", "messages": []}).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req, timeout=10)
+            raised = False
+        except urllib.error.HTTPError as e:
+            raised = True
+            assert e.code == 422
+            payload = json.loads(e.read())
+            assert payload["error"]["code"] == "frontier_not_forwardable"
+        assert raised
+        assert mock.requests == []  # nothing reached upstream
+    finally:
+        stop(mock, srv)
+
+
+def test_unknown_model_passes_untouched(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        chat_request(url, {"model": "some-custom-model", "temperature": 0.9,
+                           "messages": [{"role": "user",
+                                         "content": "body_with_marker()"}]})
+        body = mock.requests[-1]
+        assert body["temperature"] == 0.9
+        assert "chat_template_kwargs" not in body
+    finally:
+        stop(mock, srv)
+
+
+def test_fail_open_upstream_down(proxy_over_mock, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        monkeypatch.setattr(proxy, "UPSTREAM", "http://127.0.0.1:1")
+        req = urllib.request.Request(
+            url + "/v1/chat/completions",
+            data=json.dumps({"model": "qwen-exec", "messages": []}).encode(),
+            headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req, timeout=10)
+            code = 200
+        except urllib.error.HTTPError as e:
+            code = e.code
+            assert b"minder_upstream_unavailable" in e.read()
+        assert code == 502
+    finally:
+        stop(mock, srv)
+
+
+def test_get_passthrough(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        with urllib.request.urlopen(url + "/props", timeout=10) as r:
+            payload = json.loads(r.read())
+        assert payload["path"] == "/props"  # mock echoes path
+    finally:
+        stop(mock, srv)
+
+
+def test_sse_relay_byte_exact(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("sse")
+    try:
+        body = json.dumps({"model": "qwen-exec", "stream": True,
+                           "messages": []}).encode()
+        req = urllib.request.Request(url + "/v1/chat/completions", data=body,
+                                     headers={"Content-Type":
+                                              "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            via_proxy = r.read()
+        req = urllib.request.Request(mock.url + "/v1/chat/completions",
+                                     data=body,
+                                     headers={"Content-Type":
+                                              "application/json"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            direct = r.read()
+        assert via_proxy == direct
+        assert b"data: [DONE]" in via_proxy
+    finally:
+        stop(mock, srv)
+
+
+def test_scan_gate_skips_huge_bodies(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        huge = "x" * (proxy.SCAN_GATE_BYTES + 1024)
+        chat_request(url, {"model": "qwen-exec", "messages": [
+            {"role": "user", "content": huge}]})
+        body = mock.requests[-1]
+        assert body["messages"][-1]["content"] == huge  # intact
+        assert "temperature" not in body                # pipeline skipped
+        assert "chat_template_kwargs" not in body
+    finally:
+        stop(mock, srv)
+
+
+def test_auto_pipeline_effort_modes(proxy_over_mock, tmp_path, monkeypatch):
+    import minder
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        cfg_file = tmp_path / "minder.json"
+        (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(minder, "CFG_PATH", cfg_file)
+        monkeypatch.setattr(minder, "STATE_DIR", tmp_path / "state")
+
+        # effort_mode off (default): auto behaves like plain exec
+        cfg_file.write_text(json.dumps({"effort_mode": "off"}))
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [msg_tool_call("bash"),
+                                        msg_tool_result("x" * 5000)]})
+        body = mock.requests[-1]
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        assert "reasoning_effort" not in json.dumps(body)
+
+        # effort_mode auto: heavy tool activity → high + thinking on
+        cfg_file.write_text(json.dumps({"effort_mode": "auto"}))
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [msg_tool_call("bash"),
+                                        msg_tool_result("x" * 5000)]})
+        body = mock.requests[-1]
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "high"}
+
+        # plain question, no tool activity → off
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        body = mock.requests[-1]
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+        # escalation digest overrides everything → high
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"},
+                                        {"role": "user", "content":
+                                         "[minder] ESCALATION L1 — retry"}]})
+        body = mock.requests[-1]
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "high"}
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "auto_effort" in ledger
+    finally:
+        stop(mock, srv)
+
+
+def test_auto_pipeline_effort_unsupported(proxy_over_mock, tmp_path,
+                                          monkeypatch):
+    import minder
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort=False)
+        cfg_file = tmp_path / "minder.json"
+        cfg_file.write_text(json.dumps({"effort_mode": "auto"}))
+        monkeypatch.setattr(minder, "CFG_PATH", cfg_file)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [msg_tool_call("bash"),
+                                        msg_tool_result("x" * 5000)]})
+        body = mock.requests[-1]
+        # effort unsupported → binary fallback, heavy activity still thinks
+        assert body["chat_template_kwargs"] == {"enable_thinking": True}
+        assert "reasoning_effort" not in json.dumps(body)
+    finally:
+        stop(mock, srv)
+
+
+# ---------------------------------------------------------------------------
+# escalation observability: digest marker in window ⇒ ledger line + upgrade
+# ---------------------------------------------------------------------------
+
+def test_escalation_marker_logged_and_upgrades(proxy_over_mock, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        events = []
+        monkeypatch.setattr(proxy.minder, "log",
+                            lambda task, ev, **kw: events.append((task, ev, kw)))
+        write_caps("kwargs")
+        body = {"model": "qwen-exec", "max_tokens": 16, "messages": [
+            {"role": "user", "content": "hi"},
+            {"role": "user", "content": "[minder] ESCALATION L1 — think"},
+            {"role": "user", "content": "retry now"}]}
+        st, resp = chat_request(url, body)
+        assert st == 200
+        hits = [e for _, e, _ in events if e == "escalation_upgraded"]
+        assert hits, events
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_no_marker_no_escalation_log(proxy_over_mock, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        events = []
+        monkeypatch.setattr(proxy.minder, "log",
+                            lambda task, ev, **kw: events.append((task, ev, kw)))
+        write_caps("kwargs")
+        body = {"model": "qwen-exec", "max_tokens": 16, "messages": [
+            {"role": "user", "content": "plain turn"}]}
+        st, _ = chat_request(url, body)
+        assert st == 200
+        assert not [e for _, e, _ in events if e == "escalation_upgraded"]
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_boot_reverify_writes_fresh_caps(proxy_over_mock, monkeypatch, tmp_path):
+    """B2: refresh_caps_in_background re-measures against the live upstream
+    and rewrites caps when mechanism or model changed (2026-09-19 blind spot)."""
+    import time
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        monkeypatch.setattr(proxy, "UPSTREAM", mock.url)
+        monkeypatch.setattr(proxy, "CONFIG_DIR", tmp_path)
+        monkeypatch.setattr(proxy.minder, "log", lambda *a, **k: None)
+        stale = {"fingerprint": {"model_id": "old-model"},
+                 "thinking": {"mechanism": "none"}}
+        (tmp_path / "model_caps.json").write_text(json.dumps(stale))
+        proxy.refresh_caps_in_background()
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            fresh = json.loads((tmp_path / "model_caps.json").read_text())
+            if fresh["fingerprint"]["model_id"] != "old-model":
+                break
+            time.sleep(0.2)
+        assert fresh["fingerprint"]["model_id"] != "old-model"
+        assert fresh["thinking"]["mechanism"] in ("kwargs", "softswitch")
+    finally:
+        stop(mock, srv)
+
+
+# ---------------------------------------------------------------------------
+# G2: consequence modes (PRD v2 DIRECT/LEAN/DEEP) + thermal clamp
+# ---------------------------------------------------------------------------
+
+def test_mode_direct_disables_thinking(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        st, _ = chat_request(url, {"model": "qwen-think", "max_tokens": 16,
+                                   "messages": [{"role": "user",
+                                                 "content": "hi"}]},
+                             headers={"X-Minder-Mode": "direct"})
+        assert st == 200
+        body = mock.requests[-1]
+        assert body["chat_template_kwargs"]["enable_thinking"] is False
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_mode_deep_sets_budget(proxy_over_mock):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        st, _ = chat_request(url, {"model": "qwen-exec", "max_tokens": 16,
+                                   "messages": [{"role": "user",
+                                                 "content": "hi"}]},
+                             headers={"X-Minder-Mode": "deep"})
+        assert st == 200
+        ctk = mock.requests[-1]["chat_template_kwargs"]
+        assert ctk["enable_thinking"] is True
+        assert ctk["thinking_budget"] == 4096
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_thermal_downgrade_deep_to_lean(proxy_over_mock, monkeypatch, tmp_path):
+    import time as _t
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        fake = tmp_path / "instance.json"
+        fake.write_text(json.dumps(
+            {"telemetry": {"pacing_active": True}}))
+        monkeypatch.setattr(proxy, "SINTER_STATE", str(fake))
+        proxy._pacing_cache.update(mtime=None, active=False)
+        events = []
+        monkeypatch.setattr(proxy.minder, "log",
+                            lambda task, ev, **kw: events.append(ev))
+        st, _ = chat_request(url, {"model": "qwen-exec", "max_tokens": 16,
+                                   "messages": [{"role": "user",
+                                                 "content": "hi"}]},
+                             headers={"X-Minder-Mode": "deep"})
+        assert st == 200
+        assert "thermal_downgrade" in events
+        ctk = mock.requests[-1]["chat_template_kwargs"]
+        assert ctk["thinking_budget"] == 1024  # lean budget after downgrade
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_mode_overrides_auto_classifier(proxy_over_mock, monkeypatch, tmp_path):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        cfg_file = tmp_path / "minder.json"
+        (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+        import minder
+        monkeypatch.setattr(minder, "CFG_PATH", cfg_file)
+        monkeypatch.setattr(minder, "STATE_DIR", tmp_path / "state")
+        cfg_file.write_text(json.dumps({"effort_mode": "auto"}))
+        heavy = [{"role": "user", "content": "fix"},
+                 {"role": "assistant", "content": "", "tool_calls": [
+                     {"id": "c", "type": "function",
+                      "function": {"name": "bash",
+                                   "arguments": "{\"command\": \"make\"}"}}]},
+                 {"role": "tool", "tool_call_id": "c", "content": "x" * 5000},
+                 {"role": "user", "content": "go"}]
+        st, _ = chat_request(url, {"model": "qwen-auto", "max_tokens": 16,
+                                   "messages": heavy},
+                             headers={"X-Minder-Mode": "direct"})
+        assert st == 200
+        # heavy activity would say high; mode direct wins
+        assert mock.requests[-1]["chat_template_kwargs"][
+            "enable_thinking"] is False
+    finally:
+        clear_caps()
+        stop(mock, srv)

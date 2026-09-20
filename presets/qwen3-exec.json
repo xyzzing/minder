@@ -1,0 +1,13 @@
+{
+  "alias": "qwen-exec",
+  "class": "exec",
+  "upstream_model": null,
+  "upstream_params": {
+    "temperature": 0.15,
+    "top_p": 0.8,
+    "top_k": 20,
+    "max_tokens": 8192,
+    "chat_template_kwargs": {"enable_thinking": false}
+  },
+  "sampler_overrides": {"min_p": null, "dry_multiplier": null, "xtc_probability": null}
+}

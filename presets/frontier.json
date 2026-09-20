@@ -1,0 +1,8 @@
+{
+  "alias": "frontier",
+  "class": "frontier",
+  "upstream_model": null,
+  "upstream_params": {},
+  "sampler_overrides": {},
+  "note": "handled by minder, never forwarded upstream"
+}

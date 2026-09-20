@@ -1,0 +1,21 @@
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+# minder runtime artifacts
+*.zst
+dumps/
+
+# local tooling / personal artifacts — never published
+.zcode/
+.ignore
+opencode.json
+.env*
+*.bak
+
+# injected by local audit hooks — generic agent scaffolding, not project code
+.agentic/
+CLAUDE.md
