@@ -65,7 +65,8 @@ else
 - Stateless escalation channel via digest markers — works with any OpenAI-compatible harness through the proxy on :8390
 - zcode + Claude-Code-style hooks-bridge integration (dsh), compaction survival, verify consults, domain profiles with egress redaction and hash-chained audit ledger
 - Optional advisory reflex tier (CPU micro-classifier, fail-open)
-- 111 tests, Python 3.10+ stdlib only
+- Token accounting in the ledger; CAP-measured effort vocabulary surfaced to harness UIs
+- 118 tests, Python 3.10+ stdlib only
 
 Install: \`./install.sh\` — see the README."
   say "released $TAG"

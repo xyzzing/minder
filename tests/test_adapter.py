@@ -338,3 +338,32 @@ def test_cap_measures_effort_vocabulary():
     assert err is None
     assert caps["effort_levels"] == ["low", "medium", "xhigh"]
     assert caps["effort_supported"] is True and caps["effort_channel"] == "ctk"
+
+
+# ---------------------------------------------------------------------------
+# v0.5 — client/UI effort pass-through over the measured vocabulary
+# ---------------------------------------------------------------------------
+
+def test_apply_auto_client_effort_vocabulary():
+    caps = {"thinking": {"mechanism": "kwargs"}, "effort_supported": True,
+            "effort_channel": "ctk",
+            "effort_levels": ["low", "medium", "xhigh"]}
+    out, degraded = adapter.apply_auto({}, "medium", caps)
+    assert degraded is False
+    assert out["chat_template_kwargs"] == {"enable_thinking": True,
+                                           "reasoning_effort": "medium"}
+    out, _ = adapter.apply_auto({}, "xhigh", caps)
+    assert out["chat_template_kwargs"]["reasoning_effort"] == "xhigh"
+    # measured-vocabulary member the scheduler never emits still maps
+    out, _ = adapter.apply_auto({}, "max", {"thinking": {"mechanism":
+                                                        "kwargs"},
+                                            "effort_supported": True,
+                                            "effort_channel": "field",
+                                            "effort_levels": ["max"]})
+    assert out["reasoning_effort"] == "max"
+    # off/minimal keep thinking off and scrub any stale level
+    out, _ = adapter.apply_auto({"reasoning_effort": "low"}, "minimal", caps)
+    assert out["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "reasoning_effort" not in out
+    out, _ = adapter.apply_auto({}, "off", caps)
+    assert out["chat_template_kwargs"] == {"enable_thinking": False}

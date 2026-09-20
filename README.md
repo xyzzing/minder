@@ -179,6 +179,18 @@ tests/           111 tests, stdlib-only: MINDER_NO_SYSTEMD=1 pytest tests/ -q
 prd.md           the build contract (spec-first; deviations are reported)
 ```
 
+## Companion plugins
+
+[dsh-qwen38-local-qol](https://github.com/Yunado/dsh-qwen38-local-qol) (MIT)
+is an independent dsh plugin covering wire-level quality-of-life for local
+Qwen3.8: per-dialect thinking budgets, a compaction backend, a live settings
+tab. It complements minder but **does not stack with it** — its `qwen38`
+preset routes straight to the model server, bypassing minder's proxy. Pick
+one route per session. minder declares its CAP-measured effort vocabulary on
+the provider card, so the dsh effort picker works on `qwen-auto`; a
+picker choice wins over the activity scheduler, and escalation markers win
+over everything.
+
 ## Known limitations (honest ones)
 
 - L2 consults need an external API key; without one you get the degraded

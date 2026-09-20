@@ -3,6 +3,22 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## 0.5 — 2026-09-20
+
+- **Token accounting in the ledger** — the proxy harvests upstream `usage`
+  (prompt/completion/total, plus cached and reasoning tokens when offered)
+  into a `token_usage` event per governed request. For streaming requests
+  that didn't ask for usage, minder injects `stream_options.include_usage`
+  upstream and swallows the injected usage-only event, so clients see
+  exactly the bytes they asked for.
+- **Effort picker is real** — the installer declares the CAP-measured effort
+  vocabulary on the `qwen-auto` model card (`reasoningEfforts`), so the dsh
+  UI picker offers levels the server actually accepts. A UI-picked effort
+  wins over the activity scheduler (escalation markers still win over both).
+- **First public release** — published to github.com/xyzzing/minder with CI
+  (Python 3.10–3.12), CHANGELOG, CONTRIBUTING, and ADR-0004 (why minder is a
+  sidecar proxy, not a harness plugin).
+
 ## 0.4 — 2026-09-20
 
 - **Compaction survival** — zcode SessionStart matcher upgraded to

@@ -101,7 +101,8 @@ def section_block(lines, start_idx, indent):
 # ---------------------------------------------------------------------------
 
 def provider_block(provider_name, base_url, n_ctx, api_key_env,
-                   max_tokens_exec=8192, max_tokens_think=32768):
+                   max_tokens_exec=8192, max_tokens_think=32768,
+                   auto_efforts=None):
     lines = [
         f"    {provider_name}:",
         f"      displayName: Minder (Turnstile escalation watchdog)",
@@ -125,6 +126,13 @@ def provider_block(provider_name, base_url, n_ctx, api_key_env,
         f"          name: Qwen Auto (minder)",
         f"          contextWindow: {n_ctx}",
         f"          maxTokens: {max_tokens_think}",
+    ]
+    if auto_efforts:
+        # declared to the harness so the UI effort picker offers the
+        # vocabulary CAP actually measured (ADR-0004 pattern absorption)
+        lines.append(f"          reasoningEfforts: "
+                     f"[{', '.join(auto_efforts)}]")
+    lines += [
         f"        - id: frontier",
         f"          name: Frontier (minder)",
         f"          contextWindow: {n_ctx}",
@@ -169,6 +177,48 @@ def ensure_provider_model(settings_text, model_id, n_ctx,
     return "".join(lines), "inserted"
 
 
+def ensure_provider_efforts(settings_text, efforts,
+                            provider_name=PROVIDER_NAME):
+    """Declare `reasoningEfforts` on the qwen-auto model entry (idempotent) —
+    upgrades installs made before the effort vocabulary was surfaced."""
+    lines = settings_text.splitlines(keepends=True)
+    if not lines or not lines[-1].endswith("\n"):
+        if lines:
+            lines[-1] = lines[-1] + "\n"
+    mask = block_scalar_mask(lines)
+    prov_idx = _providers_idx(lines, mask)
+    if prov_idx is None:
+        return settings_text, "no-providers"
+    child = find_indented(lines, provider_name, prov_idx, 2, mask)
+    if child is None:
+        return settings_text, "no-provider"
+    declared = f"reasoningEfforts: [{', '.join(efforts)}]"
+    entry = None
+    last_field = None
+    for idx in section_block(lines, child, 4):
+        if mask[idx]:
+            continue
+        if lines[idx].strip() == "- id: qwen-auto":
+            entry = last_field = idx
+            continue
+        if entry is None:
+            continue
+        if lines[idx].strip().startswith("reasoningEfforts:"):
+            if lines[idx].strip() == declared:
+                return settings_text, "already-present"
+            lines[idx] = " " * 10 + declared + "\n"
+            return "".join(lines), "updated"
+        if lines[idx].strip().startswith("- id:"):
+            # next model entry starts — insert before it
+            lines[idx:idx] = [" " * 10 + declared + "\n"]
+            return "".join(lines), "inserted"
+        last_field = idx
+    if entry is None:
+        return settings_text, "no-qwen-auto"
+    lines[last_field + 1:last_field + 1] = [" " * 10 + declared + "\n"]
+    return "".join(lines), "inserted"
+
+
 def plugin_block(plugin_name, hooks_json_path):
     return [ln + "\n" for ln in [
         f"  '{plugin_name}':",
@@ -194,7 +244,7 @@ def existing_api_key_env(lines, mask):
 
 
 def add_provider(settings_text, base_url, n_ctx,
-                 provider_name=PROVIDER_NAME):
+                 provider_name=PROVIDER_NAME, auto_efforts=None):
     lines = settings_text.splitlines(keepends=True)
     if not lines or not lines[-1].endswith("\n"):
         if lines:
@@ -210,7 +260,8 @@ def add_provider(settings_text, base_url, n_ctx,
                          "dsh provider config missing or nonstandard — report, "
                          "do not guess.")
     block = provider_block(provider_name, base_url, n_ctx,
-                           existing_api_key_env(lines, mask))
+                           existing_api_key_env(lines, mask),
+                           auto_efforts=auto_efforts)
     lines[prov_idx + 1:prov_idx + 1] = block
     return "".join(lines), "inserted"
 
@@ -337,7 +388,12 @@ def main():
                     help="absolute path for the bridge configPath")
     ap.add_argument("--base-url", default="http://127.0.0.1:8390/v1")
     ap.add_argument("--n-ctx", type=int, default=32768)
+    ap.add_argument("--efforts", default="",
+                    help="comma list of CAP-measured effort levels to declare "
+                         "on qwen-auto (e.g. off,low,medium,xhigh); empty = "
+                         "skip (Law #9: nothing assumed)")
     args = ap.parse_args()
+    auto_efforts = [e.strip() for e in args.efforts.split(",") if e.strip()]
 
     settings = pathlib.Path(args.settings)
     original = settings.read_text()
@@ -365,11 +421,13 @@ def main():
 
     hooks_json = args.hooks_json or str(
         pathlib.Path.home() / ".local/share/minder/dsh/hooks.json")
-    text, st1 = add_provider(original, args.base_url, args.n_ctx)
+    text, st1 = add_provider(original, args.base_url, args.n_ctx,
+                             auto_efforts=auto_efforts)
     text, st2 = register_plugin(text, hooks_json)
-    if st1 == "already-present":
+    if st1 == "already-present" and auto_efforts:
         # upgrade path: older installs lack newer models (e.g. qwen-auto)
         text, _ = ensure_provider_model(text, "qwen-auto", args.n_ctx)
+        text, _ = ensure_provider_efforts(text, auto_efforts)
 
     ok, msg = verify(text)
     if not ok:

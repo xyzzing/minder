@@ -455,6 +455,12 @@ def schedule_effort(messages, cfg, caps=None):
 _EFFORT_PREFS = {
     "high": ("high", "xhigh", "medium", "low", "minimal"),
     "low": ("low", "medium", "minimal", "xhigh", "high"),
+    # client/UI pass-through names: identity first, then graceful neighbors
+    "xhigh": ("xhigh", "high", "medium", "low"),
+    "medium": ("medium", "low", "xhigh", "high"),
+    "max": ("max", "xhigh", "high"),
+    "minimal": ("minimal", "low", "medium"),
+    "off": ("off", "minimal", "low"),
 }
 
 
@@ -483,7 +489,7 @@ def apply_auto(req, effort, caps, preset=None):
     if override in ("kwargs", "softswitch", "none"):
         mechanism = override
     degraded = False
-    want = effort in ("low", "high")
+    want = effort not in (None, "off", "minimal")
     if mechanism == "kwargs":
         ctk = dict(req.get("chat_template_kwargs") or {})
         ctk["enable_thinking"] = want
@@ -494,7 +500,7 @@ def apply_auto(req, effort, caps, preset=None):
                     ctk["reasoning_effort"] = level
                 elif (caps or {}).get("effort_channel") == "field":
                     req["reasoning_effort"] = level
-            if effort == "off":
+            if effort in ("off", "minimal"):
                 ctk.pop("reasoning_effort", None)
                 req.pop("reasoning_effort", None)
         req["chat_template_kwargs"] = ctk

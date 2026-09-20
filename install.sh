@@ -110,6 +110,10 @@ PYEOF
   MODEL_ID=$(python3 -c "import json,sys; print(json.loads('''$CAP_JSON''')['fingerprint']['model_id'] or '')")
   BUDGET_OK=$(python3 -c "import json,sys; print(str(json.loads('''$CAP_JSON''')['thinking']['thinking_budget_supported']).lower())")
   TOOL_CLEAN=$(python3 -c "import json,sys; tc=json.loads('''$CAP_JSON''').get('tool_calls') or {}; print(str(tc.get('clean', 'None')).lower() + ' ' + str(tc.get('dirty','?')) + '/' + str(tc.get('probes','?')))")
+  AUTO_EFFORTS=$(python3 -c "
+import json
+levels = ['off'] + [l for l in (json.loads('''$CAP_JSON''').get('effort_levels') or []) if l != 'off']
+print(','.join(levels))" 2>/dev/null)
   CAP_STATUS="$MECHANISM"
   case "$MECHANISM" in
     kwargs|softswitch) say "[4] CAP: mechanism=$MECHANISM budget=$BUDGET_OK model=${MODEL_ID:-unknown} — full L1" ;;
@@ -152,8 +156,7 @@ python3 - "$CONFIG" "$ACCEPT_DEGRADED" "$FRONTIER_CMD" "$EFFORT_MODE" <<'PYEOF'
 import json, sys
 from pathlib import Path
 config, degraded, frontier_cmd, effort_mode = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-cfg = {"accept_l1_degraded": degraded == "1", "effort_mode": effort_mode,
-       "frontier_command": frontier_cmd}
+cfg = {"accept_l1_degraded": degraded == "1"}
 p = Path(config) / "minder.json"
 existing = {}
 if p.exists():
@@ -161,7 +164,11 @@ if p.exists():
         existing = json.loads(p.read_text())
     except ValueError:
         pass
+# safety consent is re-asked on every install (conservative direction);
+# preference knobs are first-run defaults — explicit user values survive
 existing.update(cfg)
+existing.setdefault("effort_mode", effort_mode)
+existing.setdefault("frontier_command", frontier_cmd)
 # frontier endpoint defaults — written only when absent so explicit user
 # values survive reinstalls (frontier.py carries the same fallbacks)
 for k, v in (("frontier_base_url", "https://api.deepseek.com"),
@@ -251,6 +258,7 @@ fi
 if [ "$DO_DSH" = "1" ] && [ -n "$DSH_SETTINGS" ]; then
   python3 "$SRC/dsh/dsh_install.py" apply --settings "$DSH_SETTINGS" \
     --hooks-json "$SHARE/dsh/hooks.json" --n-ctx "$N_CTX" \
+    --efforts "${AUTO_EFFORTS:-}" \
     || fail "dsh settings.yaml patch failed (backup kept alongside; nothing written on verify-fail)"
   if command -v dsh >/dev/null 2>&1 && [ "${MINDER_NO_DSH_PLUGIN:-0}" != "1" ]; then
     say "[7] installing hooks bridge plugin into dsh web profile..."
@@ -332,8 +340,12 @@ WantedBy=default.target
 EOF
   if command -v systemctl >/dev/null 2>&1 && [ -z "${MINDER_NO_SYSTEMD:-}" ]; then
     systemctl --user daemon-reload || true
-    systemctl --user enable --now minder-proxy.service || \
-      say "WARN: could not start unit — run: systemctl --user enable --now minder-proxy.service"
+    systemctl --user enable minder-proxy.service || \
+      say "WARN: could not enable unit — run: systemctl --user enable minder-proxy.service"
+    # code was just re-staged — a running unit must not keep serving the
+    # previous version (restart is a no-op when it was not running)
+    systemctl --user restart minder-proxy.service || \
+      say "WARN: could not start unit — run: systemctl --user restart minder-proxy.service"
     # verify proxy came up and synthesizes aliases (AT-17 live)
     OK=0
     for _ in 1 2 3 4 5 6 7 8 9 10; do

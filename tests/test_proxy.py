@@ -13,7 +13,8 @@ from mock_upstream import MockUpstream
 CONFIG_DIR = proxy.CONFIG_DIR
 
 
-def write_caps(mechanism, budget=True, effort=True, channel="ctk"):
+def write_caps(mechanism, budget=True, effort=True, channel="ctk",
+               effort_levels=None):
     caps = {"fingerprint": {"model_id": "qwen27b-fusion"}, "kwargs_accepted":
             mechanism == "kwargs",
             "thinking": {"mechanism": mechanism, "markers":
@@ -22,7 +23,7 @@ def write_caps(mechanism, budget=True, effort=True, channel="ctk"):
                          "field": "reasoning_content"},
             "softswitch_tokens": {"on": "/think", "off": "/no_think"},
             "effort_supported": effort, "effort_channel": channel,
-            "effort_levels": ["low", "medium", "high"]}
+            "effort_levels": effort_levels or ["low", "medium", "high"]}
     (CONFIG_DIR / "model_caps.json").write_text(json.dumps(caps))
     return caps
 
@@ -522,6 +523,140 @@ def test_mode_overrides_auto_classifier(proxy_over_mock, monkeypatch, tmp_path):
         # heavy activity would say high; mode direct wins
         assert mock.requests[-1]["chat_template_kwargs"][
             "enable_thinking"] is False
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+# ---------------------------------------------------------------------------
+# v0.5 — token accounting + client effort precedence
+# ---------------------------------------------------------------------------
+
+def _raw_stream(url, body, headers=None):
+    hdrs = {"Content-Type": "application/json"}
+    hdrs.update(headers or {})
+    req = urllib.request.Request(
+        url + "/v1/chat/completions", data=json.dumps(body).encode(),
+        headers=hdrs)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.read()
+
+
+def _state_dir(monkeypatch, tmp_path):
+    import minder
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(minder, "CFG_PATH", tmp_path / "minder.json")
+    monkeypatch.setattr(minder, "STATE_DIR", tmp_path / "state")
+    return tmp_path / "state" / "events.jsonl"
+
+
+def _wait_ledger(ledger, needle="token_usage", timeout=5.0):
+    """The usage event is written in the handler's finally — after the
+    client sees the full response. Poll briefly instead of racing it."""
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if ledger.exists() and needle in ledger.read_text():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def test_token_usage_injected_and_swallowed(proxy_over_mock, tmp_path,
+                                            monkeypatch):
+    mock, srv, url = proxy_over_mock("sse_usage")
+    ledger = _state_dir(monkeypatch, tmp_path)
+    try:
+        write_caps("kwargs")
+        raw = _raw_stream(url, {"model": "qwen-auto", "stream": True,
+                                "max_tokens": 16,
+                                "messages": [{"role": "user",
+                                              "content": "hi"}]})
+        # upstream was asked for usage on minder's behalf
+        assert mock.last_body["stream_options"]["include_usage"] is True
+        # client sees the completion it asked for — no injected usage event
+        assert b"he" in raw and b"llo" in raw and b"[DONE]" in raw
+        assert b"prompt_tokens" not in raw
+        assert _wait_ledger(ledger)
+        line = ledger.read_text().strip().splitlines()[-1]
+        ev = json.loads(line)
+        assert ev["event"] == "token_usage"
+        assert ev["prompt_tokens"] == 7 and ev["completion_tokens"] == 3
+        assert ev["cached_tokens"] == 4
+    finally:
+        stop(mock, srv)
+
+
+def test_token_usage_passive_when_client_asked(proxy_over_mock, tmp_path,
+                                               monkeypatch):
+    mock, srv, url = proxy_over_mock("sse_usage")
+    ledger = _state_dir(monkeypatch, tmp_path)
+    try:
+        write_caps("kwargs")
+        body = {"model": "qwen-auto", "stream": True, "max_tokens": 16,
+                "stream_options": {"include_usage": True},
+                "messages": [{"role": "user", "content": "hi"}]}
+        raw = _raw_stream(url, body)
+        # client contract untouched: their flag passes through, the usage
+        # event is forwarded too (harvested passively for the ledger)
+        assert mock.last_body["stream_options"]["include_usage"] is True
+        assert b"prompt_tokens" in raw and b"[DONE]" in raw
+        assert _wait_ledger(ledger)
+        ev = json.loads(ledger.read_text().strip().splitlines()[-1])
+        assert ev["event"] == "token_usage" and ev["prompt_tokens"] == 7
+    finally:
+        stop(mock, srv)
+
+
+def test_token_usage_non_streaming(proxy_over_mock, tmp_path, monkeypatch):
+    mock, srv, url = proxy_over_mock("json_usage")
+    ledger = _state_dir(monkeypatch, tmp_path)
+    try:
+        write_caps("kwargs")
+        st, body = chat_request(url, {"model": "qwen-exec", "max_tokens": 16,
+                                      "messages": [{"role": "user",
+                                                    "content": "hi"}]})
+        assert st == 200 and body["usage"]["total_tokens"] == 16
+        assert _wait_ledger(ledger)
+        ev = json.loads(ledger.read_text().strip().splitlines()[-1])
+        assert ev["event"] == "token_usage" and ev["reasoning_tokens"] == 4
+    finally:
+        stop(mock, srv)
+
+
+def test_client_effort_beats_scheduler(proxy_over_mock, tmp_path,
+                                       monkeypatch):
+    import minder
+    mock, srv, url = proxy_over_mock("default")
+    ledger = _state_dir(monkeypatch, tmp_path)
+    try:
+        write_caps("kwargs", effort_levels=["low", "medium", "xhigh"])
+        minder.CFG_PATH.write_text(json.dumps({"effort_mode": "auto"}))
+        # plain question would schedule off; UI pick of xhigh wins
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "xhigh",
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        assert mock.last_body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "xhigh"}
+        assert '"source": "client"' in ledger.read_text()
+        # escalation marker beats the client pick (semantic high → xhigh
+        # on the [low, medium, xhigh] vocabulary)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "off",
+                           "messages": [
+                               {"role": "user", "content": "2+2?"},
+                               {"role": "assistant", "content":
+                                "[minder] ESCALATION L1 — retry"}]})
+        assert mock.last_body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "xhigh"}
+        # unknown vocabulary value is ignored → scheduler (off for plain)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "ultramax",
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        assert mock.last_body["chat_template_kwargs"] == {
+            "enable_thinking": False}
     finally:
         clear_caps()
         stop(mock, srv)

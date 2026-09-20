@@ -9,6 +9,9 @@ Behaviors (constructor arg):
   softswitch_only  — ignores kwargs; honors trailing /think //no_think on the
                      last user message
   sse              — streams a fixture chunked SSE response regardless of body
+  sse_usage        — sse + usage-only event when the request asked
+                     include_usage (split mid-JSON to stress reassembly)
+  json_usage       — non-streaming reply carrying a top-level usage object
 Records every request body to .requests (list) for body assertions (AT-7b, AT-16).
 """
 import json
@@ -60,17 +63,35 @@ class MockUpstream:
                     self._json(400, {"error": {"message":
                         "reasoning_effort rejected"}})
                     return
-                if outer.behavior == "sse":
+                if outer.behavior in ("sse", "sse_usage"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.send_header("Connection", "close")
                     self.end_headers()
-                    for chunk in (b'data: {"choices": [{"delta": '
-                                  b'{"content": "he"}}]}\n\n',
-                                  b'data: {"choices": [{"delta": '
-                                  b'{"content": "llo"}}]}\n\n',
-                                  b"data: [DONE]\n\n"):
-                        self.wfile.write(chunk)
+                    events = [
+                        b'data: {"choices": [{"delta": '
+                        b'{"content": "he"}}]}\n\n',
+                        b'data: {"choices": [{"delta": '
+                        b'{"content": "llo"}}]}\n\n',
+                    ]
+                    if outer.behavior == "sse_usage" and body and \
+                            (body.get("stream_options") or {})\
+                            .get("include_usage"):
+                        # llama-server style: usage-only event before [DONE];
+                        # split across two writes to exercise line reassembly
+                        events.append(
+                            b'data: {"choices": [], "usage": '
+                            b'{"prompt_tokens": 7, "completion_tokens": 3, '
+                            b'"total_tokens": 10, "prompt_tokens_details": '
+                            b'{"cached_tokens": 4}}}\n\n')
+                    events.append(b"data: [DONE]\n\n")
+                    for chunk in events:
+                        # split every event mid-JSON so the proxy's relay
+                        # must reassemble SSE lines across read boundaries
+                        half = max(1, len(chunk) // 2)
+                        self.wfile.write(chunk[:half])
+                        self.wfile.flush()
+                        self.wfile.write(chunk[half:])
                         self.wfile.flush()
                     return
                 want_think = False
@@ -91,11 +112,17 @@ class MockUpstream:
                     msg = {"role": "assistant", "content": THINK_BLOCK}
                 else:
                     msg = {"role": "assistant", "content": PLAIN}
-                self._json(200, {"id": "mock", "object":
-                          "chat.completion", "model": body.get("model", "mock")
-                          if body else "mock",
-                          "choices": [{"index": 0, "message": msg,
-                                       "finish_reason": "stop"}]})
+                resp = {"id": "mock", "object": "chat.completion",
+                        "model": body.get("model", "mock") if body else "mock",
+                        "choices": [{"index": 0, "message": msg,
+                                     "finish_reason": "stop"}]}
+                if outer.behavior == "json_usage":
+                    resp["usage"] = {"prompt_tokens": 11,
+                                     "completion_tokens": 5,
+                                     "total_tokens": 16,
+                                     "completion_tokens_details":
+                                     {"reasoning_tokens": 4}}
+                self._json(200, resp)
 
             def _json(self, code, obj):
                 payload = json.dumps(obj).encode()

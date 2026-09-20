@@ -43,6 +43,10 @@ RECENT_WINDOW = 4
 # (cache-stable prefixes matter more than per-mode temperature).
 MODE_EFFORT = {"direct": "off", "lean": "low", "deep": "high"}
 MODE_BUDGET = {"lean": 1024, "deep": 4096}
+# Semantic effort names the qwen-auto channel may honor from a client/UI
+# request; values outside this set (or the CAP-measured vocabulary) are
+# ignored and the activity scheduler decides.
+_KNOWN_EFFORTS = {"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 SINTER_STATE = os.environ.get(
     "MINDER_SINTER_STATE",
     os.path.expanduser("~/.local/state/sinter/instance.json"))
@@ -186,13 +190,20 @@ def apply_pipeline(req, session_fp, mode=None):
 
 
 def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None):
-    """class: auto — per-request effort scheduling; consequence mode and
-    minder escalation both override the activity classifier (marker first,
-    then X-Minder-Mode, then scheduled effort)."""
+    """class: auto — per-request effort scheduling; precedence: escalation
+    marker > client/UI reasoning_effort > X-Minder-Mode > activity classifier.
+    A client-passed effort is honored only if it is a known semantic name or
+    in the CAP-measured vocabulary; anything else is ignored (fail-open)."""
     req.update(flat_params(preset))
     caps = get_caps()
+    client_effort = req.pop("reasoning_effort", None)
+    accepted = (caps or {}).get("effort_levels") or []
     if escalated:
         effort = "high"
+    elif client_effort in _KNOWN_EFFORTS or client_effort in accepted:
+        effort = client_effort
+        minder.log(session_fp, "auto_effort", effort=effort,
+                   escalated=False, source="client")
     elif mode in MODE_EFFORT:
         effort = MODE_EFFORT[mode]
         minder.log(session_fp, "auto_effort", effort=effort,
@@ -201,7 +212,7 @@ def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None):
         effort = adapter.schedule_effort(req.get("messages"), minder.cfg())
         minder.log(session_fp, "auto_effort", effort=effort,
                    escalated=False)
-    want = effort in ("low", "high")
+    want = effort not in (None, "off", "minimal")
     if caps is not None:
         req, degraded = adapter.apply_auto(req, effort, caps, preset)
         if degraded:
@@ -224,6 +235,100 @@ def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None):
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    MAX_JSON_BUFFER = 64 * 1024 * 1024
+
+    def _usage_line(self, ln, watch):
+        """Harvest usage from one SSE data line. Returns False only when the
+        line must be swallowed (watch == 'swallow' and this is the usage-only
+        event we injected via stream_options)."""
+        if not ln.startswith(b"data:"):
+            return True
+        payload = ln[5:].strip()
+        if not payload or payload == b"[DONE]":
+            return True
+        try:
+            ev = json.loads(payload)
+        except ValueError:
+            return True
+        if not isinstance(ev, dict):
+            return True
+        u = ev.get("usage")
+        if isinstance(u, dict) and u.get("prompt_tokens") is not None:
+            self._usage = u
+        return not (watch == "swallow" and ev.get("choices") == [])
+
+    def _relay_sse(self, up, watch):
+        """Byte-exact SSE relay; reassembles lines only to find the usage
+        event (injected streams swallow it, passive streams forward as-is)."""
+        buf = b""
+        while True:
+            chunk = up.read(4096)
+            if not chunk:
+                break
+            if watch is None:
+                self.wfile.write(chunk)
+                self.wfile.flush()
+                continue
+            buf += chunk
+            *lines, buf = buf.split(b"\n")
+            out = bytearray()
+            for ln in lines:
+                if self._usage_line(ln, watch):
+                    out += ln + b"\n"
+            if out:
+                self.wfile.write(out)
+                self.wfile.flush()
+        if buf:  # trailing partial line — cannot be a complete usage event
+            self._usage_line(buf, watch)
+            self.wfile.write(buf)
+            self.wfile.flush()
+
+    def _relay_body(self, up):
+        """Buffered relay for non-streaming bodies (bounded); harvests the
+        top-level usage field for the ledger. Bytes are forwarded verbatim."""
+        data = bytearray()
+        overflow = False
+        while True:
+            chunk = up.read(65536)
+            if not chunk:
+                break
+            if not overflow:
+                data += chunk
+                if len(data) > self.MAX_JSON_BUFFER:
+                    overflow = True
+                    self.wfile.write(bytes(data))
+                    self.wfile.flush()
+            else:
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        if not overflow:
+            body = bytes(data)
+            try:
+                ev = json.loads(body)
+            except ValueError:
+                ev = None
+            if isinstance(ev, dict):
+                u = ev.get("usage")
+                if isinstance(u, dict) and u.get("prompt_tokens") is not None:
+                    self._usage = u
+            self.wfile.write(body)
+            self.wfile.flush()
+
+    def _log_usage(self):
+        u = getattr(self, "_usage", None)
+        if u:
+            details = {}
+            pd = u.get("prompt_tokens_details") or {}
+            if isinstance(pd, dict) and pd.get("cached_tokens") is not None:
+                details["cached_tokens"] = pd["cached_tokens"]
+            cd = u.get("completion_tokens_details") or {}
+            if isinstance(cd, dict) and cd.get("reasoning_tokens") is not None:
+                details["reasoning_tokens"] = cd["reasoning_tokens"]
+            flat = {k: u[k] for k in ("prompt_tokens", "completion_tokens",
+                                      "total_tokens") if u.get(k) is not None}
+            minder.log(getattr(self, "_fp", None) or "session:passthru",
+                       "token_usage", **flat, **details)
+
     def _relay(self, up):
         self.send_response(up.status)
         ctype = None
@@ -238,12 +343,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
         self.send_header("Connection", "close")
         self.end_headers()
-        while True:
-            chunk = up.read(4096)
-            if not chunk:
-                break
-            self.wfile.write(chunk)
-            self.wfile.flush()
+        self._usage = None
+        watch = getattr(self, "_usage_watch", None)
+        try:
+            if (ctype or "").lower().startswith("text/event-stream"):
+                self._relay_sse(up, watch)
+            else:
+                self._relay_body(up)
+        finally:
+            self._log_usage()
 
     def _forward_raw(self, body=None):
         headers = {"Content-Type": self.headers.get("Content-Type",
@@ -301,6 +409,19 @@ class Handler(BaseHTTPRequestHandler):
                         self.end_headers()
                         self.wfile.write(body)
                         return
+                    self._fp = fp
+                    if req.get("stream"):
+                        so = req.get("stream_options")
+                        if isinstance(so, dict) and so.get("include_usage"):
+                            self._usage_watch = "passive"
+                        else:
+                            # ask upstream for usage; the injected usage-only
+                            # event is swallowed in the relay so the client
+                            # sees exactly what it asked for
+                            merged = dict(so) if isinstance(so, dict) else {}
+                            merged["include_usage"] = True
+                            req["stream_options"] = merged
+                            self._usage_watch = "swallow"
                     raw = json.dumps(req).encode()
             except (ValueError, TypeError):
                 pass  # non-JSON body → pass through untouched

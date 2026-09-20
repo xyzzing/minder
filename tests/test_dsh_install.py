@@ -233,3 +233,39 @@ def test_real_dsh_settings_readonly():
             "http://127.0.0.1:8390/v1"
     except ImportError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# v0.5 — reasoningEfforts declaration on the qwen-auto card
+# ---------------------------------------------------------------------------
+
+def test_reasoning_efforts_declared_on_insert():
+    text, st = dsh_install.add_provider(SETTINGS, "http://127.0.0.1:8390/v1",
+                                        98304,
+                                        auto_efforts=["off", "low", "medium",
+                                                      "xhigh"])
+    assert st == "inserted"
+    assert "reasoningEfforts: [off, low, medium, xhigh]" in text
+    # declaration sits inside the qwen-auto entry (before frontier)
+    auto = text.index("- id: qwen-auto")
+    frontier = text.index("- id: frontier")
+    assert auto < text.index("reasoningEfforts") < frontier
+    ok, msg = dsh_install.verify(text, expect_plugin=False)
+    assert ok, msg
+
+
+def test_reasoning_efforts_upgrade_idempotent():
+    base, _ = dsh_install.add_provider(SETTINGS, "http://127.0.0.1:8390/v1",
+                                       98304)
+    assert "reasoningEfforts" not in base
+    up, s = dsh_install.ensure_provider_efforts(
+        base, ["off", "low", "medium", "xhigh"])
+    assert s == "inserted" and "reasoningEfforts: [off, low, medium, xhigh]" \
+        in up
+    ok, msg = dsh_install.verify(up, expect_plugin=False)
+    assert ok, msg
+    up2, s2 = dsh_install.ensure_provider_efforts(
+        up, ["off", "low", "medium", "xhigh"])
+    assert s2 == "already-present" and up2 == up
+    up3, s3 = dsh_install.ensure_provider_efforts(up, ["off", "low"])
+    assert s3 == "updated" and "reasoningEfforts: [off, low]" in up3
