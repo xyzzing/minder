@@ -20,6 +20,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import minder
 import reflex
+try:
+    from memory import policy as memory_policy
+except Exception:  # memory is optional; the watchdog never depends on it
+    memory_policy = None
 
 FRONTIER_TIMEOUT = int(os.environ.get("MINDER_FRONTIER_TIMEOUT", "60"))
 
@@ -189,6 +193,16 @@ def main(argv=None):
         fp = out["frontier_payload"]
         digest = minder.digest_l2(fp.get("key", "?"), fp.get("attempts", 0),
                                   fp.get("error", ""), section)
+    # Duplicate guard (memory v1 PR 3): a verbatim repeat after threshold
+    # replaces the directive with a block that demands a new hypothesis.
+    # Fail-open: any problem leaves the Warden digest untouched.
+    if memory_policy is not None:
+        try:
+            guard = memory_policy.evaluate(ev, out)
+            if guard:
+                digest = guard["digest"]
+        except Exception:
+            pass
     return emit(digest, args.transport)
 
 
