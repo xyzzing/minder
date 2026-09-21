@@ -264,21 +264,24 @@ def ask(prompt, provider, api_key, post=None, get=None):
     return answer or "(empty content)"
 
 
-def run_panel(payload, cfg, post=None, get=None, forced_key=None):
+def run_panel(payload, cfg, post=None, get=None, forced_key=None,
+              on_trace=None):
     """Consult every configured provider with a resolvable key (in parallel),
     synthesize when two or more answer, return the panel text (≤4000 chars).
-    Error strings start with '(' so callers can detect total failure."""
+    Error strings start with '(' so callers can detect total failure.
+    on_trace (optional): called once with a dict of consult metadata when a
+    panel completes — tracing must never alter the answer."""
     providers = resolve_providers(cfg)
     payload = scrub_payload(payload, cfg)
     template = cfg.get("frontier_prompt_template")
+    prompt = build_prompt(payload, template)
 
     def work(p):
         key = (forced_key if (forced_key and len(providers) == 1)
                else load_key_by_name(p["key_env"]))
         if not key:
             return p, False, "(no API key)"
-        return p, True, ask(build_prompt(payload, template), p, key,
-                            post, get)
+        return p, True, ask(prompt, p, key, post, get)
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         outcomes = list(ex.map(work, providers))
@@ -296,9 +299,25 @@ def run_panel(payload, cfg, post=None, get=None, forced_key=None):
         header = "PANEL CONSULT: " + ", ".join(f"{p['name']} ✓" for p, _ in ok)
         notes = "\n---\n" + "\n".join(
             f"[{p['name']}] {a[:NOTE_CHARS]}" for p, a in ok)
-        return (f"{header}\nSYNTHESIS (merged, disagreements flagged):\n"
-                f"{synth}{notes}")[:MAX_ANSWER_CHARS]
-    return ok[0][1][:MAX_ANSWER_CHARS]
+        answer = (f"{header}\nSYNTHESIS (merged, disagreements flagged):\n"
+                  f"{synth}{notes}")[:MAX_ANSWER_CHARS]
+    else:
+        answer = ok[0][1][:MAX_ANSWER_CHARS]
+    if on_trace:
+        try:
+            on_trace({
+                "failure_key": payload.get("key"),
+                "episode_id": payload.get("episode_id"),
+                "local_attempts": payload.get("attempts"),
+                "redaction_profile": ("default" if cfg.get("egress_redaction")
+                                      else None),
+                "providers": [p for p, _ in ok],
+                "request_hash_source": prompt,
+                "answer": answer,
+            })
+        except Exception:
+            pass
+    return answer
 
 
 def run(payload, cfg, api_key=None, post=None, get=None):
@@ -323,7 +342,22 @@ def main():
             f"minder frontier: no API key for any provider — add a "
             f"{names.replace(', ', '=… or ')}=… line in {_key_env_file()}\n")
         return 3
-    answer = run_panel(payload, cfg)
+    def _trace(meta):
+        """PR 7: hashed consult metadata → memory store (fail-open, additive)."""
+        try:
+            from memory import frontier_traces
+            frontier_traces.record(
+                {"key": meta.get("failure_key"),
+                 "attempts": meta.get("local_attempts"),
+                 "prompt": meta.get("request_hash_source"),
+                 "episode_id": meta.get("episode_id")},
+                meta.get("answer"), providers=meta.get("providers"),
+                redaction_profile=meta.get("redaction_profile"),
+                episode_id=meta.get("episode_id"))
+        except Exception:
+            pass
+
+    answer = run_panel(payload, cfg, on_trace=_trace)
     if answer.startswith("("):
         sys.stderr.write(answer + "\n")
         return 4
