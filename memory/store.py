@@ -104,11 +104,20 @@ def close_episode(episode_id, status, db_path=None, closed_at=None):
             _db.write(conn, "UPDATE episodes SET closed_at = ?, status = ?"
                       " WHERE episode_id = ?",
                       (closed_at or _now(), status, episode_id))
-            return status, "ok"
         finally:
             conn.close()
     except Exception as e:
         return None, f"degraded:{type(e).__name__}"
+    # P3.2 graph projection — additive, never affects the close result
+    try:
+        from . import graph_project
+        keys = [e.get("failure_key") for e in episode_events(episode_id,
+                                                            db_path=db_path)]
+        graph_project.project_episode_close(episode_id, keys,
+                                            db_path=db_path)
+    except Exception:
+        pass
+    return status, "ok"
 
 
 def count_attempts(failure_key, action_fingerprint=None, db_path=None):

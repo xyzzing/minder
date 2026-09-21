@@ -41,9 +41,16 @@ def promote_lesson(episode_id, instruction, anti_pattern="", verification=None,
                        str(instruction), str(anti_pattern or ""),
                        json.dumps({"actor": actor, **verification}),
                        episode_id, _now(), expires_when))
-            return _get(lid, conn), "ok"
+            out = _get(lid, conn)
         finally:
             conn.close()
+        if out:  # P3.2 graph projection — additive, never blocks promotion
+            try:
+                from . import graph_project
+                graph_project.project_lesson_promotion(out, db_path=db_path)
+            except Exception:
+                pass
+        return out, "ok"
     except Exception as e:
         return None, f"degraded:{type(e).__name__}"
 
