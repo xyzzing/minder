@@ -21,8 +21,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import minder
 import reflex
 try:
+    from memory import from_hook as memory_from_hook
     from memory import policy as memory_policy
 except Exception:  # memory is optional; the watchdog never depends on it
+    memory_from_hook = None
     memory_policy = None
 
 FRONTIER_TIMEOUT = int(os.environ.get("MINDER_FRONTIER_TIMEOUT", "60"))
@@ -163,6 +165,15 @@ def main(argv=None):
         if out or args.transport != "dsh":
             sys.stdout.write(json.dumps(out))
         return 0
+
+    # Memory v1 (PR 5): record the observation BEFORE the Warden runs, so
+    # the duplicate guard reads fresh counts. Fail-open: directive never
+    # depends on this succeeding.
+    if memory_from_hook is not None and not args.session_start:
+        try:
+            memory_from_hook.record(ev)
+        except Exception:
+            pass
 
     try:
         out = minder.process(ev)

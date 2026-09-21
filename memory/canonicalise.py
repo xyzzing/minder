@@ -51,11 +51,15 @@ _IN_FUNC_RE = re.compile(r"\bin (\w+)\b", re.IGNORECASE)
 _UNKNOWN = "none"
 
 
+def redact(text):
+    """Strip API-key-shaped strings from arbitrary text before storage."""
+    return _API_KEY_RE.sub(_REDACTED, str(text or ""))
+
+
 def normalise_error_excerpt(text, repo=None):
     """One canonical excerpt string: redacted, timestamp-free, path-normalised,
     lowercased, whitespace-collapsed."""
-    out = str(text or "")
-    out = _API_KEY_RE.sub(_REDACTED, out)
+    out = redact(text)
     for rx in _TIMESTAMP_RES:
         out = rx.sub(" ", out)
     out = _relativise(out, repo)

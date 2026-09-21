@@ -25,38 +25,17 @@ import json
 
 import minder
 from . import canonicalise as canon
+from . import from_hook
 from . import store
 from .retrieval import retrieve_lessons
 
-DEFAULT_THRESHOLD = 2
-
 
 def _as_event(ev):
-    """Accept a raw hook payload or a canonical memory event dict."""
-    if not isinstance(ev, dict):
-        return {}
-    if ev.get("event_type"):
-        return dict(ev)
-    resp = ev.get("tool_response", "")
-    text = resp if isinstance(resp, str) else json.dumps(resp, default=str)
-    args = ev.get("tool_input") or {}
-    if not isinstance(args, dict):
-        args = {}
-    failed = minder.is_failure(text, minder.cfg().get("fail_signs_extra"))
-    return {
-        "event_type": "tool_failure" if failed else "tool_success",
-        "tool": ev.get("tool_name") or "",
-        "session_id": ev.get("session_id") or "",
-        "task_id": ev.get("session_id") or "",
-        "command": str(args.get("command", "")),
-        "args_json": json.dumps(args),
-        "file_path": str(args.get("file_path", "")
-                         or args.get("path", "")),
-        "error_excerpt": text,
-        "content_hash": str(ev.get("content_hash") or ""),
-        "hypothesis": str(ev.get("hypothesis") or ""),
-        "payload_json": "{}",
-    }
+    """Single conversion path for raw hook payloads (PR 5 unification)."""
+    return from_hook.to_event(ev)
+
+
+DEFAULT_THRESHOLD = 2
 
 
 def evaluate(event, warden_out=None, cfg=None, db_path=None,
