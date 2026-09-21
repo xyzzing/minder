@@ -26,6 +26,8 @@ import json
 import minder
 from . import canonicalise as canon
 from . import from_hook
+from . import plans
+from . import skill_load
 from . import store
 from .retrieval import retrieve_lessons
 
@@ -64,6 +66,48 @@ def evaluate(event, warden_out=None, cfg=None, db_path=None,
         return None
 
 
+_SKILL_BODY_LINES = 10  # compact: first N lines of instructions in digest
+
+
+def _skill_section(ev, repo, db_path):
+    """P2.5: 'SKILL: <name>' + short instruction excerpt when a skill
+    matches; None when nothing matches (the caller may draft a plan)."""
+    try:
+        selection = skill_load.select_skills_for_event(ev)
+        if not selection["loaded"]:
+            return None, selection.get("gap")
+        skill = selection["loaded"][0]
+        lines = str(skill.get("instructions") or "").splitlines()
+        excerpt = "\n".join(lines[:_SKILL_BODY_LINES]).strip()
+        section = f"SKILL: {skill['name']}"
+        if excerpt:
+            section += f"\n{excerpt}"
+        return section, None
+    except Exception:
+        return None, None
+
+
+def _plan_section(ev, fkey, repo, db_path):
+    """P2.5: reuse the open temp plan for this failure or draft one;
+    returns its TEMPORARY PLAN directive, or empty string."""
+    try:
+        ev_with_key = dict(ev, failure_key=fkey, repo=repo or
+                           ev.get("repo") or "")
+        existing = plans.open_plan_for(ev_with_key, db_path=db_path)
+        if existing:
+            return plans.plan_directive(existing["plan_id"],
+                                        db_path=db_path)
+        selection = skill_load.select_skills_for_event(ev_with_key)
+        gap_type = (selection.get("gap") or {}).get("gap_type") or "unknown"
+        plan_id = plans.create_temp_plan(ev_with_key, gap_type,
+                                         db_path=db_path)
+        if not plan_id:
+            return ""
+        return plans.plan_directive(plan_id, db_path=db_path)
+    except Exception:
+        return ""
+
+
 def _directive(ev, fkey, count, cfg, warden_out, repo=None, db_path=None):
     task = ev.get("session_id") or ev.get("task_id") or "default"
     try:
@@ -90,6 +134,15 @@ def _directive(ev, fkey, count, cfg, warden_out, repo=None, db_path=None):
               f"report), state a NEW root-cause hypothesis in plain text, "
               f"and change exactly one variable before the next attempt."
               f"{lesson_line}")
+    # P2.5: prefer a matched skill's compact instructions; else a
+    # TEMPORARY PLAN (existing or freshly drafted); else lesson-only.
+    skill_section, _gap = _skill_section(ev, repo, db_path)
+    if skill_section:
+        digest = digest + "\n" + skill_section
+    else:
+        plan_section = _plan_section(ev, fkey, repo, db_path)
+        if plan_section:
+            digest = digest + "\n" + plan_section
     return {"action": "block_duplicate", "level": 1, "digest": digest,
             "frontier_payload": None,
             "duplicate": {"failure_key": fkey, "attempts": count,
