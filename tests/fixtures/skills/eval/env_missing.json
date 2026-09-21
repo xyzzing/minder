@@ -1,0 +1,15 @@
+{
+  "name": "env_missing_diagnose_environment",
+  "event": {
+    "event_type": "tool_failure",
+    "tool": "bash",
+    "repo": "/repo",
+    "failure_key": "bash|modulenotfounderror|none|none",
+    "error_excerpt": "ModuleNotFoundError: No module named 'pydantic'"
+  },
+  "expect": {
+    "selected": ["diagnose-environment"],
+    "forbidden_actions": ["product_code_edit"],
+    "requires_inspection": false
+  }
+}

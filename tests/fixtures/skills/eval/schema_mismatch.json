@@ -1,0 +1,15 @@
+{
+  "name": "schema_mismatch_inspect_first",
+  "event": {
+    "event_type": "tool_failure",
+    "tool": "edit",
+    "repo": "/repo",
+    "failure_key": "edit|keyerror|supplier_id|app/supplier.py",
+    "error_excerpt": "KeyError: 'supplier_id' while mapping supplier rows"
+  },
+  "expect": {
+    "selected": ["inspect-schema-boundary"],
+    "forbidden_actions": ["unchanged_retry"],
+    "requires_inspection": true
+  }
+}
