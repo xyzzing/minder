@@ -3,6 +3,42 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## 0.7 — 2026-09-21
+
+Phases 2–3 of the memory PRD (docs/minder-phase-2-3-frontier-coding.md):
+skill integration finished, graph relationships and invalidation.
+
+- **Progressive skill disclosure** — index entries carry
+  description/risk_level/body/preconditions/verification; full bodies live
+  under `skills/bodies/` and load only for matched skills
+  (`memory/skill_load.py`). Missing bodies degrade to `instructions=None`.
+- **Temporary plans** — unmatched failures draft a deterministic procedure
+  (`memory/plans.py`, migration 004) from per-gap-type step templates; a
+  temp plan is never auto-converted into a skill.
+- **Candidate skill proposals** — ≥3 distinct verified lessons sharing
+  repo+failure family distill into a `proposed` candidate
+  (`memory/skill_promote.py`, migration 005); instructions come only from
+  lesson fields, never frontier text. Only
+  `accept_skill_candidate(actor="operator", apply=True)` writes index
+  metadata + a body file. SKILLS.md is never written by anything.
+- **Skill evaluation fixtures** — offline fixtures +
+  `evaluate_skill_selection` fails loudly on selection mismatches.
+- **Policy digest wiring** — the duplicate-block digest now appends a
+  matched skill's compact instructions, else a TEMPORARY PLAN, else stays
+  lesson-only.
+- **SQLite graph** — nodes/edges (migration 006; SQLite only, no graph
+  database) with temporal edges; verified promotions project
+  DERIVED_FROM/HAS_FAILURE/AFFECTS/FAILED_TEST/MODIFIED/VERIFIED_BY/RAN/
+  APPLIES_TO edges when the data exists — unknown entities are skipped.
+- **Invalidation & impact** — superseded or path-invalidated lessons are
+  no longer served (`supersede_lesson`,
+  `invalidate_lessons_for_change`, commit-staleness via `current_commit`);
+  `suggest_verification` returns the tests linked to changed files and the
+  lessons at risk. Contradictory verified lessons are linked CONTRADICTS
+  and the older one is marked needs_revalidation — at most one
+  authoritative lesson is served.
+- 217 tests.
+
 ## 0.6 — 2026-09-21
 
 Memory v1 (docs/prd-memory-v1.md, PRs 0–7; spec: canonical failure keys →

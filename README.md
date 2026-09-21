@@ -172,8 +172,14 @@ hypothesis instead of another identical retry. When an episode resolves
 with passing tests, it can be promoted to a **verified lesson** which is
 retrieved (same repo, same failure family) and attached to the block.
 Unmatched repeated failures record a *skill gap* — evidence that a skill
-is missing, never an automatic SKILLS.md edit. Frontier consults get
-hashed trace metadata so helpfulness can be measured later. Set
+is missing, never an automatic SKILLS.md edit. Skills support progressive
+disclosure (metadata advertised, bodies loaded only on match); recurring
+verified lessons can *propose* a candidate skill, applied only by an
+operator. Frontier consults get hashed trace metadata so helpfulness can
+be measured later. Lessons are scoped by files/tests/commits in a SQLite
+graph (no graph database): superseded or invalidated lessons stop being
+served, a change to a file can invalidate its scoped lessons, and
+`suggest_verification` names the tests that exercise changed files. Set
 `MINDER_MEMORY_DB` to relocate the store (default
 `~/.local/state/minder/memory.sqlite`); every memory failure is fail-open
 and can never crash a hook.

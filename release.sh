@@ -66,8 +66,9 @@ else
 - zcode + Claude-Code-style hooks-bridge integration (dsh), compaction survival, verify consults, domain profiles with egress redaction and hash-chained audit ledger
 - Optional advisory reflex tier (CPU micro-classifier, fail-open)
 - Memory v1: canonical failure keys, SQLite episode/lesson store, duplicate-action guard with verified-lesson retrieval
+- Memory v1.5: progressive skill disclosure, temp plans, propose-only skill candidates, SQLite graph scoping + invalidation + impact suggestions
 - Token accounting in the ledger; CAP-measured effort vocabulary surfaced to harness UIs
-- 173 tests, Python 3.10+ stdlib only
+- 217 tests, Python 3.10+ stdlib only
 
 Install: \`./install.sh\` — see the README."
   say "released $TAG"
