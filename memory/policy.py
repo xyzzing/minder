@@ -26,6 +26,7 @@ import json
 import minder
 from . import canonicalise as canon
 from . import store
+from .retrieval import retrieve_lessons
 
 DEFAULT_THRESHOLD = 2
 
@@ -78,24 +79,39 @@ def evaluate(event, warden_out=None, cfg=None, db_path=None,
         count = store.count_attempts(fkey, fp, db_path=db_path)
         if count < threshold:  # includes -1 (store unavailable) → fail open
             return None
-        return _directive(ev, fkey, count, cfg, warden_out)
+        return _directive(ev, fkey, count, cfg, warden_out, repo=repo,
+                          db_path=db_path)
     except Exception:
         return None
 
 
-def _directive(ev, fkey, count, cfg, warden_out):
+def _directive(ev, fkey, count, cfg, warden_out, repo=None, db_path=None):
     task = ev.get("session_id") or ev.get("task_id") or "default"
     try:
         minder.log(task, "block_duplicate", key=fkey, n=count)
     except Exception:
         pass
+    lesson_line = ""
+    lessons = []
+    try:
+        lessons = retrieve_lessons(repo or ev.get("repo") or "", fkey,
+                                   db_path=db_path, limit=1)
+        if lessons:
+            lesson_line = (f"\n- VERIFIED LESSON from a past resolved "
+                           f"episode: {lessons[0]['instruction']}")
+            if lessons[0].get("anti_pattern"):
+                lesson_line += f"\n- Anti-pattern: {lessons[0]['anti_pattern']}"
+    except Exception:
+        lesson_line = ""
     digest = (f"{minder.DIGEST_MARKERS[1]} — duplicate guard: this exact "
               f"attempt already failed {count}x.\n"
               f"- {fkey}\n"
               f"- STOP repeating this action verbatim. Read the recorded "
               f"evidence first (python3 ~/.local/share/minder/minder.py "
               f"report), state a NEW root-cause hypothesis in plain text, "
-              f"and change exactly one variable before the next attempt.")
+              f"and change exactly one variable before the next attempt."
+              f"{lesson_line}")
     return {"action": "block_duplicate", "level": 1, "digest": digest,
             "frontier_payload": None,
-            "duplicate": {"failure_key": fkey, "attempts": count}}
+            "duplicate": {"failure_key": fkey, "attempts": count,
+                          "lesson": (lessons[0] if lesson_line else None)}}
