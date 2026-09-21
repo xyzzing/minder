@@ -1,0 +1,4 @@
+[
+  {"name": "inspect-schema-boundary", "triggers": ["KeyError", "schema", "ValidationError"]},
+  {"name": "diagnose-environment", "triggers": ["ConnectionRefused", "FileNotFoundError", "ModuleNotFoundError"]}
+]
