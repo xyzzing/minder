@@ -1,0 +1,10 @@
+{
+  "event_type": "tool_failure",
+  "tool": "bash",
+  "session_id": "s-100",
+  "repo": "/home/operator/projects/minder",
+  "command": "python3 -m pytest tests/test_supplier.py -q",
+  "args_json": "{\"command\": \"python3 -m pytest tests/test_supplier.py -q\"}",
+  "file_path": "tests/test_supplier.py",
+  "error_excerpt": "FAILED tests/test_supplier.py - AssertionError: assert 1 == 2"
+}

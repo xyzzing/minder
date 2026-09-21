@@ -1,0 +1,11 @@
+{
+  "event_type": "tool_failure",
+  "tool": "bash",
+  "session_id": "s-100",
+  "repo": "/home/operator/projects/minder",
+  "command": "python3 -m pytest tests/test_supplier.py -q",
+  "args_json": "{\"command\": \"python3 -m pytest tests/test_supplier.py -q\"}",
+  "file_path": "tests/test_supplier.py",
+  "ts": "2026-09-21T10:07:33+00:00",
+  "error_excerpt": "[10:07:33] FAILED tests/test_supplier.py::test_supplier_lookup - KeyError: 'supplier_id'\nTraceback (most recent call last):\n  File \"/home/operator/projects/minder/tests/test_supplier.py\", line 57, in test_supplier_lookup\n    row = fetch(supplier_id)\nKeyError: 'supplier_id'"
+}
