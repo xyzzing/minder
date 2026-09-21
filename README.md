@@ -161,6 +161,23 @@ Quiet is normal: successful hook calls log nothing. You'll see
 `verify_consult`, `l3_alarm`, and `cap_reverified` (the proxy re-measuring
 your server at boot).
 
+## Memory (v1)
+
+minder records what happened: every PostToolUse failure is canonicalised
+into a stable failure key (timestamps stripped, secrets redacted) and
+stored — append-only — in a SQLite episode/lesson store next to the JSONL
+ledger. When the *same* action fails the *same* way twice, the duplicate
+guard replaces the usual escalation with a block that demands a new
+hypothesis instead of another identical retry. When an episode resolves
+with passing tests, it can be promoted to a **verified lesson** which is
+retrieved (same repo, same failure family) and attached to the block.
+Unmatched repeated failures record a *skill gap* — evidence that a skill
+is missing, never an automatic SKILLS.md edit. Frontier consults get
+hashed trace metadata so helpfulness can be measured later. Set
+`MINDER_MEMORY_DB` to relocate the store (default
+`~/.local/state/minder/memory.sqlite`); every memory failure is fail-open
+and can never crash a hook.
+
 ## Repo layout
 
 ```
@@ -173,6 +190,8 @@ reflex.py        optional advisory classifier client
 probe_dialect.py tool-call cleanliness prober (diagnostics)
 install.sh       fail-closed installer       uninstall.sh
 presets/         qwen-exec / qwen-think / qwen-auto / frontier
+memory/          episode/lesson store, duplicate guard, consult traces
+skills/          tiny skill-trigger index (gap detection; SKILLS.md untouched)
 zcode/ dsh/      harness packages
 docs/adr/        architecture decision records
 tests/           111 tests, stdlib-only: MINDER_NO_SYSTEMD=1 pytest tests/ -q

@@ -3,6 +3,43 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## 0.6 — 2026-09-21
+
+Memory v1 (docs/prd-memory-v1.md, PRs 0–7; spec: canonical failure keys →
+SQLite episode/lesson store → duplicate-action guard → verified lessons →
+hook wiring → skill gaps → frontier traces):
+
+- **Canonical failure keys** — pure functions turn hook/tool events into
+  stable `tool|family|symbol|relpath` keys; timestamps stripped, absolute
+  paths made repo-relative, API-key-shaped strings redacted before
+  keying/storage. `unchanged_retry` distinguishes verbatim repeats from
+  progress (new hypothesis / content).
+- **SQLite store beside the JSONL ledger** — append-only `events` (UPDATE/
+  DELETE rejected by triggers), episodes + per-episode attempts, lessons.
+  `MINDER_MEMORY_DB` overrides the location; every store call fails open
+  with a degraded status, never crashing a hook.
+- **Duplicate-action guard** — after the Warden ladder runs, a verbatim
+  repeat (same failure key + same action fingerprint) with
+  `memory_fail_threshold` (default 2) recorded attempts is replaced by a
+  `block_duplicate` directive demanding a new hypothesis. Read-only over
+  the store; any store problem = the ordinary ladder. Marker-compatible
+  with the Turnstile escalation channel; both transports behave as before
+  (zcode exit 0 directive, dsh exit 2).
+- **Verified lessons** — promotion only from `verified` episodes with
+  explicit `tests_passed` verification; retrieval scoped repo+key then
+  failure family (no cross-repo), compact payloads; the duplicate-block
+  digest carries the retrieved lesson when one exists.
+- **Hook wiring** — PostToolUse observations record before the Warden runs;
+  success closes the episode `verified` only with an explicit tests-passed
+  payload, else `candidate`.
+- **Skill gaps** — unmatched repeated failures (or environment-like
+  families) record queryable gap rows; SKILLS.md is never written.
+- **Frontier traces** — hashed per-consult metadata (request/response
+  hashes, provider fingerprint, redaction profile) with
+  helpfulness/verification left null until joined later; panel behaviour
+  unchanged.
+- 173 tests.
+
 ## 0.5 — 2026-09-20
 
 - **Token accounting in the ledger** — the proxy harvests upstream `usage`

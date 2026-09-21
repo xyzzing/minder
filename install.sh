@@ -50,6 +50,8 @@ cp -f "$SRC/minder.py" "$SRC/adapter.py" "$SRC/proxy.py" "$SRC/hook.py" \
 cp -R "$SRC/presets" "$SHARE/"
 cp -R "$SRC/zcode" "$SHARE/"
 cp -R "$SRC/dsh" "$SHARE/"
+cp -R "$SRC/memory" "$SHARE/"
+cp -R "$SRC/skills" "$SHARE/"
 chmod +x "$SHARE/proxy.py" "$SHARE/hook.py" "$SHARE/frontier.py" \
          "$SHARE/probe_dialect.py" 2>/dev/null || true
 # hooks.json: patch the share path into the command hook
