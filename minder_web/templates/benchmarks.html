@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>benchmarks</h1>
+<h2>suites</h2>
+{% if suites == 'not available' %}
+<p class="na">not available.</p>
+{% else %}
+<table>
+  <thead><tr><th>suite</th><th>manifest</th><th>tasks</th><th>fingerprint</th><th>status</th></tr></thead>
+  <tbody>
+  {% for s in suites %}
+    <tr><td>{{ s.suite_id }}</td><td>v{{ s.manifest_version }}</td>
+        <td>{{ s.tasks }}</td><td><code>{{ s.fingerprint }}</code></td>
+        <td>{{ s.status }}</td></tr>
+  {% else %}
+    <tr><td colspan="5" class="na">no suites found.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>pinned baselines</h2>
+{% if baselines %}
+<table>
+  <thead><tr><th>suite</th><th>fingerprint</th><th>generated_at</th><th>runs</th><th>verified rate</th><th>status</th></tr></thead>
+  <tbody>
+  {% for b in baselines %}
+    <tr><td>{{ b.suite_id }}</td><td><code>{{ b.fingerprint }}</code></td>
+        <td>{{ b.generated_at }}</td><td>{{ b.comparable_runs }}</td>
+        <td>{{ "%.1f%%" % (b.rate * 100) if b.rate is not none else '—' }}</td>
+        <td>{{ b.status }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="na">no pinned baseline (created only via
+<code>minder-op benchmark baseline create --yes</code>).</p>
+{% endif %}
+<p class="note">comparison verdicts come from
+<code>minder-op benchmark compare</code>; improvement claims require a
+pinned baseline comparison, never console activity.</p>
+{% endblock %}

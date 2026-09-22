@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>consult {{ consult.trace_id }}</h1>
+<table class="kv">
+  <tr><th>ts</th><td>{{ consult.ts }}</td></tr>
+  <tr><th>episode_id</th><td>{{ consult.episode_id or '—' }}</td></tr>
+  <tr><th>failure_key</th><td>{{ consult.failure_key }}</td></tr>
+  <tr><th>local_attempts</th><td>{{ consult.local_attempts }}</td></tr>
+  <tr><th>redaction_profile</th><td>{{ consult.redaction_profile }}</td></tr>
+  <tr><th>providers</th><td>{{ consult.provider_fingerprint }}</td></tr>
+  <tr><th>request_hash</th><td>{{ consult.request_hash }}</td></tr>
+  <tr><th>response_hash</th><td>{{ consult.response_hash }}</td></tr>
+  <tr><th>helpfulness</th><td>{{ consult.helpfulness or '(unclassified)' }}</td></tr>
+  <tr><th>verification_status</th><td>{{ consult.verification_status or '—' }}</td></tr>
+  <tr><th>accepted</th><td>{{ consult.accepted_actions_json or '—' }}</td></tr>
+  <tr><th>rejected</th><td>{{ consult.rejected_actions_json or '—' }}</td></tr>
+  <tr><th>distilled</th><td>{{ consult.distilled_json or '—' }}</td></tr>
+</table>
+<p class="note">raw prompt/response text is never stored — hashes
+only.</p>
+{% endblock %}

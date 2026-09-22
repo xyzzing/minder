@@ -51,6 +51,8 @@ cp -R "$SRC/presets" "$SHARE/"
 cp -R "$SRC/zcode" "$SHARE/"
 cp -R "$SRC/dsh" "$SHARE/"
 cp -R "$SRC/memory" "$SHARE/"
+cp -R "$SRC/decision" "$SHARE/"
+cp -R "$SRC/minder_op" "$SHARE/"
 cp -R "$SRC/skills" "$SHARE/"
 chmod +x "$SHARE/proxy.py" "$SHARE/hook.py" "$SHARE/frontier.py" \
          "$SHARE/probe_dialect.py" 2>/dev/null || true
@@ -374,6 +376,7 @@ cat <<EOF
 - dsh:       pick model 'qwen-exec' (or qwen-think) from the minder provider
 - zcode:     PostToolUse + SessionStart hooks active in new sessions
 - frontier:  ${FRONTIER_CMD:-not configured (L2 degrades honestly)}
+- operator:  python3 -m minder_op status   (repo checkout, or PYTHONPATH=$SHARE)
 
 Verify any time:
   curl -s http://127.0.0.1:$PORT/v1/chat/completions -H 'Content-Type: application/json' \\

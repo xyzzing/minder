@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>lessons</h1>
+<nav class="filters">
+  {% for s in ('verified', 'candidate', 'invalidated') %}
+    <a href="/lessons?status={{ s }}" class="badge badge-{{ s }}"
+       {% if s == status %}aria-current="true"{% endif %}>{{ s }}</a>
+  {% endfor %}
+</nav>
+<p class="note">
+  candidates are frontier-distilled and inert until promoted with
+  tests — they are not retrieved as verified authority.
+</p>
+<table>
+  <thead><tr><th>id</th><th>status</th><th>valid_from</th><th>failure_key</th><th>instruction</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="/lessons/{{ r.lesson_id }}">{{ r.lesson_id }}</a></td>
+      <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+      <td>{{ r.valid_from }}</td>
+      <td>{{ r.failure_key }}</td>
+      <td>{{ r.instruction }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="na">not available.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">showing up to {{ limit }}; default view is live
+verified only.</p>
+{% endblock %}

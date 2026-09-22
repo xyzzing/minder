@@ -1,0 +1,8 @@
+# Optional web extra for the minder operator console (8E).
+# Nothing in the runtime (hook.py, proxy.py, minder_op) imports these;
+# only minder_web does. Install with:
+#   pip install --user -r requirements-web.txt
+fastapi>=0.110
+uvicorn>=0.27
+jinja2>=3.1
+httpx>=0.27  # test client

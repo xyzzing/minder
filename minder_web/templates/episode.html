@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>episode {{ episode.episode_id }}</h1>
+<table class="kv">
+  <tr><th>opened_at</th><td>{{ episode.opened_at }}</td></tr>
+  <tr><th>closed_at</th><td>{{ episode.closed_at or '—' }}</td></tr>
+  <tr><th>status</th><td><span class="badge badge-{{ episode.status }}">{{ episode.status }}</span></td></tr>
+  <tr><th>repo</th><td>{{ episode.repo }}</td></tr>
+  <tr><th>task_id</th><td>{{ episode.task_id }}</td></tr>
+</table>
+<h2>timeline</h2>
+<table>
+  <thead><tr><th>seq</th><th>ts</th><th>type</th><th>tool</th><th>failure_key</th><th>excerpt</th></tr></thead>
+  <tbody>
+  {% for e in events %}
+    <tr><td>{{ e.seq }}</td><td>{{ e.ts }}</td><td>{{ e.event_type }}</td>
+        <td>{{ e.tool }}</td><td>{{ e.failure_key }}</td>
+        <td class="excerpt">{{ e.payload_json }}</td></tr>
+  {% else %}
+    <tr><td colspan="6" class="na">no events.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

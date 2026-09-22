@@ -1,0 +1,62 @@
+{
+  "manifest_version": 1,
+  "suite_id": "coding-core-v1",
+  "title": "Coding core governed task suite",
+  "description": "Tier 0-3 coding benchmark for the governed agent loop. Tier 0 unit/contract, tier 1 deterministic decision replay, tier 2 local smoke, tier 3 governed tasks in a fresh sandbox (runner lands in 8D). 8C ships the manifest, schemas, and comparator only - nothing here executes.",
+  "tiers": [0, 1, 2, 3],
+  "tasks": [
+    {
+      "task_id": "t0_contracts",
+      "tier": 0,
+      "family": "contract",
+      "title": "Unit/contract gate: hook, warden, lessons, decision contracts",
+      "fixtures": [],
+      "expected": "tests_pass",
+      "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "network", "package_install", "ssh", "writes_outside_sandbox"]
+    },
+    {
+      "task_id": "t1_failure_triage_replay",
+      "tier": 1,
+      "family": "decision_replay",
+      "title": "Deterministic replay of the failure-triage decision eval fixtures",
+      "fixtures": ["../../decision/evals/failure_triage"],
+      "expected": "tests_pass",
+      "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "network", "package_install", "ssh", "writes_outside_sandbox"]
+    },
+    {
+      "task_id": "t2_local_smoke",
+      "tier": 2,
+      "family": "smoke",
+      "title": "Local smoke: proxy model aliases respond on loopback",
+      "fixtures": [],
+      "expected": "tests_pass",
+      "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "network", "package_install", "ssh", "writes_outside_sandbox"]
+    },
+    {
+      "task_id": "t3_keyerror_default",
+      "tier": 3,
+      "family": "keyerror",
+      "title": "Fix a missing-dict-default KeyError that traps the agent in a stuck retry loop",
+      "fixtures": [
+        "tasks/keyerror_default/task.py",
+        "tasks/keyerror_default/test_task.py"
+      ],
+      "expected": "tests_pass",
+      "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "network", "package_install", "ssh", "writes_outside_sandbox"],
+      "runner": { "kind": "pytest", "entry": ["test_task.py"] }
+    },
+    {
+      "task_id": "t3_assertion_expectation",
+      "tier": 3,
+      "family": "assertion_mismatch",
+      "title": "Fix an off-by-one so the assertion matches the expectation",
+      "fixtures": [
+        "tasks/assertion_expectation/task.py",
+        "tasks/assertion_expectation/test_task.py"
+      ],
+      "expected": "tests_pass",
+      "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "network", "package_install", "ssh", "writes_outside_sandbox"],
+      "runner": { "kind": "pytest", "entry": ["test_task.py"] }
+    }
+  ]
+}

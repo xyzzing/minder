@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>lesson {{ lesson.lesson_id }}</h1>
+<table class="kv">
+  <tr><th>status</th><td><span class="badge badge-{{ lesson.status }}">{{ lesson.status }}</span></td></tr>
+  <tr><th>repo</th><td>{{ lesson.repo }}</td></tr>
+  <tr><th>failure_key</th><td>{{ lesson.failure_key }}</td></tr>
+  <tr><th>instruction</th><td>{{ lesson.instruction }}</td></tr>
+  <tr><th>anti_pattern</th><td>{{ lesson.anti_pattern or '—' }}</td></tr>
+  <tr><th>verification</th><td>{{ lesson.verification_json or '—' }}</td></tr>
+  <tr><th>source_episode</th><td>{{ lesson.source_episode or '—' }}</td></tr>
+  <tr><th>valid_from</th><td>{{ lesson.valid_from or '—' }}</td></tr>
+  <tr><th>valid_to</th><td>{{ lesson.valid_to or '—' }}</td></tr>
+</table>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>frontier consults</h1>
+<p class="note">labels come from frontier_evals (007); raw
+prompt/response text is never stored or shown — hashes only.</p>
+<table>
+  <thead><tr><th>trace_id</th><th>ts</th><th>label</th><th>verification</th><th>failure_key</th><th>providers</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="/consults/{{ r.trace_id }}">{{ r.trace_id }}</a></td>
+      <td>{{ r.ts }}</td>
+      <td><span class="badge label-{{ r.helpfulness or 'unclassified' }}">{{ r.helpfulness or '(unclassified)' }}</span></td>
+      <td>{{ r.verification_status or '—' }}</td>
+      <td>{{ r.failure_key }}</td>
+      <td>{{ r.provider_fingerprint }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="na">not available.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

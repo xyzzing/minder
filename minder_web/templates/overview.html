@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>overview</h1>
+{% if not db_ok %}
+<p class="na">memory database not available — start the console with
+<code>--db</code> pointing at a minder memory sqlite.</p>
+{% endif %}
+
+<h2>health</h2>
+<table class="kv">
+  <tr><th>status</th><td>{{ health.status }}</td></tr>
+  <tr><th>schema version</th><td>{{ health.schema_version if health.schema_version is not none else 'not available' }}</td></tr>
+</table>
+
+<h2>current flags <small>(environment/systemd owned — display only)</small></h2>
+<table>
+  <thead><tr><th>flag</th><th>value</th></tr></thead>
+  <tbody>
+  {% for flag in flags %}
+    <tr><td>{{ flag.name }}</td><td>{{ flag.value }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if summary %}
+<h2>weekly workflow summary
+  <small>{{ summary.window.since }} → {{ summary.window.until }}</small></h2>
+<table class="kv">
+  <tr><th>episodes opened</th><td>{{ summary.episodes.opened_in_window }}</td></tr>
+  <tr><th>episodes open now</th><td>{{ summary.episodes.open_now }}</td></tr>
+  <tr><th>verified resolution</th><td>
+    {%- set rate = summary.episodes.verified_resolution_rate -%}
+    {%- if rate is none %}n/a{% else %}{{ "%.1f%%" % (rate * 100) }}{% endif -%}
+  </td></tr>
+  <tr><th>tool failures</th><td>{{ summary.failures.tool_failures_in_window }}</td></tr>
+  <tr><th>repeat failure keys</th><td>{{ summary.failures.repeat_failure_keys }}</td></tr>
+  <tr><th>lessons created (verified / candidate)</th>
+      <td>{{ summary.lessons.created_in_window.get('verified', 0) }} /
+          {{ summary.lessons.created_in_window.get('candidate', 0) }}</td></tr>
+  <tr><th>open gaps</th><td>{{ summary.gaps.open_now }}</td></tr>
+  <tr><th>frontier helpfulness</th>
+      <td>{% for label, n in summary.consults.by_helpfulness | dictsort %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
+  <tr><th>decision traces / overrides</th>
+      <td>{{ summary.decisions.traces_in_window }} /
+          {{ summary.decisions.overrides }}</td></tr>
+  <tr><th>benchmarks</th><td>{{ summary.benchmarks.status }}</td></tr>
+</table>
+
+<h2>operator focus</h2>
+{% if focus %}
+<ol class="focus">
+  {% for action in focus %}<li><code>{{ action }}</code></li>{% endfor %}
+</ol>
+{% else %}
+<p class="na">nothing flagged for this window.</p>
+{% endif %}
+{% else %}
+<h2>weekly workflow summary</h2>
+<p class="na">not available.</p>
+{% endif %}
+{% endblock %}

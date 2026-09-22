@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>episodes</h1>
+<table>
+  <thead><tr><th>id</th><th>opened</th><th>status</th><th>repo</th><th>task</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a></td>
+      <td>{{ r.opened_at }}</td>
+      <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+      <td>{{ r.repo }}</td><td>{{ r.task_id }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="na">not available.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">showing up to {{ limit }} most recent.</p>
+{% endblock %}

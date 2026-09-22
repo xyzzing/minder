@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>skill gaps <small>(open)</small></h1>
+<table>
+  <thead><tr><th>id</th><th>ts</th><th>type</th><th>repo</th><th>failure_key</th><th>sample</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ r.gap_id }}</td><td>{{ r.ts }}</td><td>{{ r.gap_type }}</td>
+        <td>{{ r.repo }}</td><td>{{ r.failure_key }}</td>
+        <td>{{ r.sample_error }}</td></tr>
+  {% else %}
+    <tr><td colspan="6" class="na">not available.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -85,6 +85,19 @@ def test_at11_branch_a_kwargs_full_install(tmp_path):
     share = home / ".local" / "share" / "minder"
     assert (share / "proxy.py").exists()
     assert (share / "dsh" / "hooks.json").exists()
+    # 8A-0: decision/ staged beside memory/ so the installed hook can
+    # import it (MINDER_DECISION stays off by default — staging only)
+    assert (share / "decision" / "policy_gate.py").exists()
+    assert (share / "minder_op" / "cli.py").exists()
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(share)
+    probe = subprocess.run(
+        [sys.executable, "-c",
+         "import decision, decision.policy_gate, minder_op; "
+         "print(decision.__name__)"],
+        capture_output=True, text=True, env=env)
+    assert probe.returncode == 0, probe.stderr
+    assert "decision" in probe.stdout
     # caps written and fingerprints only
     caps = json.loads((home / ".config" / "minder" /
                        "model_caps.json").read_text())
