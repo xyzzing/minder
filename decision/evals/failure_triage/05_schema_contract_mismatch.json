@@ -1,0 +1,7 @@
+{
+  "id": "schema_contract_mismatch",
+  "state": {"goal": "unblock migration", "failure_key": "pytest|validationerror|order_schema|tests/test_orders.py", "count": 3, "excerpt": "ValidationError: 'amount' is a required property"},
+  "menu": {"level": 1, "frontier_allowed": false},
+  "fake": {"failure_kind": "schema_contract", "needs_new_evidence": 0.25, "next_step": "retrieve_lesson", "confidence": 0.85},
+  "expect": {"expected_primary": "retrieve_lesson", "must_not_select": [], "must_require_human": false}
+}

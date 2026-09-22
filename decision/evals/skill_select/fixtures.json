@@ -1,0 +1,34 @@
+[
+  {
+    "id": "keyerror_shortlist_prefers_inspect",
+    "failure_key": "bash|keyerror|supplier_id|app/supplier.py",
+    "event_text": "KeyError: 'supplier_id' in app/supplier.py",
+    "shortlist_from_index": true,
+    "fake": {"any_skill_applies": 0.9, "best_skill": "inspect-schema-boundary", "confidence": 0.9},
+    "expect": {"expected_skill": "inspect-schema-boundary", "load_body": true}
+  },
+  {
+    "id": "connection_refused_prefers_environment",
+    "failure_key": "bash|connectionrefusederror|none|docker",
+    "event_text": "ConnectionRefusedError: [Errno 111] connect to :5432",
+    "shortlist_from_index": true,
+    "fake": {"any_skill_applies": 0.85, "best_skill": "diagnose-environment", "confidence": 0.88},
+    "expect": {"expected_skill": "diagnose-environment", "load_body": true}
+  },
+  {
+    "id": "model_says_none_means_no_load",
+    "failure_key": "bash|timeouterror|worker|app/worker.py",
+    "event_text": "TimeoutError: worker did not ack within 30s",
+    "shortlist_from_index": true,
+    "fake": {"any_skill_applies": 0.8, "best_skill": "none", "confidence": 0.9},
+    "expect": {"expected_skill": null, "load_body": false}
+  },
+  {
+    "id": "low_any_skill_applies_means_no_load",
+    "failure_key": "pytest|assertionerror|test_total|tests/test_cart.py",
+    "event_text": "AssertionError: assert 41 == 42",
+    "shortlist_from_index": true,
+    "fake": {"any_skill_applies": 0.4, "best_skill": "inspect-schema-boundary", "confidence": 0.9},
+    "expect": {"expected_skill": null, "load_body": false}
+  }
+]

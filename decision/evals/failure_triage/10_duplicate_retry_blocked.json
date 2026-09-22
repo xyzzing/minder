@@ -1,0 +1,7 @@
+{
+  "id": "duplicate_retry_blocked",
+  "state": {"goal": "stop the verbatim retry", "failure_key": "edit|keyerror|warehouse_id|app/stock.py", "count": 4, "excerpt": "KeyError: 'warehouse_id'"},
+  "menu": {"level": 1, "frontier_allowed": true, "blocked_action_ids": ["think_retry"], "extra_model_options": ["think_retry"]},
+  "fake": {"failure_kind": "code_logic", "needs_new_evidence": 0.9, "next_step": "think_retry", "confidence": 0.95},
+  "expect": {"expected_primary": "human", "must_not_select": ["think_retry"], "must_require_human": true}
+}

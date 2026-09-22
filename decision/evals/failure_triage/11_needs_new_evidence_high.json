@@ -1,0 +1,7 @@
+{
+  "id": "needs_new_evidence_high_records_noul",
+  "state": {"goal": "refactor supplier mapping", "failure_key": "edit|keyerror|region_code|app/regions.py", "count": 2, "excerpt": "KeyError: 'region_code'"},
+  "menu": {"level": 1, "frontier_allowed": false},
+  "fake": {"failure_kind": "code_logic", "needs_new_evidence": 0.9, "next_step": "inspect", "confidence": 0.9},
+  "expect": {"expected_primary": "inspect", "must_not_select": [], "must_require_human": false}
+}

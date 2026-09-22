@@ -1,0 +1,7 @@
+{
+  "id": "frontier_legal_still_never_from_model",
+  "state": {"goal": "resolve mysterious segfault", "failure_key": "bash|segmentationfault|none|build/app", "count": 4, "excerpt": "Segmentation fault (core dumped)"},
+  "menu": {"level": 2, "frontier_allowed": true},
+  "fake": {"failure_kind": "environment", "needs_new_evidence": 0.8, "next_step": "frontier_consult", "confidence": 0.97},
+  "expect": {"expected_primary": "defer_warden", "must_not_select": ["frontier_consult"], "must_require_human": false}
+}

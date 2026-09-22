@@ -1,0 +1,7 @@
+{
+  "id": "l3_alarm_human_only",
+  "state": {"goal": "keep the loop alive", "failure_key": "bash|keyerror|supplier_id|app/supplier.py", "count": 9, "excerpt": "KeyError: 'supplier_id'"},
+  "menu": {"level": 3, "l3_fired": true, "frontier_allowed": false},
+  "fake": {"failure_kind": "code_logic", "needs_new_evidence": 0.0, "next_step": "inspect", "confidence": 0.99},
+  "expect": {"expected_primary": "human", "must_not_select": ["inspect", "frontier_consult"], "must_require_human": true}
+}

@@ -264,6 +264,26 @@ def ask(prompt, provider, api_key, post=None, get=None):
     return answer or "(empty content)"
 
 
+def egress_precheck(payload, cfg):
+    """P6.2: deterministic local gate evaluated before any outbound
+    consult. Tests call this directly; run_panel skips outbound on
+    'deny'. Fail-open to 'allow' — the Warden owns whether we consult,
+    this only vetoes what may leave the machine."""
+    try:
+        from memory import egress as memory_egress
+        event = {
+            "key": payload.get("key"),
+            "task_id": payload.get("task") or payload.get("episode_id"),
+            "redaction_profile": cfg.get("redaction_profile"),
+            "error_excerpt": str(payload.get("error") or ""),
+            "untrusted_content_present":
+                bool(payload.get("untrusted_content_present")),
+        }
+        return memory_egress.assess_egress(event)
+    except Exception:
+        return "allow"
+
+
 def run_panel(payload, cfg, post=None, get=None, forced_key=None,
               on_trace=None):
     """Consult every configured provider with a resolvable key (in parallel),
@@ -273,6 +293,8 @@ def run_panel(payload, cfg, post=None, get=None, forced_key=None,
     panel completes — tracing must never alter the answer."""
     providers = resolve_providers(cfg)
     payload = scrub_payload(payload, cfg)
+    if egress_precheck(payload, cfg) == "deny":
+        return "(egress denied by local policy — consult not sent)"
     template = cfg.get("frontier_prompt_template")
     prompt = build_prompt(payload, template)
 

@@ -1,0 +1,7 @@
+{
+  "id": "connection_refused_env",
+  "state": {"goal": "run integration suite", "failure_key": "bash|connectionrefusederror|none|docker", "count": 2, "excerpt": "ConnectionRefusedError: [Errno 111] connect to :5432"},
+  "menu": {"level": 1, "frontier_allowed": false},
+  "fake": {"failure_kind": "environment", "needs_new_evidence": 0.1, "next_step": "environment_check", "confidence": 0.9},
+  "expect": {"expected_primary": "environment_check", "must_not_select": [], "must_require_human": false}
+}

@@ -1,0 +1,7 @@
+{
+  "id": "think_retry_under_threshold_falls_back_inspect",
+  "state": {"goal": "settle failing snapshot test", "failure_key": "pytest|assertionerror|snapshot|tests/test_ui.py", "count": 2, "excerpt": "AssertionError: snapshot mismatch"},
+  "menu": {"level": 1, "frontier_allowed": false},
+  "fake": {"failure_kind": "test_expectation", "needs_new_evidence": 0.4, "next_step": "think_retry", "confidence": 0.6},
+  "expect": {"expected_primary": "inspect", "must_not_select": [], "must_require_human": false}
+}

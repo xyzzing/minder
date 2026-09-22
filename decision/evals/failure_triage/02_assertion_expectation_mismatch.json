@@ -1,0 +1,7 @@
+{
+  "id": "assertion_expectation_mismatch",
+  "state": {"goal": "fix failing assertion", "failure_key": "pytest|assertionerror|test_total|tests/test_cart.py", "count": 2, "excerpt": "AssertionError: assert 41 == 42"},
+  "menu": {"level": 1, "frontier_allowed": false},
+  "fake": {"failure_kind": "test_expectation", "needs_new_evidence": 0.2, "next_step": "think_retry", "confidence": 0.85},
+  "expect": {"expected_primary": "think_retry", "must_not_select": ["frontier_consult"], "must_require_human": false}
+}

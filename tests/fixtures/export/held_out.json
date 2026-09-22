@@ -1,0 +1,30 @@
+[
+  {
+    "candidate_id": "tc_fixtureheldout01",
+    "episode_id": "ep_fixture_1",
+    "lesson_id": "les_fixture_1",
+    "failure_family": "keyerror",
+    "split": "held_out",
+    "created_at": "2026-09-22T00:00:00+00:00",
+    "trajectory": [
+      {"step": "inspect", "detail": "keyerror: supplier_id in app/supplier.py"},
+      {"step": "hypothesis", "detail": "dict lookup without default"},
+      {"step": "patch", "detail": "bash python3 -m pytest tests/test_supplier.py"},
+      {"step": "tests", "detail": "tests passed after fix, verified locally"}
+    ]
+  },
+  {
+    "candidate_id": "tc_fixturetrain0001",
+    "episode_id": "ep_fixture_2",
+    "lesson_id": "les_fixture_2",
+    "failure_family": "keyerror",
+    "split": "train",
+    "created_at": "2026-09-22T00:00:01+00:00",
+    "trajectory": [
+      {"step": "inspect", "detail": "keyerror: warehouse_id in app/stock.py"},
+      {"step": "hypothesis", "detail": "missing fallback on config read"},
+      {"step": "patch", "detail": "edit app/stock.py default"},
+      {"step": "tests", "detail": "tests passed after fix, verified locally"}
+    ]
+  }
+]

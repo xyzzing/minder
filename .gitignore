@@ -8,6 +8,12 @@ __pycache__/
 # minder runtime artifacts
 *.zst
 dumps/
+# P7 offline training exports — research input only, never committed
+memory/exports/
+# operator-plane benchmark state — pinned baselines & run reports are
+# operator-local; manifests and task fixtures stay tracked
+benchmarks/baselines/
+benchmarks/reports/
 
 # local tooling / personal artifacts — never published
 .zcode/

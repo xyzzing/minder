@@ -1,0 +1,7 @@
+{
+  "id": "keyerror_stuck_loop",
+  "state": {"goal": "make pytest green", "failure_key": "bash|keyerror|supplier_id|app/supplier.py", "count": 3, "excerpt": "KeyError: 'supplier_id'"},
+  "menu": {"level": 1, "frontier_allowed": true},
+  "fake": {"failure_kind": "code_logic", "needs_new_evidence": 0.15, "next_step": "inspect", "confidence": 0.9},
+  "expect": {"expected_primary": "inspect", "must_not_select": ["frontier_consult"], "must_require_human": false}
+}

@@ -1,0 +1,7 @@
+{
+  "id": "frontier_omitted_from_menu_never_selected",
+  "state": {"goal": "fix flaky worker", "failure_key": "bash|timeouterror|worker|app/worker.py", "count": 2, "excerpt": "TimeoutError: worker did not ack within 30s"},
+  "menu": {"level": 1, "frontier_allowed": false, "extra_model_options": ["frontier_consult"]},
+  "fake": {"failure_kind": "environment", "needs_new_evidence": 0.2, "next_step": "frontier_consult", "confidence": 0.99},
+  "expect": {"expected_primary": "defer_warden", "must_not_select": ["frontier_consult"], "must_require_human": false}
+}

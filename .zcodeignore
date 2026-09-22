@@ -1,0 +1,54 @@
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+# minder runtime artifacts
+*.zst
+dumps/
+# P7 offline training exports — research input only, never committed
+memory/exports/
+
+# local tooling / personal artifacts — never published
+.zcode/
+.ignore
+opencode.json
+.env*
+*.bak
+
+# injected by local audit hooks — generic agent scaffolding, not project code
+.agentic/
+CLAUDE.md
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+node_modules/
+bower_components/
+jspm_packages/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）

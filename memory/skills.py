@@ -125,3 +125,26 @@ def list_gaps(repo=None, db_path=None, limit=100):
             conn.close()
     except Exception:
         return []
+
+
+def close_gap(gap_id, reason, db_path=None):
+    """Operator close (8B): mark one open gap closed via an explicit CLI
+    decision. Tombstone semantics — the row stays queryable. Returns
+    (gap_dict, status); never raises. No SKILLS.md is written here or
+    anywhere in this module."""
+    try:
+        conn = _db.connect(db_path)
+        try:
+            _db.write(conn, "UPDATE skill_gaps SET status = 'closed'"
+                      " WHERE gap_id = ? AND status = 'open'", (gap_id,))
+            row = conn.execute("SELECT * FROM skill_gaps WHERE gap_id = ?",
+                               (gap_id,)).fetchone()
+            if not row:
+                return None, "rejected:no-such-gap"
+            out = dict(row)
+            out["close_reason"] = str(reason)
+            return out, "ok"
+        finally:
+            conn.close()
+    except Exception as e:
+        return None, f"degraded:{type(e).__name__}"

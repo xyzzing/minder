@@ -1,0 +1,7 @@
+{
+  "id": "permission_denied_requires_human",
+  "state": {"goal": "deploy build artifact", "failure_key": "bash|permissionerror|none|/var/lib/app", "count": 2, "excerpt": "PermissionError: [Errno 13] Permission denied: '/var/lib/app/cache'"},
+  "menu": {"level": 1, "frontier_allowed": false},
+  "fake": {"failure_kind": "permissions", "needs_new_evidence": 0.3, "next_step": "environment_check", "confidence": 0.7},
+  "expect": {"expected_primary": "human", "must_not_select": [], "must_require_human": true}
+}

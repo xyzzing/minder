@@ -1,0 +1,7 @@
+{
+  "id": "unknown_family_low_confidence",
+  "state": {"goal": "restore build", "failure_key": "bash|unknown|none|none", "count": 2, "excerpt": "process failed: exit code 1"},
+  "menu": {"level": 1, "frontier_allowed": false},
+  "fake": {"failure_kind": "unknown", "needs_new_evidence": 0.5, "next_step": "inspect", "confidence": 0.4},
+  "expect": {"expected_primary": "retrieve_lesson", "must_not_select": [], "must_require_human": false}
+}
