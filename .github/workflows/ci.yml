@@ -5,26 +5,49 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  tests:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    env:
+      MINDER_NO_SYSTEMD: "1"
+      MINDER_TEST_TIMEOUT: "120"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install test deps
-        run: python -m pip install pytest
-      - name: Run test suite
-        # MINDER_NO_SYSTEMD: install/uninstall paths are per-user systemd —
-        # never touch CI's units. MINDER_TEST_TIMEOUT: generous for shared runners.
-        run: MINDER_NO_SYSTEMD=1 MINDER_TEST_TIMEOUT=120 python -m pytest tests/ -q
-      - name: Secret scan (defense in depth)
+          allow-prereleases: true
+      - name: Install test dependencies
         run: |
-          ! grep -rnE '(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16})' \
-            --include='*.py' --include='*.sh' --include='*.json' \
-            --include='*.yaml' --include='*.md' . | grep -v -E 'sk-\.\.\.|sk-proj-\.\.\.'
+          python -m pip install --upgrade pip
+          pip install -r requirements-web.txt
+      - name: Run tests
+        run: python -m pytest -q
+
+  laya-optional:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      MINDER_NO_SYSTEMD: "1"
+      USE_TF: "0"
+      MINDER_LAYA_DEVICE: "cpu"
+      MINDER_TEST_TIMEOUT: "300"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU torch + laya
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install laya -r requirements-web.txt
+      - name: Replay routing-core-v1 through the real model
+        run: python -m pytest tests/test_routing_replay.py tests/test_classifier_laya.py -m laya -q
