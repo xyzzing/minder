@@ -44,9 +44,13 @@ python3 -m minder_op events ls --limit 10       # raw failure events, redacted
 
 # localhost read-only console (separate web extra)
 pip install --user -r requirements-web.txt
-python3 -m minder_web --port 8765 --db ~/.local/state/minder/memory.sqlite
+minder-web --port 8765 --db ~/.local/state/minder/memory.sqlite
 curl -sS http://127.0.0.1:8765/healthz
 ```
+
+`install.sh` leaves `minder-op` / `minder-web` shims in `~/.local/bin`
+(usable from any directory). Without them, run the modules from the repo
+checkout: `python3 -m minder_op …`.
 
 Exit codes: `0` ok, `1` usage/not-found, `2` DB missing or corrupt. All data
 lives under `~/.local/state/minder/` — nothing leaves the machine.
@@ -103,12 +107,12 @@ comparator.
 
 ## Status and known limits
 
-Shipped: the v10 governed runtime, the operator plane (CLI, weekly
-summary, console), the benchmark harness + sandboxed runner, and domain
-governance Phase 1–2 (explicit task boundaries, a trading
-preregistration/manifest protocol, résumé fact-vs-intent evidence,
-observe-only domain routing; the deterministic baseline is measured at
-40/40 on the shipped fixture set).
+Shipped: the governed runtime through the operator plane (CLI, weekly
+summary, console; milestones 8A–8E), the benchmark harness + sandboxed
+runner, and domain governance Phase 1–2 (explicit task boundaries, a
+trading preregistration/manifest protocol, résumé fact-vs-intent
+evidence, observe-only domain routing; the deterministic baseline is
+measured at 40/40 on the shipped fixture set).
 
 Not here yet: multi-user or remote access (by design), models beyond the
 qwen3 presets (untested), Windows, a public docs site, and classifier

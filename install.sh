@@ -365,6 +365,16 @@ else
   say "[8] --no-start: unit written but not enabled"
 fi
 
+# --- [8b] operator shims (run minder-op / minder-web from anywhere) ------------
+mkdir -p "$HOME/.local/bin"
+printf '#!/usr/bin/env bash\nexec env -u LD_LIBRARY_PATH PYTHONPATH="%s" MINDER_NO_SYSTEMD=1 python3 -m minder_op "$@"\n' "$SHARE" \
+  > "$HOME/.local/bin/minder-op"
+# minder_web is the optional web extra — it lives in the repo checkout, not the share
+printf '#!/usr/bin/env bash\nexec env -u LD_LIBRARY_PATH PYTHONPATH="%s" MINDER_NO_SYSTEMD=1 python3 -m minder_web "$@"\n' "$SRC" \
+  > "$HOME/.local/bin/minder-web"
+chmod +x "$HOME/.local/bin/minder-op" "$HOME/.local/bin/minder-web"
+say "[8b] operator shims: $HOME/.local/bin/minder-op, $HOME/.local/bin/minder-web"
+
 # --- [9] summary ---------------------------------------------------------------
 cat <<EOF
 
@@ -376,7 +386,7 @@ cat <<EOF
 - dsh:       pick model 'qwen-exec' (or qwen-think) from the minder provider
 - zcode:     PostToolUse + SessionStart hooks active in new sessions
 - frontier:  ${FRONTIER_CMD:-not configured (L2 degrades honestly)}
-- operator:  python3 -m minder_op status   (repo checkout, or PYTHONPATH=$SHARE)
+- operator:  minder-op status   (shims in ~/.local/bin; repo checkout also works via python3 -m minder_op)
 
 Verify any time:
   curl -s http://127.0.0.1:$PORT/v1/chat/completions -H 'Content-Type: application/json' \\
