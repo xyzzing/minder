@@ -199,3 +199,39 @@ def decisions(path, limit=25):
                  " policy_decision, override, confidence, provider,"
                  " model_version FROM decision_traces"
                  " ORDER BY ts DESC LIMIT ?", (int(limit),))
+
+
+def events(path, failure_key=None, event_type=None, episode_id=None,
+           limit=25):
+    """Raw observed events, newest first. The episode column comes
+    from a subquery so unlinked events still list."""
+    sql = ("SELECT e.*, (SELECT ee.episode_id FROM episode_events ee"
+           " WHERE ee.event_id = e.event_id ORDER BY ee.seq LIMIT 1)"
+           " AS episode_id FROM events e WHERE 1=1")
+    params = []
+    if failure_key:
+        sql += " AND e.failure_key = ?"
+        params.append(failure_key)
+    if event_type:
+        sql += " AND e.event_type = ?"
+        params.append(event_type)
+    if episode_id:
+        sql += (" AND e.event_id IN (SELECT event_id FROM episode_events"
+                " WHERE episode_id = ?)")
+        params.append(episode_id)
+    sql += " ORDER BY e.ts DESC LIMIT ?"
+    params.append(int(limit))
+    return _rows(path, sql, params)
+
+
+def event(path, event_id):
+    return _one(path,
+                "SELECT e.*, (SELECT ee.episode_id FROM episode_events ee"
+                " WHERE ee.event_id = e.event_id ORDER BY ee.seq LIMIT 1)"
+                " AS episode_id FROM events e WHERE event_id = ?",
+                (event_id,))
+
+
+def last_event_ts(path):
+    row = _one(path, "SELECT MAX(ts) AS last FROM events")
+    return row["last"] if row else None

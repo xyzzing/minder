@@ -49,6 +49,23 @@ def build_parser():
 
     sub.add_parser("status", help="one screen: schema, counts, flags")
     sub.add_parser("flags", help="show MINDER_* decision flags (read-only")
+    doc = sub.add_parser("doctor", help=(
+        "one-shot install health report: db, schema, flags, hook "
+        "wiring, event staleness, proxy, benchmarks (read-only)"))
+    doc.add_argument("--no-probe", action="store_true",
+                     help="skip the loopback proxy reachability probe")
+    doc.add_argument("--json", action="store_true",
+                     help="emit the check objects instead of text")
+
+    ev = sub.add_parser("events", help="raw observed events")
+    ev_sub = ev.add_subparsers(dest="subcommand", required=True)
+    ev_ls = ev_sub.add_parser("ls")
+    ev_ls.add_argument("--failure-key")
+    ev_ls.add_argument("--type", dest="event_type")
+    ev_ls.add_argument("--episode")
+    ev_ls.add_argument("--limit", type=int, default=25)
+    ev_show = ev_sub.add_parser("show")
+    ev_show.add_argument("id")
 
     ep = sub.add_parser("episodes", help="episode records")
     ep_sub = ep.add_subparsers(dest="subcommand", required=True)
@@ -193,6 +210,12 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_status(path)
     if command == "flags":
         return _cmd_flags()
+    if command == "doctor":
+        return _cmd_doctor(args)
+    if command == "events" and sub == "ls":
+        return _cmd_events_ls(args, path)
+    if command == "events" and sub == "show":
+        return _cmd_events_show(args, path)
     if command == "episodes" and sub == "ls":
         return _cmd_episodes_ls(args, path)
     if command == "episodes" and sub == "show":
@@ -433,6 +456,59 @@ def _cmd_weekly_summary(args, path):
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         summary.render_text(report)
+    return EXIT_OK
+
+
+def _cmd_doctor(args):
+    from minder_op import doctor
+    try:
+        path = _resolve_db(args)
+    except queries.DBError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    report = doctor.run_checks(path, probe=not args.no_probe)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        doctor.render(report)
+    for check in report["checks"]:
+        if check["status"] == "fail":
+            print(f"error: {check['id']}: {check['detail']}",
+                  file=sys.stderr)
+    return EXIT_OK if report["healthy"] else EXIT_USAGE
+
+
+def _cmd_events_ls(args, path):
+    rows = queries.events(path, failure_key=args.failure_key,
+                          event_type=args.event_type,
+                          episode_id=args.episode, limit=args.limit)
+    fmt.table([{"id": r["event_id"], "ts": r["ts"],
+                "type": r["event_type"], "tool": r["tool"],
+                "episode": r.get("episode_id") or "-",
+                "failure_key": fmt.safe(r["failure_key"], 44),
+                "fp": fmt.safe(r["action_fingerprint"], 12)}
+               for r in rows],
+              [("id", "id"), ("ts", "ts"), ("type", "type"),
+               ("tool", "tool"), ("episode", "episode"),
+               ("failure_key", "failure_key"), ("fp", "fp")])
+    return EXIT_OK
+
+
+def _cmd_events_show(args, path):
+    row = queries.event(path, args.id)
+    if not row:
+        print(f"not found: {args.id}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("event_id", row["event_id"]), ("ts", row["ts"]),
+            ("type", row["event_type"]), ("tool", row["tool"]),
+            ("session_id", fmt.safe(row["session_id"], 40)),
+            ("task_id", fmt.safe(row["task_id"], 40)),
+            ("repo", fmt.safe(row["repo"], 100)),
+            ("failure_key", fmt.safe(row["failure_key"], 120)),
+            ("fingerprint", fmt.safe(row["action_fingerprint"], 60)),
+            ("episode", row.get("episode_id") or "-"),
+            ("redaction", row["redaction_status"]),
+            ("payload", fmt.safe(row["payload_json"], 400))])
     return EXIT_OK
 
 
@@ -697,7 +773,8 @@ def main(argv=None):
         parser.print_usage(sys.stderr)
         return EXIT_USAGE
     path = _resolve_db(args)
-    needs_db = args.command not in ("flags", "export-stats", "benchmark")
+    needs_db = args.command not in ("flags", "export-stats", "benchmark",
+                                    "doctor")
     if needs_db:
         code = _guard_db(path)
         if code != EXIT_OK:
