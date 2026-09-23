@@ -3,6 +3,44 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## 0.8 — 2026-09-23
+
+The operator plane (milestones 8A–8E) plus the first two phases of
+domain-routed evidence governance.
+
+- **Operator CLI** (`minder_op`) — doctor, status, flags, episodes,
+  lessons (verified/candidate/invalidated), gaps, consults
+  (labels from `frontier_evals`), decisions, export-stats, raw events,
+  weekly-summary (observed evidence only, never productivity claims).
+  Explicit review writes (invalidate/promote/close) behind `--yes`.
+- **Localhost web console** (`minder_web`) — read-only, 127.0.0.1-only
+  bind guard, overview/episodes/lessons/gaps/consults/decisions/
+  benchmarks/healthz; candidate lessons visibly distinct; optional web
+  extra (`requirements-web.txt`).
+- **Benchmark harness** — versioned suite manifests
+  (`coding-core-v1`, `routing-core-v1`), 8C report/baseline schemas,
+  protected-metric comparator (NON_COMPARABLE / INSUFFICIENT_SAMPLE /
+  FAIL / PASS), sandboxed task runner behind
+  `--execute --i-understand-this-runs-local-agent-tasks`, pinned
+  baselines never created automatically.
+- **Domain governance Phase 1–2** — explicit task-context intake
+  (`task declare/status/close`, closed domain vocabulary), trading
+  research protocol registry (preregistration, append-only trial
+  manifests, multiple-testing bookkeeping, holdout-unlock gate,
+  vintage-staleness triage), résumé fact/wording/intent evidence with
+  JD-scoped retention (default 90 days), observe-only
+  `domain-route/v1` routing with shadow traces, read-only impact
+  propagation algebra (property-tested), graph type vocabulary
+  enforcement. Migration 011 + 012; schema v12.
+- **Evaluation results** — `routing-core-v1` replays 40 adversarial
+  cases; deterministic rules baseline 40/40; the laya 0.3.6 routing
+  model measured 14/40 (0 unsafe, 0 injections followed) → comparator
+  FAIL. Classifiers stay shadow-only until they beat the baseline.
+- **Install hygiene** — `install.sh` stages `minder_op` beside
+  `memory`/`decision` and writes `~/.local/bin/minder-op` /
+  `minder-web` shims; CI runs the suite on Python 3.11–3.14 plus an
+  optional real-model job.
+
 ## 0.7 — 2026-09-21
 
 Phases 2–3 of the memory PRD (docs/minder-phase-2-3-frontier-coding.md):

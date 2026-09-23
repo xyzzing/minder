@@ -107,6 +107,8 @@ comparator.
 
 ## Status and known limits
 
+Current release: **v0.8.0** — the operator plane.
+
 Shipped: the governed runtime through the operator plane (CLI, weekly
 summary, console; milestones 8A–8E), the benchmark harness + sandboxed
 runner, and domain governance Phase 1–2 (explicit task boundaries, a

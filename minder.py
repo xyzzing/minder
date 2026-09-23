@@ -12,7 +12,7 @@ import pathlib
 import re
 import time
 
-MINDER_VERSION = "0.7"
+MINDER_VERSION = "0.8"
 
 STATE_DIR = pathlib.Path(os.environ.get(
     "MINDER_STATE_DIR", os.path.expanduser("~/.local/state/minder")))
