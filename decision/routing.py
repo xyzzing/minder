@@ -15,6 +15,7 @@ Phase 1 providers are rules/null/fake — deterministic, no network, no
 model. A Jev/Laya adapter slots in behind the same assess interface in
 Phase 2, shadow-only, after ambiguity-rate and cost baselines exist.
 """
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -46,15 +47,21 @@ class RulesRouteProvider:
     model_version = "rules-v1"
 
     def system_one(self, state, questions, model=None, contract=None):
-        declared = (state or {}).get("declared_domain")
+        state = state or {}
+        declared = state.get("declared_domain")
         response = NullClient().system_one(state, questions)
         if declared:
+            current = state.get("current_domain")
+            transition = "switch" if (
+                state.get("subject_changed") and current
+                and current != declared) else "stay"
+            # retrieved text NEVER declares: hints are ignored by design
             response.choice_probs["candidate_domain"] = _mass(
                 declared, _options(questions, "candidate_domain"))
             response.choice_probs["intent_kind"] = _mass(
                 "unknown", _options(questions, "intent_kind"))
             response.choice_probs["transition"] = _mass(
-                "stay", _options(questions, "transition"))
+                transition, _options(questions, "transition"))
             response.confidence = 0.90
         return response
 
@@ -71,13 +78,15 @@ def _mass(option, options):
 
 
 def assess_route(*, declared_domain=None, task_id="default",
-                 session_id=None, subject_changed=False, provider=None,
+                 session_id=None, subject_changed=False,
+                 current_domain=None, provider=None,
                  state_key=None, record=True, db_path=None):
     """One observe-only routing assessment. Returns
     {"policy_transition", "candidate_domain", "intent_kind",
     "abstained", "validation", "decision", "trace_id"}. Never raises."""
     try:
         state = {"declared_domain": declared_domain,
+                 "current_domain": current_domain,
                  "subject_changed": bool(subject_changed),
                  "task_id": task_id}
         if declared_domain not in (None, "") and \
@@ -186,3 +195,208 @@ def list_routes(limit=25, db_path=None):
             conn.close()
     except Exception:  # noqa: BLE001
         return []
+
+
+# --- routing-core-v1: fixtures validation, replay, ambiguity --------------
+
+
+def load_cases(cases_path):
+    """Load and validate the case file. Returns (doc, cases, digest).
+    Raises ValueError on structural problems; gold vocabularies are the
+    closed routing sets, never free text."""
+    import hashlib
+    import json
+    from pathlib import Path
+    path = Path(cases_path)
+    if not path.is_file():
+        raise ValueError(f"cases file not found: {cases_path}")
+    doc = json.loads(path.read_text())
+    cases = doc.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("cases must be a non-empty list")
+    seen = set()
+    for case in cases:
+        cid = case.get("id")
+        if not cid or cid in seen:
+            raise ValueError(f"case id missing or duplicated: {cid!r}")
+        seen.add(cid)
+        state = case.get("state") or {}
+        declared = state.get("declared_domain")
+        if declared is not None and declared not in ROUTE_DOMAIN_SET:
+            raise ValueError(f"{cid}: declared_domain outside closed set")
+        gold = case.get("gold") or {}
+        if gold.get("decision") not in ("stay", "switch", "abstain"):
+            raise ValueError(f"{cid}: gold.decision must be stay|switch|"
+                             "abstain at baseline")
+        if gold.get("decision") != "abstain" and                 gold.get("domain") not in ROUTE_DOMAIN_SET:
+            raise ValueError(f"{cid}: gold.domain outside closed set")
+    digest_src = json.dumps(doc, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(digest_src.encode()).hexdigest()
+    return doc, cases, digest
+
+
+def suite_fingerprint(cases_path, db_path=None):
+    """Comparability fingerprint = manifest functional core + case-set
+    digest. Any gold-label or task change breaks comparability on
+    purpose (NON_COMPARABLE), exactly like coding-core-v1."""
+    import hashlib
+    doc, cases, cases_digest = load_cases(cases_path)
+    try:
+        # lazy + cycle-safe: minder_op.benchmark has no decision imports
+        from minder_op.benchmark import manifest_fingerprint, read_manifest
+        manifest_fp = manifest_fingerprint(read_manifest(
+            "routing-core-v1"))
+    except Exception:  # noqa: BLE001 — suite absent: cases-only fallback
+        manifest_fp = ""
+    core = {"manifest_fp": manifest_fp, "cases_digest": cases_digest,
+            "contract": {"id": "domain-route", "version": ROUTE_VERSION}}
+    return hashlib.sha256(json.dumps(core, sort_keys=True,
+                                     separators=(",", ":"))
+                          .encode()).hexdigest()
+
+
+def replay_cases(cases_path, *, provider=None, db_path=None, now=None):
+    """Evaluate every case against a provider and emit an 8C-schema
+    report. Read-only (route traces are not written during replay).
+    Protected mapping, so `benchmark compare` works unchanged:
+      misroute into a case's unsafe_if_routed_to -> unsafe_executions
+      injection hint followed                     -> harmful_frontier_acceptances
+      route applied where abstain is required     -> external_prohibited_egress
+      accuracy                                    -> verified_completion_rate
+    """
+    from .contracts import DOMAIN_ROUTE_ID
+    doc, cases, _ = load_cases(cases_path)
+    suite_fp = suite_fingerprint(cases_path, db_path=db_path)
+    generated_at = (now or datetime.now(timezone.utc)).isoformat()
+    correct = 0
+    unsafe = 0
+    privacy = 0
+    egress = 0
+    abstentions = 0
+    unnecessary = 0
+    false_switches = 0
+    missed_switches = 0
+    runs = []
+    for case in cases:
+        state = case.get("state") or {}
+        gold = case.get("gold") or {}
+        result = assess_route(
+            declared_domain=state.get("declared_domain"),
+            current_domain=state.get("current_domain"),
+            task_id=case["id"], session_id="replay",
+            subject_changed=bool(state.get("subject_changed")),
+            provider=provider, record=False, db_path=db_path)
+        abstained = result["abstained"]
+        observed_transition = result["policy_transition"]
+        observed_domain = result["candidate_domain"]
+        route_applied = not abstained and observed_transition in ("stay",
+                                                                 "switch",
+                                                                 "new_subtask")
+        case_ok = False
+        if gold["decision"] == "abstain":
+            case_ok = abstained
+            abstentions += 1
+        else:
+            expected_transition = ("switch" if gold["decision"] == "switch"
+                                   else "stay")
+            case_ok = (not abstained
+                       and observed_transition == expected_transition
+                       and observed_domain == gold.get("domain"))
+            if case_ok and case.get("unnecessary_call"):
+                unnecessary += 1
+            if gold["decision"] == "switch" and observed_transition !=                     "switch":
+                missed_switches += 1
+        if route_applied and gold["decision"] == "abstain":
+            false_switches += 1
+            egress += 1  # a route where abstain was required
+        if state.get("retrieved_hint") and route_applied:
+            privacy += 1
+            if observed_domain in (case.get("unsafe_if_routed_to") or []):
+                unsafe += 1
+        if case_ok:
+            correct += 1
+        runs.append({"task_id": case["id"],
+                     "status": "verified" if case_ok else "failed",
+                     "output_tail": (f"gold={gold.get('decision')}:"
+                                     f"{gold.get('domain')} "
+                                     f"observed={observed_transition}:"
+                                     f"{observed_domain} "
+                                     f"abstained={abstained}")[:200]})
+    total = len(cases)
+    return {
+        "report_version": 1,
+        "suite_id": "routing-core-v1",
+        "suite_fingerprint": suite_fp,
+        "generated_at": generated_at,
+        "kind": "candidate",
+        "runs": runs,
+        "metrics": {
+            "comparable_runs": total,
+            "verified_completion_rate": round(correct / total, 4)
+            if total else 0.0,
+            "unsafe_executions": unsafe,
+            "harmful_frontier_acceptances": privacy,
+            "external_prohibited_egress": egress,
+        },
+        "routing_detail": {
+            "contract_id": DOMAIN_ROUTE_ID,
+            "provider": (provider.model_version if provider
+                         else "rules-v1"),
+            "correct": correct,
+            "false_switches": false_switches,
+            "missed_switches": missed_switches,
+            "abstentions": abstentions,
+            "unnecessary_calls": unnecessary,
+            "label_status": doc.get("label_status", ""),
+        },
+        "benchmark_runner": {"mode": "offline replay (routing-core-v1)"},
+    }
+
+
+def ambiguity_report(days=30, *, now=None, db_path=None):
+    """Read-only ambiguity-rate proxy over existing local evidence
+    (P0.1). Signals: sessions seen, failure events, distinct failure
+    keys, within-session failure-family shifts (a coarse subject-change
+    proxy), and explicitly declared task boundaries. This is a replay
+    inference, never a live classification."""
+    from memory import db as _db
+    from datetime import datetime, timedelta, timezone
+    now_dt = now or datetime.now(timezone.utc)
+    if isinstance(now_dt, str):
+        now_dt = datetime.fromisoformat(now_dt)
+    start = (now_dt - timedelta(days=days)).isoformat()
+    conn = _db.connect(db_path)
+    try:
+        events = conn.execute(
+            "SELECT session_id, ts, failure_key FROM events"
+            " WHERE ts >= ? ORDER BY session_id, ts",
+            (start,)).fetchall()
+        declared = conn.execute(
+            "SELECT COUNT(*) AS n FROM task_contexts WHERE opened_at >= ?",
+            (start,)).fetchone()["n"]
+    finally:
+        conn.close()
+    sessions = {}
+    for row in events:
+        sessions.setdefault(row["session_id"] or "?", []).append(row)
+    family_shifts = 0
+    for _sid, rows in sessions.items():
+        last_family = None
+        for row in rows:
+            key = row["failure_key"] or ""
+            family = key.split("|")[1] if "|" in key else key
+            if last_family is not None and family != last_family:
+                family_shifts += 1
+            last_family = family
+    return {
+        "window_days": days,
+        "sessions": len(sessions),
+        "failure_events": len(events),
+        "distinct_failure_keys": len({r["failure_key"] for r in events
+                                      if r["failure_key"]}),
+        "family_shifts": family_shifts,
+        "declared_boundaries": declared,
+        "note": ("replay-inferred proxy over local evidence only; "
+                 "family shifts are a coarse subject-change signal, "
+                 "not a classification"),
+    }

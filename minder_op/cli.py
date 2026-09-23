@@ -131,6 +131,14 @@ def build_parser():
     rt_eval.add_argument("--subject-changed", action="store_true")
     rt_ls = rt_sub.add_parser("ls")
     rt_ls.add_argument("--limit", type=int, default=25)
+    rt_rep = rt_sub.add_parser("replay", help="offline replay of routing "
+                               "cases; emits an 8C-schema report")
+    rt_rep.add_argument("--cases", required=True)
+    rt_rep.add_argument("--out", help="persist the replay report JSON")
+    rt_rep.add_argument("--json", action="store_true")
+    rt_amb = rt_sub.add_parser("ambiguity", help="read-only ambiguity-"
+                               "rate proxy over local evidence")
+    rt_amb.add_argument("--days", type=int, default=30)
 
     rs = sub.add_parser("resume", help="résumé evidence: career facts, "
                                        "approved wordings, JD intents")
@@ -341,6 +349,10 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_routes_eval(args, path)
     if command == "routes" and sub == "ls":
         return _cmd_routes_ls(args, path)
+    if command == "routes" and sub == "replay":
+        return _cmd_routes_replay(args, path)
+    if command == "routes" and sub == "ambiguity":
+        return _cmd_routes_ambiguity(args, path)
     if command == "resume" and sub == "assert":
         return _cmd_resume_assert(args, path)
     if command == "resume" and sub == "approve":
@@ -853,6 +865,48 @@ def _cmd_routes_ls(args, path):
                ("conf", "conf"), ("abst", "abst"),
                ("provenance", "provenance"),
                ("validation", "validation")])
+    return EXIT_OK
+
+
+def _cmd_routes_replay(args, path):
+    from decision import routing
+    try:
+        report = routing.replay_cases(args.cases, db_path=path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    if args.out:
+        _write_json_file(args.out, report)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        fmt.kv([(key, report["metrics"][key]) for key in
+                ("comparable_runs", "verified_completion_rate",
+                 "unsafe_executions", "harmful_frontier_acceptances",
+                 "external_prohibited_egress")])
+        detail = report["routing_detail"]
+        fmt.kv([("provider", detail["provider"]),
+                ("correct", detail["correct"]),
+                ("false_switches", detail["false_switches"]),
+                ("missed_switches", detail["missed_switches"]),
+                ("abstentions", detail["abstentions"]),
+                ("unnecessary_calls", detail["unnecessary_calls"]),
+                ("label_status", detail["label_status"])])
+        if args.out:
+            print(f"report written: {args.out}")
+        print("replay is offline and observe-only; reports pin via "
+              "benchmark baseline create --yes")
+    return EXIT_OK
+
+
+def _cmd_routes_ambiguity(args, path):
+    from decision import routing
+    report = routing.ambiguity_report(days=args.days, db_path=path)
+    fmt.kv([(key, report[key]) for key in
+            ("window_days", "sessions", "failure_events",
+             "distinct_failure_keys", "family_shifts",
+             "declared_boundaries")])
+    print(report["note"])
     return EXIT_OK
 
 
