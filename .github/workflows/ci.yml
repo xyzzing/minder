@@ -27,6 +27,7 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install pytest
           pip install -r requirements-web.txt
       - name: Run tests
         run: python -m pytest -q
@@ -48,6 +49,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install laya -r requirements-web.txt
+          pip install pytest laya -r requirements-web.txt
       - name: Replay routing-core-v1 through the real model
         run: python -m pytest tests/test_routing_replay.py tests/test_classifier_laya.py -m laya -q
