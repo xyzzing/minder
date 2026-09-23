@@ -9,6 +9,11 @@ import time
 
 from memory import db as _db
 from minder_op import doctor
+
+
+def _latest_schema():
+    return max(int(f.name.split("_", 1)[0]) for f in
+               _db.MIGRATIONS_DIR.glob("*.sql") if f.name[0].isdigit())
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 SECRET = "sk-proj-operatorleak99999999"
@@ -56,7 +61,8 @@ def test_doctor_healthy_install(tmp_path, monkeypatch, capsys):
     code = main(["--db", str(dbp), "doctor", "--no-probe"])
     assert code == EXIT_OK
     out = capsys.readouterr().out
-    assert "db" in out and "schema v10" in out
+    assert "db" in out
+    assert f"schema v{_latest_schema()}" in out
     assert "flags" in out and "defaults" in out.lower()
     assert "wiring" in out
     assert "benchmark" in out and "coding-core-v1" in out

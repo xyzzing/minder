@@ -48,7 +48,7 @@ class PolicyDecision:
     needs_new_evidence: float = 0.0
 
 
-def gate(response, menu, contract, cfg=None):
+def gate(response, menu, contract, cfg=None, thresholds=None):
     """Apply the code rules to one response. Never raises: an invalid or
     missing response becomes a conservative human decision."""
     try:
@@ -91,7 +91,8 @@ def gate(response, menu, contract, cfg=None):
         return PolicyDecision(policy_decision=HUMAN,
                               override="duplicate_blocked", **common)
 
-    min_confidence, fallback = THRESHOLDS.get(
+    active_thresholds = thresholds or THRESHOLDS
+    min_confidence, fallback = active_thresholds.get(
         recommended, (0.70, "deterministic_memory_policy"))
     if confidence_of(response) < min_confidence:  # rule: pinned thresholds
         resolved = _resolve_fallback(fallback, failure_kind, menu)

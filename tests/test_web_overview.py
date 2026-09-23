@@ -35,11 +35,18 @@ def test_overview_missing_db_renders_not_available(tmp_path, monkeypatch):
     assert "not available" in resp.text
 
 
+def _latest_schema():
+    from memory import db as _db
+    return max(int(f.name.split("_", 1)[0]) for f in
+               _db.MIGRATIONS_DIR.glob("*.sql") if f.name[0].isdigit())
+
+
 def test_healthz_json_no_sensitive_data(tmp_path, monkeypatch):
     dbp = new_db(tmp_path)
     client = webseed.client_for(dbp, monkeypatch)
     data = client.get("/healthz").json()
-    assert data["status"] == "ok" and data["schema_version"] == 10
+    assert data["status"] == "ok"
+    assert data["schema_version"] == _latest_schema()
     assert str(dbp) not in str(data)
     # degraded, not 500, when the store is missing
     client = webseed.client_for(tmp_path / "nope.sqlite", monkeypatch)

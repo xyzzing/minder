@@ -10,13 +10,28 @@ from datetime import datetime, timezone
 
 from . import db as _db
 
+# Closed, versioned type vocabularies (Phase 1 P1.4). 006's node/edge
+# type columns are free text by schema; these constants are the enforced
+# contract at the API layer. New types enter only here, with a version
+# bump of the vocabulary.
+NODE_TYPES_V1 = ("File", "Test", "Commit", "FailureSignature", "Episode",
+                 "Lesson", "Skill", "Patch", "VerificationRun")
+EDGE_TYPES_V1 = ("AFFECTS", "FAILED_TEST", "DERIVED_FROM", "VERIFIED_BY",
+                 "MODIFIED", "APPLIES_TO", "SUPERSEDES", "CONTRADICTS",
+                 "RAN", "HAS_FAILURE", "DEPENDS_ON", "SUPPORTS")
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
 def upsert_node(node_type, node_id, properties=None, db_path=None):
-    """Create or update a node. Returns node_id or None on failure."""
+    """Create or update a node. Returns node_id or None on failure.
+    Unknown node types raise ValueError *before* any DB work — a typo
+    must be loud, not silently swallowed into a free-text column."""
+    if node_type not in NODE_TYPES_V1:
+        raise ValueError(f"unknown node type: {node_type!r} "
+                         f"(vocabulary {NODE_TYPES_V1})")
     try:
         conn = _db.connect(db_path)
         try:
@@ -58,7 +73,11 @@ def get_node(node_id, db_path=None):
 
 def link(from_id, edge_type, to_id, properties=None, valid_from=None,
          db_path=None):
-    """Create an edge idempotently (unique from+type+to). Returns edge id."""
+    """Create an edge idempotently (unique from+type+to). Returns edge id.
+    Unknown edge types raise ValueError *before* any DB work."""
+    if edge_type not in EDGE_TYPES_V1:
+        raise ValueError(f"unknown edge type: {edge_type!r} "
+                         f"(vocabulary {EDGE_TYPES_V1})")
     try:
         conn = _db.connect(db_path)
         try:

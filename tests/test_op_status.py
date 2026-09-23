@@ -5,6 +5,14 @@ from memory import db as _db
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 
+def _latest_schema():
+    import pathlib as _p
+    versions = [int(f.name.split("_", 1)[0]) for f in
+                _db.MIGRATIONS_DIR.glob("*.sql")
+                if f.name[0].isdigit()]
+    return max(versions)
+
+
 def test_missing_db_exits_2(tmp_path, capsys):
     code = main(["--db", str(tmp_path / "nope.sqlite"), "status"])
     assert code == 2
@@ -29,7 +37,7 @@ def test_empty_migrated_db_reports_zeros(tmp_path, capsys, monkeypatch):
     code = main(["--db", str(dbp), "status"])
     assert code == EXIT_OK
     out = capsys.readouterr().out
-    assert "schema_version" in out and "10" in out
+    assert "schema_version" in out and str(_latest_schema()) in out
     assert "episodes" in out and "gaps_open" in out
     assert "consults[(unclassified)]" in out
     assert "decision_traces_rows" in out

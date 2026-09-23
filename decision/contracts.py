@@ -38,3 +38,26 @@ def skill_select_contract(skill_ids):
         SKILL_SELECT_ID, SKILL_SELECT_VERSION,
         (NoulQuestion("any_skill_applies"),
          ChoiceQuestion("best_skill", options, runtime_options=True)))
+
+
+DOMAIN_ROUTE_ID = "domain-route"
+ROUTE_VERSION = "v1"
+
+# Closed routing vocabulary (PRD v2 §Domain routing contract). Free-text
+# domains are never accepted; model-generated labels cannot extend these.
+ROUTE_DOMAIN_SET = ("coding", "trading_research", "resume_application",
+                    "cited_research", "mixed", "unknown")
+INTENT_KINDS = ("factual_correction", "wording_choice",
+                "presentation_preference", "research_question", "unknown")
+
+
+def domain_route_contract(transition_options):
+    """transition options are the runtime menu ids (the live transition
+    set + human) and nothing else. The LAST choice question is the
+    gate-primary action — keep `transition` last."""
+    return make_contract(
+        DOMAIN_ROUTE_ID, ROUTE_VERSION,
+        (ChoiceQuestion("candidate_domain", ROUTE_DOMAIN_SET),
+         ChoiceQuestion("intent_kind", INTENT_KINDS),
+         ChoiceQuestion("transition", tuple(transition_options),
+                        runtime_options=True)))

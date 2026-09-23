@@ -67,6 +67,71 @@ def build_parser():
     ev_show = ev_sub.add_parser("show")
     ev_show.add_argument("id")
 
+    tk = sub.add_parser("task", help="task context intake (explicit "
+                                     "declaration; Phase 1)")
+    tk_sub = tk.add_subparsers(dest="subcommand", required=True)
+    tk_dec = tk_sub.add_parser("declare")
+    tk_dec.add_argument("--domain", required=True,
+                        help="coding | trading_research | "
+                             "resume_application | cited_research | mixed")
+    tk_dec.add_argument("--task", default="default")
+    tk_dec.add_argument("--subtask")
+    tk_dec.add_argument("--actor", default="operator")
+    tk_dec.add_argument("--note")
+    tk_stat = tk_sub.add_parser("status")
+    tk_stat.add_argument("--task", default="default")
+    tk_close = tk_sub.add_parser("close")
+    tk_close.add_argument("--task", default="default")
+    tk_close.add_argument("--reason", default="closed")
+
+    fam = sub.add_parser("families", help="trading research protocol "
+                                          "(preregistration, manifests)")
+    fam_sub = fam.add_subparsers(dest="subcommand", required=True)
+    fam_reg = fam_sub.add_parser("register")
+    fam_reg.add_argument("--family")
+    fam_reg.add_argument("--method-digest", required=True)
+    fam_reg.add_argument("--metric", required=True)
+    fam_reg.add_argument("--splits", required=True)
+    fam_reg.add_argument("--sources", required=True,
+                         help="JSON: [{digest, as_of, source}]")
+    fam_reg.add_argument("--expected-trials", type=int)
+    fam_reg.add_argument("--universe")
+    fam_trial = fam_sub.add_parser("trial")
+    fam_trial.add_argument("--family", required=True)
+    fam_trial.add_argument("--config-hash", required=True)
+    fam_trial.add_argument("--vintage", required=True,
+                           help="JSON: {digest, as_of}")
+    fam_trial.add_argument("--split", required=True,
+                           choices=["train", "validation", "holdout"])
+    fam_trial.add_argument("--result", required=True,
+                           help="JSON summary (redacted metrics)")
+    fam_ana = fam_sub.add_parser("analysis")
+    fam_ana.add_argument("--family", required=True)
+    fam_ana.add_argument("--method", required=True,
+                         choices=["PBO/CSCV", "DSR", "PSR", "SPA", "other"])
+    fam_ana.add_argument("--code-digest", required=True)
+    fam_ana.add_argument("--n", type=int)
+    fam_ana.add_argument("--variance", type=float)
+    fam_ana.add_argument("--verdict", help="JSON summary")
+    fam_status = fam_sub.add_parser("status")
+    fam_status.add_argument("family")
+    fam_unlock = fam_sub.add_parser("holdout-unlock")
+    fam_unlock.add_argument("family")
+    fam_unlock.add_argument("--actor", required=True)
+    fam_unlock.add_argument("--yes", action="store_true",
+                            help="confirm: records the human decision")
+
+    rt = sub.add_parser("routes", help="domain-route shadow proposals "
+                                       "(observe-only; Phase 1)")
+    rt_sub = rt.add_subparsers(dest="subcommand", required=True)
+    rt_eval = rt_sub.add_parser("eval")
+    rt_eval.add_argument("--declared-domain")
+    rt_eval.add_argument("--task", default="default")
+    rt_eval.add_argument("--session")
+    rt_eval.add_argument("--subject-changed", action="store_true")
+    rt_ls = rt_sub.add_parser("ls")
+    rt_ls.add_argument("--limit", type=int, default=25)
+
     ep = sub.add_parser("episodes", help="episode records")
     ep_sub = ep.add_subparsers(dest="subcommand", required=True)
     ep_ls = ep_sub.add_parser("ls")
@@ -216,6 +281,26 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_events_ls(args, path)
     if command == "events" and sub == "show":
         return _cmd_events_show(args, path)
+    if command == "task" and sub == "declare":
+        return _cmd_task_declare(args, path)
+    if command == "task" and sub == "status":
+        return _cmd_task_status(args, path)
+    if command == "task" and sub == "close":
+        return _cmd_task_close(args, path)
+    if command == "families" and sub == "register":
+        return _cmd_families_register(args, path)
+    if command == "families" and sub == "trial":
+        return _cmd_families_trial(args, path)
+    if command == "families" and sub == "analysis":
+        return _cmd_families_analysis(args, path)
+    if command == "families" and sub == "status":
+        return _cmd_families_status(args, path)
+    if command == "families" and sub == "holdout-unlock":
+        return _cmd_families_unlock(args, path)
+    if command == "routes" and sub == "eval":
+        return _cmd_routes_eval(args, path)
+    if command == "routes" and sub == "ls":
+        return _cmd_routes_ls(args, path)
     if command == "episodes" and sub == "ls":
         return _cmd_episodes_ls(args, path)
     if command == "episodes" and sub == "show":
@@ -509,6 +594,209 @@ def _cmd_events_show(args, path):
             ("episode", row.get("episode_id") or "-"),
             ("redaction", row["redaction_status"]),
             ("payload", fmt.safe(row["payload_json"], 400))])
+    return EXIT_OK
+
+
+# --- Phase 1: task-context intake + trading research protocol ------------
+
+
+def _cmd_task_declare(args, path):
+    from memory import task_context
+    row, status = task_context.declare_task(
+        args.domain, task_id=args.task, actor=args.actor,
+        subtask=args.subtask, note=args.note, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("context_id", row["context_id"]),
+            ("task_id", row["task_id"]),
+            ("domain", row["domain"]),
+            ("subtask_seq", row["subtask_seq"]),
+            ("status", status),
+            ("origin", row["origin"])])
+    if status == "switched":
+        print("previous context pinned; domain_transitions row recorded")
+    return EXIT_OK
+
+
+def _cmd_task_status(args, path):
+    from memory import task_context
+    state = task_context.task_status(task_id=args.task, db_path=path)
+    open_row = state.get("open")
+    if not open_row:
+        print("(none)")
+        return EXIT_OK
+    fmt.kv([("context_id", open_row["context_id"]),
+            ("task_id", open_row["task_id"]),
+            ("domain", open_row["domain"]),
+            ("subtask_seq", open_row["subtask_seq"]),
+            ("opened_at", open_row["opened_at"]),
+            ("origin", open_row["origin"])])
+    return EXIT_OK
+
+
+def _cmd_task_close(args, path):
+    from memory import task_context
+    row, status = task_context.close_task(task_id=args.task,
+                                          reason=args.reason, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("context_id", row["context_id"]),
+            ("status", status), ("reason", row["close_reason"])])
+    return EXIT_OK
+
+
+def _json_arg(text, what):
+    try:
+        return json.loads(text)
+    except ValueError:
+        raise ValueError(f"{what} must be valid JSON: {text!r}")
+
+
+def _cmd_families_register(args, path):
+    from memory import trading_protocol as tp
+    try:
+        sources = _json_arg(args.sources, "--sources")
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    row, status = tp.register_family(
+        args.method_digest, planned_metric=args.metric,
+        split_scheme=args.splits, data_sources=sources,
+        universe=args.universe, expected_trials=args.expected_trials,
+        family_id=args.family, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("family_id", row["family_id"]), ("version", row["version"]),
+            ("status", status), ("row", f"{row['family_id']}:v"
+                                       f"{row['version']}")])
+    return EXIT_OK
+
+
+def _cmd_families_trial(args, path):
+    from memory import trading_protocol as tp
+    try:
+        vintage = _json_arg(args.vintage, "--vintage")
+        result = _json_arg(args.result, "--result")
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    row, status = tp.record_trial(
+        args.family, config_hash=args.config_hash,
+        dataset_vintage=vintage, split_assignment=args.split,
+        result_summary=result, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("trial_id", row["trial_id"]), ("status", status),
+            ("flagged", row["flagged"] or "-"),
+            ("split", row["split_assignment"])])
+    return EXIT_OK if not row["flagged"] else EXIT_USAGE
+
+
+def _cmd_families_analysis(args, path):
+    from memory import trading_protocol as tp
+    try:
+        verdict = _json_arg(args.verdict, "--verdict") if args.verdict \
+            else None
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    row, status = tp.record_analysis(
+        args.family, method=args.method, code_digest=args.code_digest,
+        n_trials_referenced=args.n, trial_sharpe_variance=args.variance,
+        verdict=verdict, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("analysis_id", row["analysis_id"]), ("status", status),
+            ("flagged", row["flagged"] or "-"),
+            ("artifact_status", row["status"]),
+            ("note", "candidate — promotion requires a recorded human "
+                     "review decision; Minder never certifies "
+                     "profitability")])
+    return EXIT_OK if not row["flagged"] else EXIT_USAGE
+
+
+def _cmd_families_status(args, path):
+    from memory import trading_protocol as tp
+    status = tp.manifest_status(args.family, db_path=path)
+    fmt.kv([(key, status[key]) for key in
+            ("family_id", "registered", "version", "trials",
+             "n_trials_bookkept", "expected_trials", "flagged_trials",
+             "stale", "verifiable")])
+    if status["blockers"]:
+        for blocker in status["blockers"]:
+            print(f"blocker: {blocker}")
+    return EXIT_OK if status["registered"] else EXIT_USAGE
+
+
+def _cmd_families_unlock(args, path):
+    from memory import trading_protocol as tp
+    if not args.yes:
+        print("PLAN (dry — nothing written):")
+        print(f"  holdout unlock for {args.family} by {args.actor} "
+              "(recorded as a human_input_event)")
+        print("re-run with --yes to record the decision")
+        return EXIT_USAGE
+    from memory import task_context
+    event, status = task_context.record_human_input(
+        "holdout_unlock", actor=args.actor, authority="user",
+        decision="approved",
+        question=f"unlock holdout split for {args.family}?",
+        affects=[{"type": "hypothesis_family", "id": args.family}],
+        db_path=path)
+    if event is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("event_id", event["event_id"]), ("kind", event["kind"]),
+            ("actor", event["actor"]), ("status", status),
+            ("note", "holdout trials recorded after this event are not "
+                     "flagged; earlier flags stay for audit")])
+    return EXIT_OK
+
+
+def _cmd_routes_eval(args, path):
+    from decision import routing
+    result = routing.assess_route(
+        declared_domain=args.declared_domain, task_id=args.task,
+        session_id=args.session, subject_changed=args.subject_changed,
+        record=True, db_path=path)
+    if result.get("error"):
+        print(f"error: {result['error']}", file=sys.stderr)
+        return EXIT_USAGE
+    decision = result["decision"]
+    fmt.kv([("trace_id", result["trace_id"]),
+            ("policy_transition", result["policy_transition"]),
+            ("candidate_domain", result["candidate_domain"]),
+            ("intent_kind (advisory)", result["intent_kind"]),
+            ("abstained", result["abstained"]),
+            ("validation", result["validation"]),
+            ("override", decision.override or "-")])
+    print()
+    print("observe-only: a route proposal never applies itself; task "
+          "contexts change only via explicit declaration")
+    return EXIT_OK
+
+
+def _cmd_routes_ls(args, path):
+    from decision import routing
+    rows = routing.list_routes(limit=args.limit, db_path=path)
+    fmt.table([{"id": r["trace_id"], "ts": r["ts"],
+                "declared": r["declared_domain"] or "-",
+                "candidate": r["candidate_domain"] or "-",
+                "transition": r["transition"],
+                "conf": r["confidence"],
+                "abst": r["abstained"],
+                "provenance": r["provenance"],
+                "validation": r["validation_result"]} for r in rows],
+              [("id", "id"), ("ts", "ts"), ("declared", "declared"),
+               ("candidate", "candidate"), ("transition", "transition"),
+               ("conf", "conf"), ("abst", "abst"),
+               ("provenance", "provenance"),
+               ("validation", "validation")])
     return EXIT_OK
 
 
