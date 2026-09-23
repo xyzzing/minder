@@ -132,6 +132,46 @@ def build_parser():
     rt_ls = rt_sub.add_parser("ls")
     rt_ls.add_argument("--limit", type=int, default=25)
 
+    rs = sub.add_parser("resume", help="résumé evidence: career facts, "
+                                       "approved wordings, JD intents")
+    rs_sub = rs.add_subparsers(dest="subcommand", required=True)
+    rs_assert = rs_sub.add_parser("assert")
+    rs_assert.add_argument("--claim", required=True)
+    rs_assert.add_argument("--variant", action="append", default=[])
+    rs_assert.add_argument("--actor", default="user")
+    rs_appr = rs_sub.add_parser("approve")
+    rs_appr.add_argument("--assertion", required=True)
+    rs_appr.add_argument("--phrase", required=True)
+    rs_appr.add_argument("--scope", default="any",
+                         help="'any' or a jd_id")
+    rs_appr.add_argument("--actor", default="user")
+    rs_unc = rs_sub.add_parser("uncertain")
+    rs_unc.add_argument("--assertion", required=True)
+    rs_unc.add_argument("--actor", default="user")
+    rs_int = rs_sub.add_parser("intent")
+    rs_int.add_argument("--jd", required=True)
+    rs_int.add_argument("--jd-digest", required=True)
+    rs_int.add_argument("--assertion", required=True)
+    rs_int.add_argument("--phrase", required=True)
+    rs_int.add_argument("--actor", default="user")
+    rs_int.add_argument("--retention", type=int,
+                        help="days; default 90 (env "
+                             "MINDER_RESUME_RETENTION_DAYS)")
+    rs_draft = rs_sub.add_parser("draft")
+    rs_draft.add_argument("--draft", required=True)
+    rs_draft.add_argument("--assertion", required=True)
+    rs_draft.add_argument("--phrase", required=True)
+    rs_draft.add_argument("--jd")
+    rs_imp = rs_sub.add_parser("impact")
+    rs_imp.add_argument("assertion")
+    rs_corr = rs_sub.add_parser("correct")
+    rs_corr.add_argument("assertion")
+    rs_corr.add_argument("--claim", required=True)
+    rs_corr.add_argument("--actor", default="user")
+    rs_corr.add_argument("--yes", action="store_true")
+    rs_exp = rs_sub.add_parser("expire")
+    rs_exp.add_argument("--now", help="ISO now override (tests)")
+
     ep = sub.add_parser("episodes", help="episode records")
     ep_sub = ep.add_subparsers(dest="subcommand", required=True)
     ep_ls = ep_sub.add_parser("ls")
@@ -301,6 +341,22 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_routes_eval(args, path)
     if command == "routes" and sub == "ls":
         return _cmd_routes_ls(args, path)
+    if command == "resume" and sub == "assert":
+        return _cmd_resume_assert(args, path)
+    if command == "resume" and sub == "approve":
+        return _cmd_resume_approve(args, path)
+    if command == "resume" and sub == "uncertain":
+        return _cmd_resume_uncertain(args, path)
+    if command == "resume" and sub == "intent":
+        return _cmd_resume_intent(args, path)
+    if command == "resume" and sub == "draft":
+        return _cmd_resume_draft(args, path)
+    if command == "resume" and sub == "impact":
+        return _cmd_resume_impact(args, path)
+    if command == "resume" and sub == "correct":
+        return _cmd_resume_correct(args, path)
+    if command == "resume" and sub == "expire":
+        return _cmd_resume_expire(args, path)
     if command == "episodes" and sub == "ls":
         return _cmd_episodes_ls(args, path)
     if command == "episodes" and sub == "show":
@@ -797,6 +853,129 @@ def _cmd_routes_ls(args, path):
                ("conf", "conf"), ("abst", "abst"),
                ("provenance", "provenance"),
                ("validation", "validation")])
+    return EXIT_OK
+
+
+# --- Phase 1 résumé slice: fact / wording / intent ------------------------
+
+
+def _cmd_resume_assert(args, path):
+    from memory import resume_evidence
+    row, status = resume_evidence.assert_career_fact(
+        args.claim, wording_variants=args.variant, actor=args.actor,
+        db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("assertion_id", row["assertion_id"]),
+            ("status", status), ("claim", row["claim_text"]),
+            ("variants", row["wording_variants_json"])])
+    return EXIT_OK
+
+
+def _cmd_resume_approve(args, path):
+    from memory import resume_evidence
+    row, status = resume_evidence.approve_wording(
+        args.assertion, phrase=args.phrase, actor=args.actor,
+        scope=args.scope, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("wording_id", row["wording_id"]), ("status", status),
+            ("phrase", row["phrase"]), ("scope", row["scope"])])
+    return EXIT_OK
+
+
+def _cmd_resume_uncertain(args, path):
+    from memory import resume_evidence
+    row, status = resume_evidence.mark_uncertain(
+        args.assertion, actor=args.actor, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("assertion_id", row["assertion_id"]),
+            ("status", status),
+            ("note", "approved wordings moved to review; set an explicit "
+                     "fact or wording answer before new intents")])
+    return EXIT_OK
+
+
+def _cmd_resume_intent(args, path):
+    from memory import resume_evidence
+    row, status = resume_evidence.set_intent(
+        args.jd, args.jd_digest, args.assertion,
+        chosen_variant=args.phrase, actor=args.actor,
+        retention_days=args.retention, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("intent_id", row["intent_id"]), ("jd_id", row["jd_id"]),
+            ("chosen_variant", row["chosen_variant"]),
+            ("expires_at", row["expires_at"]),
+            ("status", status),
+            ("note", "JD-scoped only; history and other JDs untouched")])
+    return EXIT_OK
+
+
+def _cmd_resume_draft(args, path):
+    from memory import resume_evidence
+    row, status = resume_evidence.record_draft(
+        args.draft, args.assertion, phrase=args.phrase, jd_id=args.jd,
+        db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("usage_id", row["usage_id"]), ("status", status),
+            ("flagged", row["flagged"] or "-")])
+    return EXIT_OK if not row["flagged"] else EXIT_USAGE
+
+
+def _cmd_resume_impact(args, path):
+    from memory import resume_evidence
+    preview = resume_evidence.impact_preview(args.assertion, db_path=path)
+    print(f"impact preview for {args.assertion} (read-only; corrections "
+          "are human-gated):")
+    fmt.kv([("drafts", len(preview["drafts"])),
+            ("intents", len(preview["intents"])),
+            ("wordings", len(preview["wordings"]))])
+    for draft in preview["drafts"]:
+        print(f"  draft: {draft['draft_id']} phrase='{draft['phrase']}'"
+              f" flagged={draft['flagged'] or '-'}")
+    for intent in preview["intents"]:
+        print(f"  intent: {intent['jd_id']} variant="
+              f"'{intent['chosen_variant']}' status={intent['status']}")
+    return EXIT_OK
+
+
+def _cmd_resume_correct(args, path):
+    from memory import resume_evidence
+    if not args.yes:
+        print("PLAN (dry — nothing written):")
+        print(f"  resume correct {args.assertion} -> '{args.claim}' "
+              "(supersedes the assertion, flags dependent drafts and "
+              "intents, records a factual_correction human event)")
+        print("re-run with --yes to apply")
+        return EXIT_USAGE
+    row, status = resume_evidence.correct_fact(
+        args.assertion, corrected_claim=args.claim, actor=args.actor,
+        db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("new_assertion_id", row["assertion_id"]),
+            ("status", status), ("claim", row["claim_text"]),
+            ("note", "old assertion superseded (auditable); dependent "
+                     "drafts and intents flagged for review")])
+    return EXIT_OK
+
+
+def _cmd_resume_expire(args, path):
+    from memory import resume_evidence
+    now = args.now or None
+    summary = resume_evidence.expire_intents(now=now, db_path=path)
+    fmt.kv([("expired", summary["expired"]),
+            ("note", "intent-scoped retention enforcement; career "
+                     "history untouched")])
     return EXIT_OK
 
 
