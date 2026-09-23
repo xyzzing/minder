@@ -8,6 +8,11 @@ __pycache__/
 # minder runtime artifacts
 *.zst
 dumps/
+# local databases must never be committed, wherever they sprout
+# (default state dir is $HOME, but MINDER_STATE_DIR=. would land here)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 # P7 offline training exports — research input only, never committed
 memory/exports/
 # operator-plane benchmark state — pinned baselines & run reports are
