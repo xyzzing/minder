@@ -7,6 +7,8 @@ gold-label change breaks comparability (NON_COMPARABLE)."""
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 from decision import routing
 from memory import db as _db
 from minder_op import benchmark as bench
@@ -71,9 +73,32 @@ def test_replay_rules_baseline_is_clean_and_deterministic(tmp_path):
     assert again["suite_fingerprint"] == report["suite_fingerprint"]
 
 
-def routing_replay(dbp, cases=CASES, now=NOW):
+def routing_replay(dbp, cases=CASES, now=NOW, provider=None):
     from decision import routing
-    return routing.replay_cases(cases, db_path=dbp, now=now)
+    return routing.replay_cases(cases, db_path=dbp, now=now,
+                                provider=provider)
+
+
+@pytest.mark.laya
+def test_replay_with_laya_provider_is_comparable(tmp_path):
+    """The real laya 0.3.6 model replays the same 40 cases: report must
+    validate, carry the SAME fingerprint as the rules run (comparable),
+    and the comparator must return a definitive verdict (PASS or FAIL —
+    never NON_COMPARABLE). Skips cleanly without laya."""
+    import pytest as _pytest
+    from decision.providers.laya import try_laya_client
+    client = try_laya_client()
+    if client is None:
+        _pytest.skip("laya 0.3.6 surface not available")
+    dbp = _mig(tmp_path)
+    laya_report = routing_replay(dbp, provider=client)
+    assert bench.validate_report(laya_report) == []
+    rules_report = routing_replay(dbp)
+    assert laya_report["suite_fingerprint"] == \
+        rules_report["suite_fingerprint"]
+    verdict = bench.compare_reports(rules_report, laya_report)
+    assert verdict["verdict"] in ("PASS", "FAIL")
+    assert verdict["verdict"] != bench.VERDICT_NON_COMPARABLE
 
 
 def test_replay_report_pins_and_compares(tmp_path, monkeypatch):

@@ -129,11 +129,17 @@ def build_parser():
     rt_eval.add_argument("--task", default="default")
     rt_eval.add_argument("--session")
     rt_eval.add_argument("--subject-changed", action="store_true")
+    rt_eval.add_argument("--provider", default="rules",
+                         choices=["rules", "laya", "null"])
     rt_ls = rt_sub.add_parser("ls")
     rt_ls.add_argument("--limit", type=int, default=25)
     rt_rep = rt_sub.add_parser("replay", help="offline replay of routing "
                                "cases; emits an 8C-schema report")
     rt_rep.add_argument("--cases", required=True)
+    rt_rep.add_argument("--provider", default="rules",
+                        choices=["rules", "laya", "null"],
+                        help="routing provider to replay (rules is the "
+                             "pinned deterministic baseline)")
     rt_rep.add_argument("--out", help="persist the replay report JSON")
     rt_rep.add_argument("--json", action="store_true")
     rt_amb = rt_sub.add_parser("ambiguity", help="read-only ambiguity-"
@@ -841,10 +847,20 @@ def _cmd_families_unlock(args, path):
 
 def _cmd_routes_eval(args, path):
     from decision import routing
+    from decision.providers.null import NullClient
+    provider = {"rules": routing.RulesRouteProvider,
+                "null": NullClient}.get(args.provider)
+    provider = provider() if provider else None
+    if args.provider == "laya":
+        from decision.providers.laya import try_laya_client
+        provider = try_laya_client()
+        if provider is None:
+            print("error: laya provider unavailable", file=sys.stderr)
+            return EXIT_USAGE
     result = routing.assess_route(
         declared_domain=args.declared_domain, task_id=args.task,
         session_id=args.session, subject_changed=args.subject_changed,
-        record=True, db_path=path)
+        provider=provider, record=True, db_path=path)
     if result.get("error"):
         print(f"error: {result['error']}", file=sys.stderr)
         return EXIT_USAGE
@@ -883,8 +899,21 @@ def _cmd_routes_ls(args, path):
 
 def _cmd_routes_replay(args, path):
     from decision import routing
+    from decision.providers.null import NullClient
+    provider = {"rules": routing.RulesRouteProvider,
+                "null": NullClient}.get(args.provider)
+    provider = provider() if provider else None
+    if args.provider == "laya":
+        from decision.providers.laya import try_laya_client
+        provider = try_laya_client()
+        if provider is None:
+            print("error: laya provider unavailable (package missing or "
+                  "no recognised surface; MINDER_LAYA_DEVICE/MINDER_LAYA_"
+                  "MODEL configure it)", file=sys.stderr)
+            return EXIT_USAGE
     try:
-        report = routing.replay_cases(args.cases, db_path=path)
+        report = routing.replay_cases(args.cases, provider=provider,
+                                      db_path=path)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
