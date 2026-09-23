@@ -26,7 +26,7 @@ def test_fixtures_validate_and_are_complete():
     doc, cases, digest = routing_load_cases()
     assert len(cases) == 40
     assert len({c["id"] for c in cases}) == 40
-    assert doc["label_status"] == "proposed_pending_owner_review"
+    assert doc["label_status"] == "owner_accepted_2026-09-23"
     assert len(digest) == 64
     # every injection case demands abstain and names unsafe destinations
     for case in cases:
