@@ -216,14 +216,19 @@ def _domain_section(db_path, win, now):
             " WHERE status = 'active' AND expires_at >= ?"
             " AND expires_at < ?",
             (until, expiring_horizon))
+        advisories = _count(
+            db_path, "SELECT COUNT(*) AS n FROM success_observations"
+            " WHERE advisory = 1 AND ts >= ? AND ts < ?", (start, until))
         return {"available": True, "declared_boundaries": declared,
                 "route_traces": traces, "route_agreements": agreements,
                 "route_abstentions": abstentions,
-                "resume_intents_expiring_7d": expiring}
+                "resume_intents_expiring_7d": expiring,
+                "success_advisories": advisories}
     except Exception:  # noqa: BLE001 — pre-011 store: degrade, don't crash
         return {"available": False, "declared_boundaries": 0,
                 "route_traces": 0, "route_agreements": 0,
-                "route_abstentions": 0, "resume_intents_expiring_7d": 0}
+                "route_abstentions": 0, "resume_intents_expiring_7d": 0,
+                "success_advisories": 0}
 
 
 def _focus(report):
@@ -327,7 +332,8 @@ def render_text(report):
             ("route agreements", domain["route_agreements"]),
             ("route abstentions", domain["route_abstentions"]),
             ("resume intents expiring (7d)",
-             domain["resume_intents_expiring_7d"])])
+             domain["resume_intents_expiring_7d"]),
+            ("success-loop advisories", domain["success_advisories"])])
     else:
         _section("domain layer", [("status", "not available (migrate by "
                                    "running any minder runtime command)")])

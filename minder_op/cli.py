@@ -186,6 +186,12 @@ def build_parser():
     rs_exp = rs_sub.add_parser("expire")
     rs_exp.add_argument("--now", help="ISO now override (tests)")
 
+    sl = sub.add_parser("success-loops", help="advisory-raising success "
+                        "loops (success-loop guard)")
+    sl_sub = sl.add_subparsers(dest="subcommand", required=True)
+    sl_ls = sl_sub.add_parser("ls")
+    sl_ls.add_argument("--limit", type=int, default=25)
+
     ep = sub.add_parser("episodes", help="episode records")
     ep_sub = ep.add_subparsers(dest="subcommand", required=True)
     ep_ls = ep_sub.add_parser("ls")
@@ -375,6 +381,8 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_resume_correct(args, path)
     if command == "resume" and sub == "expire":
         return _cmd_resume_expire(args, path)
+    if command == "success-loops" and sub == "ls":
+        return _cmd_success_loops_ls(args, path)
     if command == "episodes" and sub == "ls":
         return _cmd_episodes_ls(args, path)
     if command == "episodes" and sub == "show":
@@ -1072,6 +1080,23 @@ def _cmd_resume_expire(args, path):
     fmt.kv([("expired", summary["expired"]),
             ("note", "intent-scoped retention enforcement; career "
                      "history untouched")])
+    return EXIT_OK
+
+
+def _cmd_success_loops_ls(args, path):
+    from memory import success_guard
+    rows = success_guard.list_success_loops(limit=args.limit,
+                                            db_path=path)
+    fmt.table([{"ts": r["ts"], "session": r["session_id"],
+                "tool": r["tool"],
+                "fingerprint": fmt.safe(r["action_fingerprint"], 32),
+                "exit": r["exit_code"],
+                "excerpt": fmt.safe(r["excerpt"], 48)} for r in rows],
+              [("ts", "ts"), ("session", "session"), ("tool", "tool"),
+               ("fingerprint", "fingerprint"), ("exit", "exit"),
+               ("excerpt", "excerpt")])
+    print()
+    print("advisory-only: the guard tells the model, it never blocks")
     return EXIT_OK
 
 

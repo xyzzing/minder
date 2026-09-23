@@ -214,6 +214,17 @@ def main(argv=None):
                 digest = guard["digest"]
         except Exception:
             pass
+    # Success-loop guard (advisory only): repeated identical successful
+    # actions -> model-visible stderr note. NEVER a block decision and
+    # never touches the Warden digest/outcome; flag-gated
+    # (MINDER_SUCCESS_GUARD=advisory, default off = byte-inert); fail-open.
+    if memory_from_hook is not None:
+        try:
+            note = memory_from_hook.success_advisory()
+            if note:
+                sys.stderr.write(note + "\n")
+        except Exception:
+            pass
     return emit(digest, args.transport)
 
 

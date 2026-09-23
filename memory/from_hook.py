@@ -71,7 +71,9 @@ def record(hook_ev, db_path=None, cfg=None):
         if not ev.get("tool"):
             return out  # nothing identifiable — nothing recorded
         if ev.get("event_type") != "tool_failure":
-            return _close_on_success(hook_ev, ev, out, db_path)
+            out = _close_on_success(hook_ev, ev, out, db_path)
+            _observe_success(ev, out, db_path)
+            return out
         ev["failure_key"] = canon.failure_key(ev, ev.get("repo"))
         ev["action_fingerprint"] = canon.action_fingerprint(ev, ev.get("repo"))
         ep = store.find_open_episode(ev.get("task_id") or
@@ -93,6 +95,40 @@ def record(hook_ev, db_path=None, cfg=None):
     except Exception as e:
         out["status"] = f"degraded:{type(e).__name__}"
         return out
+
+
+_LAST_SUCCESS_ADVISORY = None
+
+
+def _observe_success(ev, out, db_path):
+    """Success-loop guard (flag-gated, docs/success-loop-guard-design.md):
+    record the normalized action+result signature and stash an advisory
+    for the hook's model-visible stderr channel. Fails open; without
+    MINDER_SUCCESS_GUARD=advisory this does nothing at all."""
+    global _LAST_SUCCESS_ADVISORY
+    try:
+        from . import success_guard
+        if not success_guard.guard_enabled():
+            return
+        repo = ev.get("repo") or ""
+        result = success_guard.observe(
+            ev.get("session_id") or "unknown", ev.get("tool") or "",
+            canon.action_fingerprint(ev, repo),
+            ev.get("exit_code", 0), str(ev.get("tool_response", "")),
+            db_path=db_path)
+        out["success_advisory"] = result.get("advisory")
+        _LAST_SUCCESS_ADVISORY = result.get("advisory")
+    except Exception:
+        pass
+
+
+def success_advisory():
+    """Advisory from the most recent successful record() in this hook
+    process, or None. Read only when MINDER_SUCCESS_GUARD=advisory."""
+    from . import success_guard
+    if not success_guard.guard_enabled():
+        return None
+    return _LAST_SUCCESS_ADVISORY
 
 
 def _close_on_success(hook_ev, ev, out, db_path):
