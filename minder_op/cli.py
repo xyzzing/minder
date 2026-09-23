@@ -670,6 +670,7 @@ def _cmd_events_show(args, path):
 
 def _cmd_task_declare(args, path):
     from memory import task_context
+    previous = task_context.find_open_context(args.task, db_path=path)
     row, status = task_context.declare_task(
         args.domain, task_id=args.task, actor=args.actor,
         subtask=args.subtask, note=args.note, db_path=path)
@@ -684,6 +685,18 @@ def _cmd_task_declare(args, path):
             ("origin", row["origin"])])
     if status == "switched":
         print("previous context pinned; domain_transitions row recorded")
+    # Phase 2 calibration: shadow what the router WOULD propose against
+    # this human label. Observe-only — the declaration stays
+    # authoritative regardless of what the provider says.
+    from decision import routing
+    shadow = routing.assess_route(
+        declared_domain=args.domain, task_id=args.task,
+        current_domain=(previous or {}).get("domain"),
+        subject_changed=(status == "switched"), record=True, db_path=path)
+    if shadow.get("trace_id"):
+        fmt.kv([("shadow_trace", shadow["trace_id"]),
+                ("shadow_candidate", shadow["candidate_domain"]),
+                ("agrees", shadow["candidate_domain"] == args.domain)])
     return EXIT_OK
 
 

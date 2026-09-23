@@ -296,3 +296,55 @@ def test_cli_weekly_summary_exit_codes(tmp_path, capsys):
 def test_cli_help_lists_weekly_summary(capsys):
     assert main(["--help"]) == EXIT_OK
     assert "weekly-summary" in capsys.readouterr().out
+
+
+def test_summary_domain_section_and_resume_expiry(tmp_path):
+    """The weekly summary now carries the domain layer: declared
+    boundaries, routing traces/agreements/abstentions, and resume
+    intents nearing expiry. Degrades to zeros on stores predating
+    migration 011."""
+    dbp, conn = _mig(tmp_path)
+    try:
+        _ins(conn, "INSERT INTO task_contexts (context_id, task_id,"
+             " actor, domain, subtask, subtask_seq, origin,"
+             " contract_version, opened_at)"
+             " VALUES ('ctx1', 't1', 'operator', 'coding', NULL, 1,"
+             " 'explicit_user', 'domain-route/v1', ?)",
+             ("2026-09-18T09:00:00+00:00",))
+        _ins(conn, "INSERT INTO route_traces (trace_id, ts, contract_id,"
+             " contract_version, declared_domain, candidate_domain,"
+             " transition, abstained, provenance, validation_result)"
+             " VALUES ('rt1', ?, 'domain-route', 'v1', 'coding',"
+             " 'coding', 'stay', 0, 'declared', 'approved')",
+             ("2026-09-18T10:00:00+00:00",))
+        _ins(conn, "INSERT INTO application_intents (intent_id, jd_id,"
+             " jd_digest, assertion_id, chosen_variant, created_at,"
+             " actor, expires_at, status)"
+             " VALUES ('int1', 'jd-a', 'jdd', 'as1', 'led a workstream',"
+             " ?, 'user', '2026-09-24T00:00:00+00:00', 'active')",
+             ("2026-09-16T10:00:00+00:00",))
+    finally:
+        conn.close()
+    report = build_weekly_summary(dbp, days=7, now=NOW)
+    assert report["domain"]["declared_boundaries"] == 1
+    assert report["domain"]["route_traces"] == 1
+    assert report["domain"]["route_agreements"] == 1
+    assert report["domain"]["route_abstentions"] == 0
+    assert report["domain"]["resume_intents_expiring_7d"] == 1
+
+
+def test_summary_domain_degrades_on_pre011_store(tmp_path):
+    """A store without the domain tables (pre-011) must yield zeros
+    gracefully — the read-only summary never migrates or crashes."""
+    dbp, conn = _mig(tmp_path)
+    try:
+        conn.executescript(
+            "DROP TABLE IF EXISTS route_traces;"
+            " DROP TABLE IF EXISTS application_intents;"
+            " DROP TABLE IF EXISTS task_contexts;")
+    finally:
+        conn.close()
+    report = build_weekly_summary(dbp, days=7, now=NOW)
+    assert report["domain"]["available"] is False
+    assert report["domain"]["declared_boundaries"] == 0
+    assert report["domain"]["resume_intents_expiring_7d"] == 0

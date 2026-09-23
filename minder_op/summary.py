@@ -184,8 +184,46 @@ def build_weekly_summary(db_path, days=7, since=None, now=None):
         "benchmarks": {"status": "not available"},
         "note": NOTE,
     }
+    report["domain"] = _domain_section(db_path, win, now)
     report["focus"] = _focus(report)
     return report
+
+
+def _domain_section(db_path, win, now):
+    """Domain-layer counts (Phase 1). Degrades to zeros + available
+    False on stores predating migration 011 — the read-only summary
+    never migrates a database."""
+    start, until = win
+    try:
+        declared = _count(
+            db_path, "SELECT COUNT(*) AS n FROM task_contexts"
+            " WHERE opened_at >= ? AND opened_at < ?", (start, until))
+        traces = _count(
+            db_path, "SELECT COUNT(*) AS n FROM route_traces"
+            " WHERE ts >= ? AND ts < ?", (start, until))
+        agreements = _count(
+            db_path, "SELECT COUNT(*) AS n FROM route_traces"
+            " WHERE ts >= ? AND ts < ? AND provenance = 'declared'"
+            " AND validation_result = 'approved'"
+            " AND candidate_domain = declared_domain", (start, until))
+        abstentions = _count(
+            db_path, "SELECT COUNT(*) AS n FROM route_traces"
+            " WHERE ts >= ? AND ts < ? AND abstained = 1", (start, until))
+        expiring_horizon = (datetime.fromisoformat(until)
+                            + timedelta(days=7)).isoformat()
+        expiring = _count(
+            db_path, "SELECT COUNT(*) AS n FROM application_intents"
+            " WHERE status = 'active' AND expires_at >= ?"
+            " AND expires_at < ?",
+            (until, expiring_horizon))
+        return {"available": True, "declared_boundaries": declared,
+                "route_traces": traces, "route_agreements": agreements,
+                "route_abstentions": abstentions,
+                "resume_intents_expiring_7d": expiring}
+    except Exception:  # noqa: BLE001 — pre-011 store: degrade, don't crash
+        return {"available": False, "declared_boundaries": 0,
+                "route_traces": 0, "route_agreements": 0,
+                "route_abstentions": 0, "resume_intents_expiring_7d": 0}
 
 
 def _focus(report):
@@ -280,6 +318,19 @@ def render_text(report):
         ("overrides", dec["overrides"])])
 
     _section("benchmarks", list(report["benchmarks"].items()))
+
+    domain = report["domain"]
+    if domain["available"]:
+        _section("domain layer", [
+            ("declared boundaries", domain["declared_boundaries"]),
+            ("route traces", domain["route_traces"]),
+            ("route agreements", domain["route_agreements"]),
+            ("route abstentions", domain["route_abstentions"]),
+            ("resume intents expiring (7d)",
+             domain["resume_intents_expiring_7d"])])
+    else:
+        _section("domain layer", [("status", "not available (migrate by "
+                                   "running any minder runtime command)")])
 
     print("operator focus")
     if report["focus"]:

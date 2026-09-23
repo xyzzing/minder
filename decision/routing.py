@@ -131,6 +131,9 @@ def assess_route(*, declared_domain=None, task_id="default",
                                abstained=abstained,
                                abstain_reason=abstain_reason,
                                validation=validation)
+            _log_usage(contract=contract, response=response,
+                       decision=decision, provider=provider,
+                       abstained=abstained)
         return {"policy_transition": decision.policy_decision,
                 "candidate_domain": candidate, "intent_kind": intent,
                 "abstained": abstained, "validation": validation,
@@ -145,6 +148,28 @@ def assess_route(*, declared_domain=None, task_id="default",
 
 def _route_domains():
     return ROUTE_DOMAIN_SET
+
+
+def _log_usage(*, contract, response, decision, provider, abstained):
+    """P0.2 cost capture: one decision_usage ledger event per recorded
+    assessment. Local rules providers burn zero tokens; remote providers
+    report their own counts. Fails open, never blocks routing."""
+    try:
+        import minder
+        minder.log(
+            "routes", "decision_usage",
+            contract_id=contract.contract_id,
+            contract_version=contract.version,
+            provider=getattr(provider, "model_version", ""),
+            model_version=getattr(response, "model_version", "") or "",
+            prompt_tokens=int(getattr(response, "prompt_tokens", 0) or 0),
+            completion_tokens=int(
+                getattr(response, "completion_tokens", 0) or 0),
+            latency_ms=float(getattr(response, "latency_ms", 0.0) or 0.0),
+            abstained=bool(abstained),
+            outcome=decision.policy_decision)
+    except Exception:  # noqa: BLE001 — telemetry must never block
+        pass
 
 
 def _record(*, db_path, contract, session_id, task_id, declared_domain,

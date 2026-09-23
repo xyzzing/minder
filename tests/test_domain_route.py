@@ -3,6 +3,8 @@ the existing decision gateway. The router proposes from the closed menu;
 deterministic Minder validates and records; NOTHING is applied — task
 contexts are never mutated by a router proposal, and every proposal
 leaves a trace separating declared from router-proposed provenance."""
+import os
+
 from memory import db as _db, task_context
 from decision import routing
 from decision.contracts import domain_route_contract
@@ -139,3 +141,32 @@ def test_routes_cli_eval_and_ls(tmp_path, capsys):
     assert "declared" in out and "router_proposed" in out
     assert main(["--db", str(dbp), "routes", "eval", "--declared-domain",
                  "astrology"]) == EXIT_USAGE
+
+
+def test_assess_records_usage_ledger_event(tmp_path, monkeypatch):
+    """P0.2 cost capture: every recorded assessment emits a
+    decision_usage ledger event (tokens 0 for the local rules
+    provider) — the baseline for Phase 2 cost comparisons."""
+    import os
+    dbp = _mig(tmp_path)
+    minder_state = os.environ["MINDER_STATE_DIR"]
+    before = _usage_events(minder_state)
+    routing.assess_route(declared_domain="coding", task_id="t1",
+                         db_path=dbp, record=True)
+    after = _usage_events(minder_state)
+    assert len(after) == len(before) + 1
+    event = after[-1]
+    assert event["event"] == "decision_usage"
+    assert event["contract_id"] == "domain-route"
+    assert event["provider"] == "rules-v1"
+    assert event["prompt_tokens"] == 0  # local rules: no tokens
+
+
+def _usage_events(state_dir):
+    import json
+    path = os.path.join(state_dir, "events.jsonl")
+    if not os.path.exists(path):
+        return []
+    with open(path) as fh:
+        return [json.loads(line) for line in fh if line.strip()
+                and json.loads(line).get("event") == "decision_usage"]
