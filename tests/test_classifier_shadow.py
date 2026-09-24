@@ -54,7 +54,12 @@ def test_shadow_row_written_and_policy_identical(tmp_path, monkeypatch):
     out_without = memory_policy.evaluate(ev, warden, db_path=dbp)
     assert _shadow_rows(dbp) == []
 
+    # This test exercises the shadow *mechanism* with a null inner,
+    # independent of whether laya happens to be installed.
     monkeypatch.setenv("MINDER_CLASSIFIER", "shadow")
+    monkeypatch.setattr(classifier, "get_classifier",
+                        lambda db_path=None: classifier.ShadowClassifier(
+                            None, db_path=dbp))
     out_with = memory_policy.evaluate(ev, warden, db_path=dbp)
 
     assert out_with == out_without  # byte-identical directive
