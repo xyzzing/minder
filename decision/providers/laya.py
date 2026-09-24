@@ -81,6 +81,42 @@ ROUTE_INSTRUCTIONS = {
     "intent_kind": "Advisory: what kind of intent is this?",
 }
 
+TRIAGE_INSTRUCTIONS = {
+    "failure_kind": "What kind of failure is this? Choose the best match "
+                   "from the available failure classes.",
+    "needs_new_evidence": "Does resolving this failure require gathering "
+                          "new evidence (running a command, reading a file, "
+                          "checking the environment) rather than retrying "
+                          "the same action?",
+    "next_step": "Given the failure, attempt count, and available actions, "
+                 "which action should be tried next?",
+}
+
+SKILL_SELECT_INSTRUCTIONS = {
+    "any_skill_applies": "Does at least one of the listed skills "
+                        "directly address this failure? Answer yes only "
+                        "when a skill's trigger or description clearly "
+                        "matches the failure.",
+    "best_skill": "Which listed skill best addresses this failure? "
+                  "Choose 'none' only when no skill clearly applies.",
+}
+
+DIFFICULTY_INSTRUCTIONS = {
+    "difficulty": ("Classify the difficulty of the task. Grade the "
+                   "REASONING the task requires — not its length or the "
+                   "amount of code involved. Pick exactly one label."),
+    "difficulty_score": ("Score the difficulty of the task 0-3. Grade the "
+                         "REASONING the task requires — not its length or "
+                         "the amount of code involved."),
+}
+
+_ALL_INSTRUCTIONS = {
+    **ROUTE_INSTRUCTIONS,
+    **TRIAGE_INSTRUCTIONS,
+    **SKILL_SELECT_INSTRUCTIONS,
+    **DIFFICULTY_INSTRUCTIONS,
+}
+
 
 class LayaSystemOneClient:
     """SystemOneClient over a laya >= 0.3.6 Agent. Maps decision-contract
@@ -95,21 +131,35 @@ class LayaSystemOneClient:
         self.model_version = f"laya/{source}"
 
     def system_one(self, state, questions, model=None, contract=None):
-        from ..types import DecisionResponse, top_two_margin
+        from ..types import DecisionResponse, ScoreQuestion, top_two_margin
         from .fake import FakeClient
         laya_questions = {}
         for question in questions:
             options = getattr(question, "options", None)
-            instructions = ROUTE_INSTRUCTIONS.get(
+            instructions = _ALL_INSTRUCTIONS.get(
                 question.id, f"{question.id}?")
+            if isinstance(question, ScoreQuestion):
+                criteria = (list(question.criteria)
+                            if question.criteria
+                            else [f"level {i}" for i in range(
+                                question.min_value,
+                                question.max_value + 1)])
+                laya_questions[question.id] = {
+                    "type": "score", "instructions": instructions,
+                    "criteria": criteria}
+                continue
             if options is None:  # Noul
                 laya_questions[question.id] = {
                     "type": "noul", "instructions": instructions}
             else:
+                criteria = getattr(question, "criteria", None)
+                if isinstance(criteria, dict) and criteria:
+                    criteria = {o: str(criteria.get(o, o)) for o in options}
+                else:
+                    criteria = {o: o.replace("_", " ") for o in options}
                 laya_questions[question.id] = {
                     "type": "choice", "instructions": instructions,
-                    "criteria": {o: o.replace("_", " ")
-                                 for o in options}}
+                    "criteria": criteria}
         raw = self._agent.predict(_render_state(state), laya_questions)
         answers = raw.get("answers") or {}
         usage = raw.get("usage") or {}
@@ -119,6 +169,15 @@ class LayaSystemOneClient:
         for question in questions:
             options = getattr(question, "options", None)
             answer = answers.get(question.id) or {}
+            if isinstance(question, ScoreQuestion):
+                try:
+                    score = float(answer.get("score"))
+                except (TypeError, ValueError):
+                    score = float(question.min_value)
+                spec[question.id] = min(
+                    float(question.max_value),
+                    max(float(question.min_value), score))
+                continue
             if options is None:
                 try:
                     spec[question.id] = min(1.0, max(
@@ -138,7 +197,11 @@ class LayaSystemOneClient:
                     confidence = 0.0
         spec["confidence"] = confidence
         key = f"laya:{id(self)}"
-        response = FakeClient({key: spec}).system_one(
+        # key_fn=lambda s: key — FakeClient's default _state_key extracts
+        # failure_key from the state, which is absent here (the state is
+        # the rendered routing dict), so the fixture lookup would miss
+        # and fall back to uniform. Pin the key explicitly.
+        response = FakeClient({key: spec}, key_fn=lambda _s: key).system_one(
             key, questions, model=model, contract=contract)
         response.provider = "laya"
         response.model_version = self.model_version
@@ -181,6 +244,29 @@ def _render_state(state):
     return str(state)
 
 
+def _resolve_model_path(repo):
+    """Prefer the local HF snapshot over snapshot_download, which fails
+    when the cache is read-only (the common case for agent sandboxes).
+    MINDER_LAYA_MODEL can point at a local path or an HF repo id."""
+    import os as _os
+    if _os.path.isdir(repo):
+        return repo
+    # HF cache layout: models--<org>--<name>/snapshots/<hash>/
+    safe = repo.replace("/", "--").replace("-", "--")
+    hub_dir = _os.path.expanduser(
+        f"~/.cache/huggingface/hub/models--{repo.replace('/', '--')}")
+    snap_dir = _os.path.join(hub_dir, "snapshots")
+    if _os.path.isdir(snap_dir):
+        entries = sorted(
+            (e for e in _os.listdir(snap_dir)
+             if _os.path.isdir(_os.path.join(snap_dir, e))),
+            reverse=True)
+        if entries:
+            return _os.path.join(snap_dir, entries[0])
+    # fall back to laya's own loader (may need network)
+    return repo
+
+
 def _try_modern():
     try:
         import laya
@@ -190,7 +276,12 @@ def _try_modern():
         repo = os.environ.get("MINDER_LAYA_MODEL",
                               "convaiinnovations/laya")
         device = os.environ.get("MINDER_LAYA_DEVICE", "cpu")
-        agent = laya.load(repo, device=device)
+        path = _resolve_model_path(repo)
+        # suppress the checkpoint's temperature RuntimeWarning
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            agent = laya.Agent(path, device=device)
         return LayaSystemOneClient(agent, source=repo)
     except Exception:
         return None

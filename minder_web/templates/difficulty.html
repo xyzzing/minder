@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>difficulty router <small>(laya decision layer — proxy ledger)</small></h1>
+{% if by_label %}
+  <p class="note">
+    {% for label, n in by_label | dictsort %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}
+    &nbsp;·&nbsp; {{ total }} event{{ '' if total == 1 else 's' }} in ledger
+  </p>
+{% endif %}
+<table>
+  <thead><tr><th>ts</th><th>kind</th><th>label</th><th>score</th>
+      <th>confidence</th><th>band</th><th>effort</th><th>budget</th>
+      <th>max_tokens</th><th>guardrail</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="excerpt">{{ r.ts }}</td>
+      <td>{% if r.event == 'difficulty_shadow' %}
+            <span class="badge badge-resolved">shadow</span>
+          {% else %}
+            <span class="badge badge-verified">routed</span>
+          {% endif %}</td>
+      <td><span class="badge">{{ r.label or '—' }}</span></td>
+      <td>{{ '%.2f' | format(r.score) if r.score is not none else '—' }}</td>
+      <td>{{ '%.2f' | format(r.confidence) if r.confidence is not none else '—' }}</td>
+      <td>{{ r.band or '—' }}</td>
+      <td>{{ r.effort or '—' }}</td>
+      <td>{{ r.budget if r.budget is not none else '—' }}</td>
+      <td>{{ r.max_tokens if r.max_tokens is not none else '—' }}</td>
+      <td>{{ r.guardrail or '—' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10" class="na">no difficulty events yet — the router
+        logs here once it runs (shadow mode observes without changing
+        the request).</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">read-only view of the proxy's <code>events.jsonl</code>
+  ledger. <code>shadow</code> rows are laya's difficulty opinion logged
+  without touching the request; <code>routed</code> rows show the band
+  actually applied (effort / thinking-budget / max-tokens ceiling /
+  spend guardrail). Nothing here feeds policy.</p>
+{% endblock %}

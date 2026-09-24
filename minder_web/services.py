@@ -152,6 +152,127 @@ def decisions_page(db_path, limit=DEFAULT_LIMIT):
     return {"rows": [_safe_row(r, ("failure_key",)) for r in rows]}
 
 
+# Difficulty-router events live in the proxy's raw audit ledger
+# (events.jsonl), not in memory.sqlite — the console reads that file
+# directly, read-only, like the CLI does.
+_DIFFICULTY_EVENTS = ("difficulty_shadow", "difficulty_routed")
+
+
+def difficulty_page(limit=DEFAULT_LIMIT):
+    """Laya difficulty-router events from the proxy ledger, newest
+    first. Shadow rows are observations only (no request change);
+    routed rows show the band actually applied. Missing or unreadable
+    ledger becomes an empty model — the route never 500s."""
+    import json as _json
+    import os as _os
+    from pathlib import Path as _Path
+    # Resolved per call (env overridable) so tests and systemd units can
+    # point the same console at a different ledger — mirrors how the DB
+    # path is resolved per request.
+    state_dir = _Path(_os.environ.get(
+        "MINDER_STATE_DIR",
+        _os.path.expanduser("~/.local/state/minder")))
+    path = state_dir / "events.jsonl"
+    rows = []
+    if path.exists():
+        try:
+            with path.open("rb") as fh:
+                for line in fh.read().splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        ev = _json.loads(line)
+                    except ValueError:
+                        continue
+                    if ev.get("event") not in _DIFFICULTY_EVENTS:
+                        continue
+                    rows.append(ev)
+        except OSError:
+            rows = []
+    # newest first (ledger is append-only, ts ascending)
+    rows.reverse()
+    total = len(rows)
+    rows = rows[:_bounded_limit(limit)]
+    # counts by label for the summary strip
+    by_label = {}
+    for ev in rows:
+        label = ev.get("label") or "?"
+        by_label[label] = by_label.get(label, 0) + 1
+    return {"rows": rows, "limit": _bounded_limit(limit),
+            "total": total, "by_label": by_label}
+
+
+def events_page(db_path, limit=DEFAULT_LIMIT):
+    """Raw observed events, newest first. The episode column comes from
+    a subquery so unlinked events still list."""
+    rows = _try(queries.events, db_path,
+                limit=_bounded_limit(limit), default=[]) or []
+    return {"rows": [_safe_row(r, ("failure_key", "error_excerpt",
+                                    "payload_json")) for r in rows],
+            "limit": _bounded_limit(limit)}
+
+
+def sessions_page(db_path):
+    """Dsh session directories with episode linkage. Reads the dsh
+    session store (~/.dsh/sessions/) and cross-references the
+    episodes table. Read-only; no writes to dsh state."""
+    import os as _os
+    from pathlib import Path as _Path
+    sessions_dir = _Path(_os.path.expanduser("~/.dsh/sessions"))
+    rows = []
+    if sessions_dir.is_dir():
+        # Gather episode task_ids from the DB
+        ep_tasks = set()
+        ep_rows = _try(queries.episodes, db_path, limit=500,
+                       default=[]) or []
+        for r in ep_rows:
+            if r.get("task_id"):
+                ep_tasks.add(r["task_id"])
+        for proj in sorted(sessions_dir.iterdir()):
+            if not proj.is_dir():
+                continue
+            for sess in sorted(proj.iterdir()):
+                if not sess.is_dir():
+                    continue
+                task_id = sess.name
+                has_episodes = task_id in ep_tasks
+                rows.append({
+                    "project": proj.name.strip("-").replace("--", "/")
+                               or proj.name,
+                    "session": task_id,
+                    "has_episodes": has_episodes,
+                })
+    # Newest first by project then session name (dirs are named by
+    # creation order in practice; sort by name as a stable tiebreak)
+    rows.sort(key=lambda r: (r["project"], r["session"]), reverse=True)
+    return {"rows": rows, "total": len(rows)}
+
+
+def skills_page():
+    """Live skill index: metadata only (name, description, triggers,
+    risk) plus whether each body file is present. No body text is
+    served — the console is read-only and bodies are operator-owned."""
+    try:
+        from memory import skill_load
+        rows = []
+        for meta in skill_load.list_skill_metadata():
+            name = meta.get("name")
+            if not name:
+                continue
+            full = skill_load.load_skill(name)
+            rows.append({
+                "name": name,
+                "description": fmt.safe(meta.get("description"), 160),
+                "triggers": ", ".join(str(t) for t in
+                                      meta.get("triggers") or []),
+                "risk_level": meta.get("risk_level") or "?",
+                "body_ok": bool(full and full.get("instructions")),
+            })
+        return {"rows": rows}
+    except Exception:
+        return {"rows": []}
+
+
 def benchmarks_page():
     suites = bench.list_suites()
     baselines = bench.list_baselines()

@@ -100,6 +100,30 @@ def decisions(request: Request, limit: int = services.DEFAULT_LIMIT):
                   services.decisions_page(_db_path(), limit))
 
 
+@app.get("/difficulty")
+def difficulty(request: Request, limit: int = services.DEFAULT_LIMIT):
+    # Reads the proxy's events.jsonl ledger, not the DB — no db_path.
+    return render(request, "difficulty",
+                  services.difficulty_page(limit))
+
+
+@app.get("/events")
+def events(request: Request, limit: int = services.DEFAULT_LIMIT):
+    return render(request, "events",
+                  services.events_page(_db_path(), limit))
+
+
+@app.get("/sessions")
+def sessions(request: Request):
+    return render(request, "sessions",
+                  services.sessions_page(_db_path()))
+
+
+@app.get("/skills")
+def skills(request: Request):
+    return render(request, "skills", services.skills_page())
+
+
 @app.get("/benchmarks")
 def benchmarks(request: Request):
     return render(request, "benchmarks",

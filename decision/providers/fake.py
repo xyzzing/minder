@@ -13,7 +13,7 @@ invents confidence it was not given.
 """
 import json
 
-from ..types import DecisionResponse, top_two_margin
+from ..types import DecisionResponse, ScoreQuestion, top_two_margin
 from .null import NullClient
 
 VERSION = "fake-v1"
@@ -39,9 +39,20 @@ class FakeClient:
         spec = self._fixtures.get(self._key_fn(state)) or {}
         choice_probs = {}
         noul_probs = {}
+        score_values = {}
         margin = 0.0
         primary = None
         for question in questions:
+            if isinstance(question, ScoreQuestion):
+                raw = spec.get(question.id, question.min_value)
+                try:
+                    score = float(raw)
+                except (TypeError, ValueError):
+                    score = float(question.min_value)
+                score_values[question.id] = min(
+                    float(question.max_value),
+                    max(float(question.min_value), score))
+                continue
             options = getattr(question, "options", None)
             if options is None:  # Noul
                 noul_probs[question.id] = min(
@@ -62,6 +73,7 @@ class FakeClient:
             contract_id=contract.contract_id if contract else "",
             contract_version=contract.version if contract else "",
             choice_probs=choice_probs, noul_probs=noul_probs,
+            score_values=score_values,
             confidence=min(1.0, max(0.0, float(spec.get("confidence", 0.0)))),
             top_two_margin=margin, latency_ms=0.0,
             provider="fake", model_version=VERSION)

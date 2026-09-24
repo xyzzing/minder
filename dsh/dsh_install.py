@@ -206,7 +206,17 @@ def ensure_provider_efforts(settings_text, efforts,
         if lines[idx].strip().startswith("reasoningEfforts:"):
             if lines[idx].strip() == declared:
                 return settings_text, "already-present"
-            lines[idx] = " " * 10 + declared + "\n"
+            # A block-style mapping ("reasoningEfforts:" + indented keys)
+            # spans multiple lines — overwriting just this line orphans the
+            # keys and produces invalid YAML. Replace the whole block, not
+            # one line.
+            block_end = idx
+            while block_end + 1 < len(lines) and (
+                    not lines[block_end + 1].strip() or
+                    len(lines[block_end + 1]) -
+                    len(lines[block_end + 1].lstrip()) > 10):
+                block_end += 1
+            lines[idx:block_end + 1] = [" " * 10 + declared + "\n"]
             return "".join(lines), "updated"
         if lines[idx].strip().startswith("- id:"):
             # next model entry starts — insert before it

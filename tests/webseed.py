@@ -88,6 +88,18 @@ def add_consult(dbp, trace_id="tr1", label="helpful", legacy=7):
           (trace_id, label, TS))
 
 
+def seed_difficulty_ledger(state_dir, events):
+    """Write difficulty-router events to a proxy events.jsonl ledger.
+    `events` is a list of dicts (each with at least an 'event' key);
+    they are appended in order (ledger is append-only)."""
+    import json as _json
+    ledger = state_dir / "events.jsonl"
+    with ledger.open("w") as fh:
+        for ev in events:
+            fh.write(_json.dumps(ev) + "\n")
+    return ledger
+
+
 def add_decision(dbp, decision_id="dt1",
                  failure_key=f"bash|keyerror|{HOSTILE}|a.py"):
     _ins(dbp, "INSERT INTO decision_traces (id, ts, contract_id,"

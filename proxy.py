@@ -36,8 +36,13 @@ CONFIG_DIR = pathlib.Path(os.environ.get(
 SHARE_DIR = pathlib.Path(os.environ.get(
     "MINDER_SHARE_DIR", os.path.dirname(os.path.abspath(__file__))))
 SCAN_GATE_BYTES = 4 * 1024 * 1024
-ESC_MARKER = re.compile(r"\[minder\] ESCALATION L[12]\b")
+ESC_MARKER = re.compile(r"\[minder\] ESCALATION L([12])\b")
 RECENT_WINDOW = 4
+# Level-aware escalation (class: auto): a digest marker carries the level.
+# L1 = Standard band, L2 = Deep band (the effort table). Effort names are
+# semantic — pick_effort_level translates them onto the measured vocabulary.
+LEVEL_EFFORT = {1: "high", 2: "xhigh"}
+LEVEL_BUDGET = {1: 2048, 2: 10240}
 # PRD v2 §4.2 consequence modes: DSH signals per-request via X-Minder-Mode.
 # Modes drive ONLY thinking depth + budget; samplers stay preset-driven
 # (cache-stable prefixes matter more than per-mode temperature).
@@ -99,12 +104,22 @@ def flat_params(preset):
     return params
 
 
+def marker_level(req):
+    """Escalation level (1 or 2) of the strongest digest in the recent
+    message window, or None. L3 digests intentionally never match."""
+    best = None
+    for m in (req.get("messages") or [])[-RECENT_WINDOW:]:
+        hit = ESC_MARKER.search(str(m.get("content", "")))
+        if hit:
+            lvl = int(hit.group(1))
+            if best is None or lvl > best:
+                best = lvl
+    return best
+
+
 def marker_in_window(req):
     """True iff a minder escalation digest sits in the recent message window."""
-    for m in (req.get("messages") or [])[-RECENT_WINDOW:]:
-        if ESC_MARKER.search(str(m.get("content", ""))):
-            return True
-    return False
+    return marker_level(req) is not None
 
 
 _pacing_cache = {"mtime": None, "active": False}
@@ -143,25 +158,24 @@ def apply_pipeline(req, session_fp, mode=None):
                 "it is not an upstream model.", "type": "minder_frontier_alias",
                 "code": "frontier_not_forwardable"}}
 
-    marker = marker_in_window(req)
-    if marker:
+    level = marker_level(req)
+    if level:
         # the stateless escalation channel, made auditable: one line per
         # request the digest marker upgraded to think params
-        minder.log(session_fp, "escalation_upgraded", model=req.get("model"))
+        minder.log(session_fp, "escalation_upgraded", model=req.get("model"),
+                   level=level)
     mode = (mode or "").lower().strip()
     if mode == "deep" and sinter_pacing():
         mode = "lean"
         minder.log(session_fp, "thermal_downgrade", model=req.get("model"))
-    escalated = marker or preset.get("class") == "think"
+    escalated = level is not None or preset.get("class") == "think"
     if preset.get("class") == "auto":
         return apply_auto_pipeline(req, preset, escalated, session_fp,
-                                   mode=mode)
-    if preset.get("class") == "auto":
-        return apply_auto_pipeline(req, preset, escalated, session_fp)
+                                   mode=mode, level=level)
     active = PRESETS.get("qwen-think") if (escalated and
                                            PRESETS.get("qwen-think")) else preset
     want = escalated or active.get("class") == "think"
-    if mode and mode in MODE_EFFORT and not marker:
+    if mode and mode in MODE_EFFORT and level is None:
         # consequence mode selects thinking depth (escalation marker wins)
         want = MODE_EFFORT[mode] != "off"
 
@@ -189,46 +203,221 @@ def apply_pipeline(req, session_fp, mode=None):
     return None
 
 
-def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None):
+# Per-session escalation level, for the de-escalation audit trail (the
+# marker aging out of the window used to be silent). Bounded: oldest
+# sessions evicted once the map grows.
+_ESC_SEEN = {}
+_ESC_LOCK = threading.Lock()
+_ESC_MAX = 1024
+
+
+def _note_escalation(session_fp, level):
+    """Track the last seen escalation level per session; log
+    `escalation_downgraded` when a session's level drops or the marker
+    ages out of the recent window. Never raises."""
+    try:
+        with _ESC_LOCK:
+            prev = _ESC_SEEN.get(session_fp)
+            if prev == level:
+                return
+            _ESC_SEEN[session_fp] = level
+            if len(_ESC_SEEN) > _ESC_MAX:
+                _ESC_SEEN.pop(next(iter(_ESC_SEEN)), None)
+        if prev is not None and (level is None or level < prev):
+            minder.log(session_fp, "escalation_downgraded", from_level=prev,
+                       to_level=level)
+    except Exception:
+        pass
+
+
+def _difficulty_state(req):
+    """The task text laya sees: the first user message, redacted and
+    truncated. Never the full conversation — the rubric grades required
+    reasoning, not task length."""
+    for m in req.get("messages") or []:
+        if m.get("role") == "user":
+            try:
+                from memory.canonicalise import redact
+            except Exception:
+                redact = lambda s: s
+            return {"task": redact(str(m.get("content", "")))[:500],
+                    "turn": len(req.get("messages") or [])}
+    return {"task": "", "turn": len(req.get("messages") or [])}
+
+
+def _difficulty_opinion(req, session_fp, cfg, level, client_effort):
+    """Laya fast decision layer: task difficulty prior (never a solver).
+    Returns (label, band) for an active opinion, or None — None means no
+    opinion (off, shadow-logged, or fail-open) and the caller falls through
+    to mode/scheduler. Precedence: this is only consulted when neither the
+    escalation marker nor a client effort is present, so its opinion is
+    always the one that lands (or is shadow-logged)."""
+    try:
+        router = (cfg.get("difficulty_router") or "off").strip().lower()
+        if router not in ("shadow", "active") or level or client_effort:
+            return None
+        from decision.contracts import task_difficulty_contract
+        from decision.difficulty import resolve_difficulty
+        from decision.client import get_decision_client
+        client = get_decision_client()
+        if client is None:
+            return None
+        contract = task_difficulty_contract()
+        state = _difficulty_state(req)
+        response = client.system_one(state, contract.questions,
+                                     contract=contract)
+        resolved = resolve_difficulty(response, contract, cfg)
+        if resolved is None:
+            return None
+        label, band = resolved
+        if router == "shadow":
+            minder.log(session_fp, "difficulty_shadow", label=label,
+                       score=response.score_values.get("difficulty_score"),
+                       confidence=response.confidence, band=band["label"])
+            return None
+        return label, band
+    except Exception:
+        return None  # fail-open: the request proceeds unchanged (Law #2)
+
+
+def _level_budget(level, cfg):
+    """Level-aware thinking budget (Standard/Deep bands), cfg-overridable."""
+    if not level:
+        return None
+    try:
+        if level == 1:
+            return int(cfg.get("l1_budget") or LEVEL_BUDGET[1])
+        return int(cfg.get("l2_budget") or LEVEL_BUDGET[2])
+    except (TypeError, ValueError):
+        return LEVEL_BUDGET.get(level)
+
+
+# --- spending guardrail (auto path only) ---------------------------------
+#
+# Session-scoped thinking-token ledger. When a session's cumulative
+# reasoning tokens exceed `spend_guardrail_tokens` (0 = off), that session's
+# NEXT requests are downgraded one band (deep -> standard -> fast)
+# regardless of source (marker/client/laya/mode). Mirrors the sinter_pacing
+# thermal-downgrade pattern. Bounded: oldest sessions evicted.
+_SPEND_LEDGER = {}
+_SPEND_LOCK = threading.Lock()
+_SPEND_MAX = 1024
+_BAND_ORDER = ("expert_or_ambiguous", "complex", "routine", "mechanical")
+
+
+def _note_spend(session_fp, reasoning_tokens):
+    """Accumulate reasoning tokens for a session. Never raises."""
+    try:
+        if not reasoning_tokens:
+            return
+        with _SPEND_LOCK:
+            total = _SPEND_LEDGER.get(session_fp, 0) + int(reasoning_tokens)
+            _SPEND_LEDGER[session_fp] = total
+            if len(_SPEND_LEDGER) > _SPEND_MAX:
+                _SPEND_LEDGER.pop(next(iter(_SPEND_LEDGER)), None)
+    except (TypeError, ValueError):
+        pass
+
+
+def _spend_capped(session_fp, cfg):
+    """True when the session has exceeded its thinking-token cap."""
+    try:
+        cap = int(cfg.get("spend_guardrail_tokens") or 0)
+    except (TypeError, ValueError):
+        cap = 0
+    if cap <= 0:
+        return False
+    with _SPEND_LOCK:
+        return _SPEND_LEDGER.get(session_fp, 0) > cap
+
+
+def _downgrade_band(band, session_fp, cfg):
+    """Downgrade a band one rung (deep -> standard -> fast) and log it.
+    Returns the downgraded band (or None if already at the floor)."""
+    try:
+        idx = _BAND_ORDER.index(band.get("label"))
+    except ValueError:
+        return None
+    if idx >= len(_BAND_ORDER) - 1:
+        return None
+    lower = _BAND_ORDER[idx + 1]
+    from decision.difficulty import band_for
+    new_band = band_for(lower, cfg)
+    minder.log(session_fp, "spend_guardrail_downgrade",
+               from_label=band.get("label"), to_label=lower)
+    return new_band
+
+
+def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None,
+                        level=None):
     """class: auto — per-request effort scheduling; precedence: escalation
-    marker > client/UI reasoning_effort > X-Minder-Mode > activity classifier.
+    marker (level-aware) > client/UI reasoning_effort > laya difficulty
+    band > X-Minder-Mode > activity classifier.
     A client-passed effort is honored only if it is a known semantic name or
-    in the CAP-measured vocabulary; anything else is ignored (fail-open)."""
+    in the CAP-measured vocabulary; anything else is ignored (fail-open).
+    On escalation the level selects the effort AND the thinking budget
+    (level budget beats X-Minder-Mode); de-escalation is audited."""
     req.update(flat_params(preset))
+    cfg = minder.cfg()
+    _note_escalation(session_fp, level)
     caps = get_caps()
     client_effort = req.pop("reasoning_effort", None)
     accepted = (caps or {}).get("effort_levels") or []
-    if escalated:
-        effort = "high"
+    budget = None
+    guardrail = None
+    if level:
+        effort = LEVEL_EFFORT.get(level, "high")
+        budget = _level_budget(level, cfg)
+        minder.log(session_fp, "auto_effort", effort=effort,
+                   escalated=True, level=level, budget=budget)
     elif client_effort in _KNOWN_EFFORTS or client_effort in accepted:
         effort = client_effort
         minder.log(session_fp, "auto_effort", effort=effort,
                    escalated=False, source="client")
-    elif mode in MODE_EFFORT:
-        effort = MODE_EFFORT[mode]
-        minder.log(session_fp, "auto_effort", effort=effort,
-                   escalated=False, source="mode")
     else:
-        effort = adapter.schedule_effort(req.get("messages"), minder.cfg())
-        minder.log(session_fp, "auto_effort", effort=effort,
-                   escalated=False)
+        opinion = _difficulty_opinion(req, session_fp, cfg, level,
+                                       client_effort)
+        if opinion is not None:
+            label, band = opinion
+            # spending guardrail: a session over its thinking-token cap is
+            # downgraded one band (deep -> standard -> fast) on this request
+            if band.get("guardrail") and _spend_capped(session_fp, cfg):
+                downgraded = _downgrade_band(band, session_fp, cfg)
+                if downgraded is not None:
+                    band = downgraded
+                    label = band["label"]
+            from decision.difficulty import apply_band
+            applied = apply_band(req, band, cfg)
+            effort = applied["effort"]
+            budget = applied["budget"]
+            guardrail = applied["guardrail"]
+            minder.log(session_fp, "difficulty_routed", label=label,
+                       band=band["label"], effort=effort, budget=budget,
+                       max_tokens=applied["max_tokens"],
+                       guardrail=guardrail)
+        elif mode in MODE_EFFORT:
+            effort = MODE_EFFORT[mode]
+            minder.log(session_fp, "auto_effort", effort=effort,
+                       escalated=False, source="mode")
+        else:
+            effort = adapter.schedule_effort(req.get("messages"), cfg)
+            minder.log(session_fp, "auto_effort", effort=effort,
+                       escalated=False)
     want = effort not in (None, "off", "minimal")
     if caps is not None:
         req, degraded = adapter.apply_auto(req, effort, caps, preset)
         if degraded:
             minder.log(session_fp, "l1_degraded")
-        if want and mode in MODE_BUDGET and \
+        if want and (budget or mode in MODE_BUDGET) and \
                 caps.get("thinking", {}).get("thinking_budget_supported"):
             ctk = dict(req.get("chat_template_kwargs") or {})
-            ctk["thinking_budget"] = MODE_BUDGET[mode]
+            ctk["thinking_budget"] = budget or MODE_BUDGET[mode]
             req["chat_template_kwargs"] = ctk
     else:
         req["chat_template_kwargs"] = {"enable_thinking": want}
     um = preset.get("upstream_model")
     if um:
         req["model"] = um
-    if escalated:
-        minder.log(session_fp, "auto_effort", effort=effort, escalated=True)
     return None
 
 
@@ -324,6 +513,8 @@ class Handler(BaseHTTPRequestHandler):
             cd = u.get("completion_tokens_details") or {}
             if isinstance(cd, dict) and cd.get("reasoning_tokens") is not None:
                 details["reasoning_tokens"] = cd["reasoning_tokens"]
+                _note_spend(getattr(self, "_fp", None),
+                            cd["reasoning_tokens"])
             flat = {k: u[k] for k in ("prompt_tokens", "completion_tokens",
                                       "total_tokens") if u.get(k) is not None}
             minder.log(getattr(self, "_fp", None) or "session:passthru",

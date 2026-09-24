@@ -36,6 +36,16 @@ DEFAULTS = {
     # effort scheduling (class: auto traffic; absorbed thinking-levels concept)
     "effort_mode": "off",         # off | auto | fixed
     "effort_fixed_level": "low",  # used when effort_mode == fixed
+    # level-aware escalation (proxy auto path): thinking budgets per
+    # escalation level, Standard/Deep bands of the effort table
+    "l1_budget": 2048,
+    "l2_budget": 10240,
+    # laya fast decision layer (task difficulty prior; never a solver)
+    "difficulty_router": "off",   # off | shadow | active
+    "laya_min_confidence": 0.7,   # below this the router has no opinion
+    "laya_timeout_ms": 1500,      # wall-clock cap on one classify pass
+    "spend_guardrail_tokens": 50000,  # session thinking-token cap (0 = off)
+    "difficulty_bands": {},       # optional per-label band overrides
 }
 
 # §6.1 structural failure signals — never semantic, never model-name based.

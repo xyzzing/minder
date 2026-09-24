@@ -335,7 +335,7 @@ def test_auto_pipeline_effort_modes(proxy_over_mock, tmp_path, monkeypatch):
         body = mock.requests[-1]
         assert body["chat_template_kwargs"] == {"enable_thinking": False}
 
-        # escalation digest overrides everything → high
+        # escalation digest overrides everything → high + Standard budget
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
                            "messages": [{"role": "user",
                                          "content": "what is 2+2?"},
@@ -343,7 +343,8 @@ def test_auto_pipeline_effort_modes(proxy_over_mock, tmp_path, monkeypatch):
                                          "[minder] ESCALATION L1 — retry"}]})
         body = mock.requests[-1]
         assert body["chat_template_kwargs"] == {
-            "enable_thinking": True, "reasoning_effort": "high"}
+            "enable_thinking": True, "reasoning_effort": "high",
+            "thinking_budget": 2048}
         ledger = (tmp_path / "state" / "events.jsonl").read_text()
         assert "auto_effort" in ledger
     finally:
@@ -641,7 +642,7 @@ def test_client_effort_beats_scheduler(proxy_over_mock, tmp_path,
             "enable_thinking": True, "reasoning_effort": "xhigh"}
         assert '"source": "client"' in ledger.read_text()
         # escalation marker beats the client pick (semantic high → xhigh
-        # on the [low, medium, xhigh] vocabulary)
+        # on the [low, medium, xhigh] vocabulary) + Standard budget
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
                            "reasoning_effort": "off",
                            "messages": [
@@ -649,7 +650,8 @@ def test_client_effort_beats_scheduler(proxy_over_mock, tmp_path,
                                {"role": "assistant", "content":
                                 "[minder] ESCALATION L1 — retry"}]})
         assert mock.last_body["chat_template_kwargs"] == {
-            "enable_thinking": True, "reasoning_effort": "xhigh"}
+            "enable_thinking": True, "reasoning_effort": "xhigh",
+            "thinking_budget": 2048}
         # unknown vocabulary value is ignored → scheduler (off for plain)
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
                            "reasoning_effort": "ultramax",
@@ -657,6 +659,303 @@ def test_client_effort_beats_scheduler(proxy_over_mock, tmp_path,
                                          "content": "what is 2+2?"}]})
         assert mock.last_body["chat_template_kwargs"] == {
             "enable_thinking": False}
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+# ---------------------------------------------------------------------------
+# laya fast decision layer (task difficulty prior) + level-aware budgets
+# ---------------------------------------------------------------------------
+
+def _fake_difficulty_client(monkeypatch, label, score, confidence=0.9):
+    """Monkeypatch the decision client to a FakeClient that always answers
+    the given difficulty label/score. Returns the client (for assertions)."""
+    import decision.client as decision_client
+    from decision.providers.fake import FakeClient
+    key = "difficulty-test"
+    client = FakeClient(
+        fixtures={key: {"difficulty": label, "difficulty_score": score,
+                        "confidence": confidence}},
+        key_fn=lambda _s: key)
+    monkeypatch.setattr(decision_client, "get_decision_client",
+                        lambda: client)
+    return client
+
+
+def _difficulty_cfg(tmp_path, router, monkeypatch, **extra):
+    import minder
+    cfg_file = tmp_path / "minder.json"
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(minder, "CFG_PATH", cfg_file)
+    monkeypatch.setattr(minder, "STATE_DIR", tmp_path / "state")
+    cfg = {"effort_mode": "auto", "difficulty_router": router}
+    cfg.update(extra)
+    cfg_file.write_text(json.dumps(cfg))
+    return cfg_file
+
+
+def test_t6_active_band_applied(proxy_over_mock, tmp_path, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "active", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        # plain question, no marker, no client effort, no mode header
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [{"role": "user",
+                                         "content": "refactor this module"}]})
+        body = mock.last_body
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "low",
+            "thinking_budget": 2048}
+        # ceiling caps the client's 32768 down to the routine band's 8192
+        assert body["max_tokens"] == 8192
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_routed" in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t7_marker_beats_laya(proxy_over_mock, tmp_path, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "active", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [
+                               {"role": "user", "content": "2+2?"},
+                               {"role": "assistant", "content":
+                                "[minder] ESCALATION L1 — retry"}]})
+        body = mock.last_body
+        # marker wins: L1 → high + Standard budget (not laya's routine/low)
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "high",
+            "thinking_budget": 2048}
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_routed" not in ledger
+        assert "escalation_upgraded" in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t8_client_effort_beats_laya(proxy_over_mock, tmp_path, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort_levels=["low", "medium", "xhigh"])
+        _difficulty_cfg(tmp_path, "active", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "xhigh",
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        body = mock.last_body
+        # client pick wins: xhigh, no level budget (client path has none)
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "xhigh"}
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_routed" not in ledger
+        assert '"source": "client"' in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t9_shadow_request_untouched(proxy_over_mock, tmp_path, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "shadow", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [{"role": "user",
+                                         "content": "refactor this module"}]})
+        body = mock.last_body
+        # shadow: no budget, no ceiling, scheduler effort (off for plain)
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        assert body["max_tokens"] == 32768
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_shadow" in ledger
+        assert "difficulty_routed" not in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t10_off_zero_behavior_change(proxy_over_mock, tmp_path, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "off", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [{"role": "user",
+                                         "content": "refactor this module"}]})
+        body = mock.last_body
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_shadow" not in ledger
+        assert "difficulty_routed" not in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t11_laya_unavailable_falls_through(proxy_over_mock, tmp_path,
+                                            monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "active", monkeypatch)
+        import decision.client as decision_client
+        monkeypatch.setattr(decision_client, "get_decision_client",
+                            lambda: None)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        body = mock.last_body
+        # no client → falls through to scheduler (off for plain)
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_routed" not in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t12_spend_guardrail_downgrades(proxy_over_mock, tmp_path,
+                                        monkeypatch):
+    mock, srv, url = proxy_over_mock("json_usage")
+    try:
+        write_caps("kwargs")
+        # cap 3; each json_usage reply reports reasoning_tokens=4
+        _difficulty_cfg(tmp_path, "active", monkeypatch,
+                        spend_guardrail_tokens=3)
+        _fake_difficulty_client(monkeypatch, "complex", 2.0)
+        # request 1: ledger 0 → not capped → complex band
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [{"role": "user",
+                                         "content": "migrate the schema"}]})
+        assert mock.last_body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "high",
+            "thinking_budget": 10240}
+        # request 2: ledger now 4 > 3 → downgraded complex → routine
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [{"role": "user",
+                                         "content": "migrate the schema"}]})
+        assert mock.last_body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "low",
+            "thinking_budget": 2048}
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "spend_guardrail_downgrade" in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t13_l1_marker_high_and_standard_budget(proxy_over_mock, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort_levels=["low", "medium", "xhigh"])
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [
+                               {"role": "user", "content": "2+2?"},
+                               {"role": "assistant", "content":
+                                "[minder] ESCALATION L1 — retry"}]})
+        body = mock.last_body
+        # semantic high → xhigh on the measured vocab + Standard budget
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "xhigh",
+            "thinking_budget": 2048}
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t14_l2_marker_xhigh_and_deep_budget(proxy_over_mock, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort_levels=["low", "medium", "xhigh"])
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [
+                               {"role": "user", "content": "2+2?"},
+                               {"role": "assistant", "content":
+                                "[minder] ESCALATION L2 — think harder"}]})
+        body = mock.last_body
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "xhigh",
+            "thinking_budget": 10240}
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t15_level_budget_beats_mode_deep(proxy_over_mock, tmp_path,
+                                          monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "off", monkeypatch)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [
+                               {"role": "user", "content": "2+2?"},
+                               {"role": "assistant", "content":
+                                "[minder] ESCALATION L1 — retry"}]},
+                     headers={"X-Minder-Mode": "deep"})
+        body = mock.last_body
+        # level budget (2048) beats the mode's deep budget (4096)
+        assert body["chat_template_kwargs"]["thinking_budget"] == 2048
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t16_level_budget_cfg_override(proxy_over_mock, tmp_path, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "off", monkeypatch,
+                        l1_budget=3072, l2_budget=16384)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [
+                               {"role": "user", "content": "2+2?"},
+                               {"role": "assistant", "content":
+                                "[minder] ESCALATION L1 — retry"}]})
+        assert mock.last_body["chat_template_kwargs"]["thinking_budget"] == \
+            3072
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [
+                               {"role": "user", "content": "2+2?"},
+                               {"role": "assistant", "content":
+                                "[minder] ESCALATION L2 — think harder"}]})
+        assert mock.last_body["chat_template_kwargs"]["thinking_budget"] == \
+            16384
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_t17_deescalation_audit(proxy_over_mock, tmp_path, monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    ledger = _state_dir(monkeypatch, tmp_path)
+    try:
+        write_caps("kwargs")
+        # same first user message → same session fp across both requests
+        first = {"role": "user", "content": "fix the parser"}
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [first,
+                                        {"role": "assistant", "content":
+                                         "[minder] ESCALATION L1 — retry"}]})
+        # marker ages out of the window → downgrade logged
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [first]})
+        text = ledger.read_text()
+        assert "escalation_downgraded" in text
+        assert '"from_level": 1' in text
+        assert '"to_level": null' in text
     finally:
         clear_caps()
         stop(mock, srv)

@@ -9,7 +9,8 @@ shortlist ids + "none").
 live menu — never a global hardcoded list. Changing criteria means a new
 contract version; the criteria hash stays stable for the frozen parts.
 """
-from .types import ChoiceQuestion, Contract, NoulQuestion, make_contract
+from .types import (ChoiceQuestion, Contract, NoulQuestion, ScoreQuestion,
+                    make_contract)
 
 FAILURE_TRIAGE_ID = "failure-triage"
 SKILL_SELECT_ID = "skill-select"
@@ -61,3 +62,45 @@ def domain_route_contract(transition_options):
          ChoiceQuestion("intent_kind", INTENT_KINDS),
          ChoiceQuestion("transition", tuple(transition_options),
                         runtime_options=True)))
+
+
+# --- task-difficulty/v1: the laya fast decision layer (never a solver) ---
+#
+# One non-autoregressive pass answers BOTH questions: a 4-label typed
+# difficulty (choice) and a 0-3 calibrated score. The rubric text below is
+# the user's spec verbatim — changing it means a new contract version.
+TASK_DIFFICULTY_ID = "task-difficulty"
+TASK_DIFFICULTY_VERSION = "v1"
+
+DIFFICULTY_LABELS = ("mechanical", "routine", "complex",
+                     "expert_or_ambiguous")
+
+DIFFICULTY_CRITERIA = {
+    "mechanical": ("Localized change, explicit intent, obvious path, "
+                   "simple validation."),
+    "routine": ("Normal judgement across few known files, clear acceptance "
+               "criteria."),
+    "complex": ("Multi-file or system design, non-obvious debugging, "
+                "migrations, concurrency, security, or performance."),
+    "expert_or_ambiguous": ("Conflicting or missing requirements, domain "
+                            "expertise, high blast radius, novel "
+                            "architecture, or a human decision is needed."),
+}
+
+DIFFICULTY_SCORE_CRITERIA = (
+    "Explicit local instruction, one obvious change.",
+    "Standard practice, limited reading, 1-3 tests.",
+    "Reconcile multiple files/APIs/edge cases, compare approaches.",
+    "Uncertain causes/trade-offs, architecture, security, concurrency, "
+    "migrations, or production behavior.",
+)
+
+
+def task_difficulty_contract():
+    """Both rubrics travel in the same single system_one pass."""
+    return make_contract(
+        TASK_DIFFICULTY_ID, TASK_DIFFICULTY_VERSION,
+        (ChoiceQuestion("difficulty", DIFFICULTY_LABELS,
+                        criteria=dict(DIFFICULTY_CRITERIA)),
+         ScoreQuestion("difficulty_score", 0, 3,
+                       criteria=DIFFICULTY_SCORE_CRITERIA)))

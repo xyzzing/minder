@@ -22,10 +22,24 @@ class InvalidDistribution(ValueError):
 class ChoiceQuestion:
     """Pick exactly one option. options must be non-empty and unique;
     runtime_options=True means the options come from the live menu per
-    request (e.g. next_step) rather than from frozen contract criteria."""
+    request (e.g. next_step) rather than from frozen contract criteria.
+    criteria (optional) maps option -> rubric definition; it is frozen into
+    the criteria hash and rendered into the model's question text."""
     id: str
     options: tuple
     runtime_options: bool = False
+    criteria: dict = None
+
+
+@dataclass(frozen=True)
+class ScoreQuestion:
+    """A bounded numeric score: expected value in [min_value, max_value].
+    criteria (optional) is the per-level rubric, index-aligned with the
+    range (e.g. 0..3 -> four level definitions)."""
+    id: str
+    min_value: int = 0
+    max_value: int = 3
+    criteria: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -78,10 +92,19 @@ def _criteria_hash(contract_id, version, questions):
 
 def _question_spec(question):
     options = getattr(question, "options", None)
-    return {"kind": type(question).__name__, "id": question.id,
+    spec = {"kind": type(question).__name__, "id": question.id,
             "options": (None if options is None
                         or getattr(question, "runtime_options", False)
                         else list(options))}
+    criteria = getattr(question, "criteria", None)
+    if criteria:
+        spec["criteria"] = (dict(criteria) if isinstance(criteria, dict)
+                            else list(criteria))
+    for key in ("min_value", "max_value"):
+        value = getattr(question, key, None)
+        if value is not None:
+            spec[key] = value
+    return spec
 
 
 def contract_to_json(contract):
@@ -97,11 +120,13 @@ def contract_to_json(contract):
 class DecisionResponse:
     """What a System One client returns for one contract.
     choice_probs: question id -> {option: probability}
-    noul_probs: question id -> P(yes)"""
+    noul_probs: question id -> P(yes)
+    score_values: question id -> numeric score in the question's range"""
     contract_id: str
     contract_version: str
     choice_probs: dict = field(default_factory=dict)
     noul_probs: dict = field(default_factory=dict)
+    score_values: dict = field(default_factory=dict)
     confidence: float = 0.0
     top_two_margin: float = 0.0
     latency_ms: float = 0.0
@@ -111,7 +136,8 @@ class DecisionResponse:
     def validate(self, contract):
         """Raise InvalidDistribution on any malformed probability: wrong
         option sets, out-of-range values, or distributions that do not
-        sum to ~1. Noul questions must be within [0, 1]."""
+        sum to ~1. Noul questions must be within [0, 1]. Score questions must be
+        numeric and within [min_value, max_value]."""
         if self.contract_id and (
                 self.contract_id != contract.contract_id
                 or self.contract_version != contract.version):
@@ -125,6 +151,20 @@ class DecisionResponse:
                 if not 0.0 <= float(value) <= 1.0:
                     raise InvalidDistribution(
                         f"noul {question.id} out of range: {value}")
+                continue
+            if isinstance(question, ScoreQuestion):
+                value = self.score_values.get(question.id)
+                if value is None:
+                    raise InvalidDistribution(
+                        f"missing score: {question.id}")
+                try:
+                    score = float(value)
+                except (TypeError, ValueError):
+                    raise InvalidDistribution(
+                        f"score {question.id} not numeric: {value!r}")
+                if not question.min_value <= score <= question.max_value:
+                    raise InvalidDistribution(
+                        f"score {question.id} out of range: {score}")
                 continue
             probs = self.choice_probs.get(question.id)
             if not isinstance(probs, dict):

@@ -8,7 +8,8 @@ system_one(state, questions, model=None) -> DecisionResponse. Providers:
 
 MINDER_DECISION: unset/off -> None (no decision loop at all);
 "shadow" -> NullClient (log-only glue, Phase 5.5-G); "fake" -> FakeClient
-(dev/tests only — it has no opinions of its own).
+(dev/tests only — it has no opinions of its own); "laya" -> the real
+laya 0.3.6 model (shadow-only; the gate still decides).
 """
 import os
 
@@ -30,13 +31,27 @@ class SystemOneClient:
 
 def get_decision_client():
     """MINDER_DECISION-driven provider selection. Default (unset): None —
-    the whole loop is off and behaviour is byte-identical to Phase 5."""
+    the whole loop is off and behaviour is byte-identical to Phase 5.
+
+    "laya" returns the real laya 0.3.6 model when it is importable and
+    cached locally; otherwise it degrades to NullClient so the shadow
+    loop still runs (uniform + confidence 0) rather than silently
+    disabling itself."""
     try:
         mode = (os.environ.get("MINDER_DECISION") or "").strip().lower()
         if mode == "shadow":
             return NullClient()
         if mode == "fake":
             return FakeClient()
+        if mode == "laya":
+            from .providers.laya import try_laya_client
+            try:
+                timeout_ms = int(os.environ.get("MINDER_LAYA_TIMEOUT_MS",
+                                                "500"))
+            except ValueError:
+                timeout_ms = 500
+            client = try_laya_client(timeout_ms=timeout_ms)
+            return client if client is not None else NullClient()
         return None
     except Exception:
         return None
