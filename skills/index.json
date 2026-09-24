@@ -2,19 +2,52 @@
   {
     "name": "inspect-schema-boundary",
     "description": "Inspect source fixture/contract before mapping edits.",
-    "triggers": ["KeyError", "ValidationError", "schema"],
+    "triggers": [
+      "KeyError",
+      "ValidationError",
+      "schema"
+    ],
     "risk_level": "medium",
     "body": "skills/bodies/inspect-schema-boundary.md",
-    "preconditions": ["repo_version_known"],
-    "verification": ["direct_tests", "downstream_tests"]
+    "preconditions": [
+      "repo_version_known"
+    ],
+    "verification": [
+      "direct_tests",
+      "downstream_tests"
+    ]
   },
   {
     "name": "diagnose-environment",
     "description": "Check runtime, command, env, and permissions before touching code.",
-    "triggers": ["ConnectionRefused", "FileNotFoundError", "ModuleNotFoundError"],
+    "triggers": [
+      "ConnectionRefused",
+      "FileNotFoundError",
+      "ModuleNotFoundError"
+    ],
     "risk_level": "low",
     "body": "skills/bodies/diagnose-environment.md",
     "preconditions": [],
-    "verification": ["environment_checks"]
+    "verification": [
+      "environment_checks"
+    ]
+  },
+  {
+    "name": "diagnose-build-environment",
+    "description": "Check package manager, lockfile, and build tool state before editing code.",
+    "triggers": [
+      "pnpm",
+      "webpack",
+      "domexception",
+      "node_modules",
+      "package.json",
+      "lock.yaml"
+    ],
+    "risk_level": "low",
+    "body": "skills/bodies/diagnose-build-environment.md",
+    "preconditions": [],
+    "verification": [
+      "environment_checks"
+    ]
   }
 ]

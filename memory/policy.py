@@ -372,6 +372,13 @@ def _decision_skill_assist(event, warden_out, directive, cfg=None,
         shortlist = dskill.build_skill_shortlist(ev)  # gate 2 (live index)
         if not shortlist:
             return directive
+        # Deterministic trigger match: when exactly one live skill matches,
+        # it IS the answer. Laya's job narrows to confirming it applies
+        # (gate 3) rather than re-picking from the shortlist (gate 4),
+        # which the model is miscalibrated on.
+        deterministic_match = skill_load.match_skills(ev)
+        single_match = (len(deterministic_match) == 1
+                        and deterministic_match[0] in shortlist)
         contract = dskill.skill_select_response_contract(shortlist)
         state = dstate.build_state(
             goal=ev.get("task_id") or "", failure_key=fkey, count=count,
@@ -379,22 +386,28 @@ def _decision_skill_assist(event, warden_out, directive, cfg=None,
             available_action_ids=tuple(shortlist) + ("none",))
         response = clf.system_one(state, contract.questions,
                                   contract=contract)
-        try:  # gates 3+4: the 0.70 floors
+        try:  # gate 3: the model confirms a skill applies
             applies = float(response.noul_probs.get("any_skill_applies")
                              or 0.0)
         except (TypeError, ValueError):
             applies = 0.0
         if applies < DECISION_SKILL_MIN_APPLIES:
             return directive
-        try:
-            confidence = float(response.confidence or 0.0)
-        except (TypeError, ValueError):
-            confidence = 0.0
-        if confidence < DECISION_SKILL_MIN_CONFIDENCE:
-            return directive
-        chosen = dskill.decide_skill(response, shortlist, contract)
-        if not chosen:  # "none", out-of-shortlist, tied, or invalid
-            return directive
+        if single_match:
+            # Deterministic shortcut: the trigger match is the answer;
+            # gate 3 (model confirmation) replaces gate 4 (model
+            # confidence), which the model is miscalibrated on.
+            chosen = deterministic_match[0]
+        else:
+            try:  # gate 4: the 0.70 confidence floor
+                confidence = float(response.confidence or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            if confidence < DECISION_SKILL_MIN_CONFIDENCE:
+                return directive
+            chosen = dskill.decide_skill(response, shortlist, contract)
+            if not chosen:  # "none", out-of-shortlist, tied, or invalid
+                return directive
         skill = dskill.load_selected_skill(chosen)  # gates 5+10
         if not skill:
             return directive
