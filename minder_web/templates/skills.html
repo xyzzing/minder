@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>skill index <small>(live — metadata only, bodies stay operator-owned)</small></h1>
+<table>
+  <thead><tr><th>name</th><th>description</th><th>triggers</th>
+           <th>risk</th><th>body</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td><code>{{ r.name }}</code></td><td>{{ r.description }}</td>
+        <td>{{ r.triggers }}</td><td>{{ r.risk_level }}</td>
+        <td>{{ "ok" if r.body_ok else "missing" }}</td></tr>
+  {% else %}
+    <tr><td colspan="5" class="na">not available.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

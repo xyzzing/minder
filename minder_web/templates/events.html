@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>events <small>(raw observed events, newest first)</small></h1>
+<table>
+  <thead><tr><th>ts</th><th>type</th><th>tool</th>
+           <th>failure_key</th><th>session</th><th>episode</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ r.ts }}</td><td>{{ r.event_type }}</td>
+        <td>{{ r.tool }}</td><td>{{ r.failure_key }}</td>
+        <td>{{ r.session_id }}</td>
+        <td>{% if r.episode_id %}<a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a>{% else %}—{% endif %}</td></tr>
+  {% else %}
+    <tr><td colspan="6" class="na">not available.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>sessions <small>(dsh session directories with episode linkage)</small></h1>
+<p class="na">{{ total }} session(s) found in <code>~/.dsh/sessions/</code>.</p>
+<table>
+  <thead><tr><th>project</th><th>session</th><th>episodes</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td>{{ r.project }}</td><td><code>{{ r.session }}</code></td>
+        <td>{% if r.has_episodes %}<span class="badge badge-verified">yes</span>{% else %}<span class="badge badge-candidate">no</span>{% endif %}</td></tr>
+  {% else %}
+    <tr><td colspan="3" class="na">no sessions found.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
