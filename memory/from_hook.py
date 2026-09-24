@@ -91,6 +91,19 @@ def record(hook_ev, db_path=None, cfg=None):
             return out
         out["recorded"] = True
         out["event_id"] = eid
+        # Skill-gap check (PR 6): does this failure match any known skill
+        # trigger? If not, and it is environmental or repeating, record a
+        # skill_gaps row. Never raises; never writes SKILLS.md; never
+        # escalates.
+        try:
+            from . import skills as _skills
+            gap_result = _skills.check_skill_gap(ev, db_path=db_path)
+            if gap_result.get("recorded"):
+                out["skill_gap"] = True
+            if gap_result.get("skill"):
+                out["skill_match"] = gap_result["skill"]
+        except Exception:
+            pass
         return out
     except Exception as e:
         out["status"] = f"degraded:{type(e).__name__}"
