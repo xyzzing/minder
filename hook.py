@@ -30,6 +30,36 @@ except Exception:  # memory is optional; the watchdog never depends on it
 FRONTIER_TIMEOUT = int(os.environ.get("MINDER_FRONTIER_TIMEOUT", "60"))
 
 
+def _load_minder_env():
+    """Load operator flags from ~/.config/minder/minder.env (KEY=VALUE) into
+    os.environ at hook startup, so the decision loop and success-loop guard
+    can be switched on persistently (mirrors the frontier.env key store).
+    Fail-open (Law #6): never raises, never blocks the hot path; a missing
+    or malformed file is simply ignored. Real environment variables always
+    win — this only fills in what is not already set."""
+    try:
+        path = os.path.expanduser(
+            os.environ.get("MINDER_ENV",
+                           os.path.join("~/.config/minder", "minder.env")))
+        if not os.path.isfile(path):
+            return
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                if not key:
+                    continue
+                os.environ.setdefault(key, value.strip())
+    except Exception:
+        pass
+
+
+_load_minder_env()
+
+
 def trace_invocation(ev):
     """MINDER_HOOK_TRACE=1 → one line per hook invocation; makes the
     detection tier observable during bring-up without waiting for an

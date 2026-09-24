@@ -179,6 +179,56 @@ def test_session_start_plain_startup_no_brief(tmp_path):
     assert json.loads(proc.stdout) == {}
 
 
+def test_minder_env_loader_activates_flags(tmp_path):
+    """Operator flags in ~/.config/minder/minder.env (KEY=VALUE) are loaded
+    into os.environ at hook startup, fail-open. Observable here: with
+    MINDER_SUCCESS_GUARD=advisory from the file, a tool_success event
+    records a success observation; without the file, nothing is recorded
+    (byte-inert)."""
+    import sqlite3
+    # The loader's default path is ~/.config/minder/minder.env; run_hook
+    # sets HOME=tmp_path, so create it there.
+    envdir = tmp_path / ".config" / "minder"
+    envdir.mkdir(parents=True)
+    (envdir / "minder.env").write_text(
+        "MINDER_SUCCESS_GUARD=advisory\n")
+    ok_event = {"session_id": "env-s1", "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "curl -o x.pdf URL"},
+                "tool_response": "  100 181.2k  0 181.2k  1.24M"}
+    proc = run_hook(ok_event, "dsh", tmp_path)
+    assert proc.returncode == 0
+    dbp = tmp_path / "state" / "memory.sqlite"
+    conn = sqlite3.connect(dbp)
+    try:
+        conn.row_factory = sqlite3.Row
+        n = conn.execute("SELECT COUNT(*) FROM success_observations"
+                         ).fetchone()[0]
+    finally:
+        conn.close()
+    assert n == 1, "flag from minder.env must activate the success guard"
+
+
+def test_minder_env_loader_absent_is_inert(tmp_path):
+    """No minder.env file -> flags stay unset -> success guard byte-inert."""
+    import sqlite3
+    ok_event = {"session_id": "env-s2", "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "curl -o x.pdf URL"},
+                "tool_response": "  100 181.2k  0 181.2k  1.24M"}
+    proc = run_hook(ok_event, "dsh", tmp_path)
+    assert proc.returncode == 0
+    dbp = tmp_path / "state" / "memory.sqlite"
+    conn = sqlite3.connect(dbp)
+    try:
+        conn.row_factory = sqlite3.Row
+        n = conn.execute("SELECT COUNT(*) FROM success_observations"
+                         ).fetchone()[0]
+    finally:
+        conn.close()
+    assert n == 0, "without minder.env the success guard must stay inert"
+
+
 def test_verify_consult_fires_on_frontier_deescalate(tmp_path):
     """G3: L2 key resolves -> one verify consult recorded."""
     cfg = {"fail_threshold": 1, "cooldown_turns": 0, "think_budget": 1,
