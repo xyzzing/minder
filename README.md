@@ -41,16 +41,27 @@ python3 -m minder_op doctor --no-probe          # is an install healthy, and why
 python3 -m minder_op status                     # schema, counts, flags
 python3 -m minder_op weekly-summary             # observed workflow evidence, no claims
 python3 -m minder_op events ls --limit 10       # raw failure events, redacted
+python3 -m minder_op capture                    # is the watchdog recording anything at all?
+python3 -m minder_op scorecard                  # capture, cost, failures, learning, context, hygiene
 
-# localhost read-only console (separate web extra)
+# localhost read-only console (separate web extra) — port 8765, not 8392
 pip install --user -r requirements-web.txt
 minder-web --port 8765 --db ~/.local/state/minder/memory.sqlite
+systemctl --user status minder-web.service      # install.sh ships this unit
 curl -sS http://127.0.0.1:8765/healthz
 ```
 
-`install.sh` leaves `minder-op` / `minder-web` shims in `~/.local/bin`
-(usable from any directory). Without them, run the modules from the repo
-checkout: `python3 -m minder_op …`.
+`capture` and `scorecard` read dsh's own session store (`~/.dsh`, or
+`$MINDER_DSH_HOME`). dsh hooks run inside a file sandbox whose only
+writable path is the session workspace, so they cannot write minder's
+state directory themselves; the loopback `sink.py` sidecar does it for
+them (see [docs/operator-web.md](docs/operator-web.md#capture-how-the-hooks-persist)).
+The console's `/capture`, `/sessions` and `/scorecard` pages show the same
+data.
+
+`install.sh` leaves `minder-op` / `minder-web` / `minder-sink` shims in
+`~/.local/bin` (usable from any directory). Without them, run the modules
+from the repo checkout: `python3 -m minder_op …`.
 
 Exit codes: `0` ok, `1` usage/not-found, `2` DB missing or corrupt. All data
 lives under `~/.local/state/minder/` — nothing leaves the machine.
@@ -120,6 +131,15 @@ Not here yet: multi-user or remote access (by design), models beyond the
 qwen3 presets (untested), Windows, a public docs site, and classifier
 providers that beat the deterministic baseline — the harness will tell
 you when one does.
+
+Worth knowing: dsh runs command hooks inside its file sandbox, whose only
+writable path is the session workspace. A hook therefore cannot write
+`~/.local/state/minder` directly (it gets `EROFS`), and because every hook
+write is fail-open that loss is silent. `sink.py` (a loopback, systemd
+`--user` sidecar) performs those writes and keeps the laya models warm;
+`minder-op capture` is the check that says whether it is working. The
+mechanics and the ten monitored metrics are in
+[docs/operator-web.md](docs/operator-web.md#capture-how-the-hooks-persist).
 
 ## Development
 

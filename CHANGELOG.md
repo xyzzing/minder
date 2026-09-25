@@ -3,6 +3,75 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## Unreleased — dsh capture + console sessions
+
+Fixes the silent loss of every dsh session: hooks fired (50
+`hook/invoked` records in one session), exited 0, and persisted nothing,
+because dsh's `workspace-write` file sandbox made the state directory
+read-only for the hook process and every write is fail-open. See the
+capture section of [docs/operator-web.md](docs/operator-web.md#capture-how-the-hooks-persist).
+
+- **Sink sidecar** (`sink.py`, `minder-sink.service`, loopback-only) —
+  performs the hook's persistence unconfined, over loopback. Ops:
+  `append_jsonl`, `write_state`, `record`, `policy`; `GET /healthz`,
+  `GET /stats`. Client in `memory/sink.py`; **inert and byte-identical
+  when `MINDER_SINK_URL` is unset** (Law #6 preserved).
+- **Latency** — the laya decision/classifier build ran in a fresh process
+  on every tool call (measured 6.1 s per PostToolUse hook, 335 s in one
+  session; p50 5.81 s). The policy pass now runs warm in the sink and only
+  when it can change the outcome. Clean tool calls: ~5.8 s → ~0.10 s.
+- **Capture is observable** — `hook_timing` per invocation, a
+  `capture_probe` per SessionStart, `minder-op capture` and `/capture`
+  comparing hook invocations against persisted records, store freshness,
+  sink reachability and sandbox-mode mix. `minder-op doctor` gained sink
+  and coverage checks and now recognises the production flag values
+  (`MINDER_DECISION=laya`, `MINDER_SUCCESS_GUARD`).
+- **Console sessions** — `/sessions` and `/sessions/{id}` are built from
+  dsh's own surfaces (session logs, projection cache, workspace registry,
+  usage ledger) via the new read-only `minder_op/dsh_sessions.py`: real
+  workspace paths and titles, turns/steps/tokens/context pressure, sandbox
+  and archived badges, episode and event counts, per-session hook p50 and
+  tool breakdown. `/events` gained type/tool/failure-key/session filters
+  and a staleness banner.
+- **Scorecard** — `minder-op scorecard` and `/scorecard`: capture, cost,
+  failures, learning, context and hygiene groups plus a 3-item focus list.
+- **Installer** — stages `sink.py`, writes the `minder-sink` unit and
+  shim, regenerates `hooks.json` with the runtime flags **and** the sink
+  URL, and wires the dsh *profile* layout
+  (`dsh/dsh_install.py profile-apply|profile-check`) instead of silently
+  targeting the now-absent `~/.dsh/settings.yaml`.
+- **Bug fix** — `minder.is_failure` did not recognise the harness's own
+  shell marker `[exit code: N]` (it only matched `exit code N`), so a
+  failed command with no traceback — the common `pytest`/`git`/`make`
+  exit-code-only failure — was classified as a success and never
+  escalated.
+- **Docs** — `docs/operator-web.md` gains the capture mechanics (the
+  sandbox constraint, the sink protocol, the flag-adoption rule, the ten
+  metrics), the new routes and the identity relabelling.
+- **Sink URL and flags are read back from `hooks.json`** — the URL is a
+  deployment fact, so `capture`/`doctor`/the console no longer report
+  "sink not configured" just because the operator's shell lacks the
+  variable; and because the policy pass runs inside the sink, the sink
+  adopts the hook command's `MINDER_*` flags at startup (an explicit unit
+  value still wins) and reports them in `GET /stats`. `capture` warns on
+  any divergence among the tracked policy flags, so a flag that only one
+  of the two processes sees can never be silently inert again (the sink
+  URL is the address, not a behaviour switch, and is excluded).
+- **The console has a unit** (`minder-web.service`, `Restart=always`) —
+  it was started by hand with `nohup`, which is why it kept vanishing and
+  once served stale code against new templates. `minder_web` is now staged
+  into the share like every other module, so the shim and the unit do not
+  depend on the repo's location. The unit is written but left stopped when
+  the optional web extra is missing, and says so.
+- **The sink says it is not a UI** — `GET /` on 8392 returns a
+  plain-text pointer (state dir, `http://127.0.0.1:8765`, `minder-op
+  capture`), because opening that port in a browser used to look like a
+  broken web UI. `GET /healthz` keeps its JSON contract.
+- **Coverage is attribution-checked** — only persisted hook records whose
+  session dsh actually knows count towards coverage, so a synthetic probe
+  cannot make a dead capture path look alive; unattributable rows are
+  reported separately rather than hidden.
+
 ## 0.8 — 2026-09-23
 
 The operator plane (milestones 8A–8E) plus the first two phases of

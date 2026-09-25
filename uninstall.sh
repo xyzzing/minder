@@ -6,14 +6,49 @@ SHARE="$HOME/.local/share/minder"
 CONFIG="$HOME/.config/minder"
 say() { printf '[minder] %s\n' "$*"; }
 
-# 1. stop + remove the unit (never touch the real user session in scratch-HOME tests)
+# 1. stop + remove the units (never touch the real user session in scratch-HOME tests)
 if [ "${MINDER_NO_SYSTEMD:-0}" = "1" ]; then
   say "systemd skipped (MINDER_NO_SYSTEMD=1)"
 else
+  systemctl --user disable --now minder-sink.service 2>/dev/null \
+    && say "sink unit stopped" || say "sink unit not active"
+  systemctl --user disable --now minder-web.service 2>/dev/null \
+    && say "console unit stopped" || say "console unit not active"
   systemctl --user disable --now minder-proxy.service 2>/dev/null \
     && say "unit stopped" || say "unit not active"
+  rm -f "$HOME/.config/systemd/user/minder-sink.service"
+  rm -f "$HOME/.config/systemd/user/minder-web.service"
   rm -f "$HOME/.config/systemd/user/minder-proxy.service"
   systemctl --user daemon-reload 2>/dev/null || true
+fi
+
+# 1b. dsh profile wiring: drop the bridge loader + the insert we appended
+# (the profile's own cordis.yml is never touched).
+if [ -f "$SHARE/dsh/minder-bridge-loader.mjs" ] || \
+   [ -f "$HOME/.dsh/profiles/web/minder-bridge-loader.mjs" ]; then
+  python3 - <<'PYEOF'
+import pathlib
+for name in ("web", "headless"):
+    profile = pathlib.Path.home() / ".dsh" / "profiles" / name
+    loader = profile / "minder-bridge-loader.mjs"
+    if loader.exists():
+        loader.unlink()
+        print(f"removed {loader}")
+    patch = profile / "cordis.patch.yml"
+    if not patch.exists():
+        continue
+    text = patch.read_text()
+    # The insert we appended is exactly: marker, config/configPath,
+    # defaultTimeoutMs. Cut from the marker through that last line.
+    marker = "- insert:\n    - name: ./minder-bridge-loader.mjs\n"
+    if marker in text:
+        start = text.index(marker)
+        tail = text.index("defaultTimeoutMs:", start)
+        end = text.index("\n", tail) + 1
+        patch.write_text((text[:start] + text[end:]).replace("\n\n\n",
+                                                             "\n\n"))
+        print(f"removed the bridge insert from {patch}")
+PYEOF
 fi
 
 # 2. dsh: remove additive provider + plugin entry (backup-verified patcher)

@@ -387,23 +387,218 @@ def _verify_structural(text, expect_provider=True, expect_plugin=True):
 
 
 # ---------------------------------------------------------------------------
+# Profile layout (dsh >= 0.1.5: ~/.dsh/profiles/<name>/{cordis.patch.yml,…})
+# ---------------------------------------------------------------------------
+
+BRIDGE_LOADER = "minder-bridge-loader.mjs"
+BRIDGE_MARKER = "minder-bridge-loader"
+DEFAULT_DSH_HOME = pathlib.Path.home() / ".dsh"
+DEFAULT_PROFILE = "web"
+
+BRIDGE_LOADER_JS = """// minder: file-entry wrapper — package entries carrying a cordis `inject`
+// export silently never mount in the web host (observed on dsh 0.1.5-rc.2),
+// so this file entry imports the bridge package and re-exports its contract.
+// Keep this file next to cordis.patch.yml; remove both to uninstall minder's
+// dsh detection tier.
+import * as bridge from "@deepseek-ai/dsh-hooks-claude-code";
+export const inject = bridge.inject;
+export const Config = bridge.Config;
+export const name = "minder-hooks-bridge";
+export function apply(ctx, config) {
+  return bridge.apply(ctx, config);
+}
+"""
+
+
+def repo_hooks_template():
+    """The hooks.json template that ships beside this file (repo or share)."""
+    return pathlib.Path(__file__).resolve().parent / "hooks.json"
+
+
+def discover_profile(dsh_home):
+    """The profile that has a patched cordis layer, or the default.
+
+    Newer dsh does not keep `settings.yaml` at all: provider/plugin
+    configuration lives per profile. Targeting the legacy file blindly is
+    how the wiring silently stopped applying."""
+    profiles = pathlib.Path(dsh_home) / "profiles"
+    for name in (DEFAULT_PROFILE, "headless"):
+        if (profiles / name / "cordis.patch.yml").exists():
+            return name
+    if profiles.is_dir():
+        for entry in sorted(profiles.iterdir()):
+            if (entry / "cordis.patch.yml").exists():
+                return entry.name
+    return DEFAULT_PROFILE
+
+
+def render_hooks_json(share, sink_url, template=None):
+    """The hook command carries the production flag set (the bridge reads
+    this file once at host start, so this is the only place the runtime
+    flags are declared for dsh) plus the sink URL the confined hook needs
+    to persist anything at all."""
+    text = (template or repo_hooks_template()).read_text()
+    if "__MINDER_SHARE__" not in text:
+        raise SystemExit(
+            f"FAIL: {template or repo_hooks_template()} is not the minder "
+            "hooks template (no __MINDER_SHARE__ placeholder) — refusing to "
+            "guess.")
+    return (text.replace("__MINDER_SHARE__", str(share))
+                .replace("__MINDER_SINK_URL__", str(sink_url)))
+
+
+def write_hooks_json(path, share, sink_url, template=None):
+    path = pathlib.Path(path)
+    text = render_hooks_json(share, sink_url, template)
+    json.loads(text)  # fail before writing anything
+    if path.exists() and path.read_text() == text:
+        return "already-present"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        shutil.copy2(path, path.with_name(
+            path.name + f".minder-{time.strftime('%Y%m%d-%H%M%S')}.bak"))
+    path.write_text(text)
+    return "written"
+
+
+def ensure_bridge_loader(profile_dir):
+    profile_dir = pathlib.Path(profile_dir)
+    target = profile_dir / BRIDGE_LOADER
+    if target.exists() and target.read_text() == BRIDGE_LOADER_JS:
+        return "already-present"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(BRIDGE_LOADER_JS)
+    return "written"
+
+
+def patch_entry(hooks_json, timeout_ms=600000):
+    return ("- insert:\n"
+            f"    - name: ./{BRIDGE_LOADER}\n"
+            "      config:\n"
+            f"        configPath: {hooks_json}\n"
+            f"        defaultTimeoutMs: {timeout_ms}\n")
+
+
+def ensure_patch_entry(profile_dir, hooks_json, timeout_ms=600000):
+    """Append the bridge insert to cordis.patch.yml (idempotent)."""
+    profile_dir = pathlib.Path(profile_dir)
+    patch = profile_dir / "cordis.patch.yml"
+    text = patch.read_text() if patch.exists() else "[]\n"
+    if BRIDGE_MARKER in text:
+        return "already-present"
+    if not text.endswith("\n"):
+        text += "\n"
+    patch.write_text(text + "\n" + patch_entry(hooks_json, timeout_ms))
+    return "written"
+
+
+def check_profile(dsh_home, profile, share, sink_url, hooks_json=None):
+    """Report every wiring point for the profile layout. Returns
+    (ok, [(point, status, detail)])."""
+    dsh_home = pathlib.Path(dsh_home)
+    profile_dir = dsh_home / "profiles" / profile
+    hooks_json = pathlib.Path(hooks_json or (share / "dsh" / "hooks.json"))
+    points = []
+    patch = profile_dir / "cordis.patch.yml"
+    if not patch.exists():
+        points.append(("bridge-entry", "fail",
+                       f"{patch} does not exist — no profile at "
+                       f"{profile_dir}?"))
+    elif BRIDGE_MARKER not in patch.read_text():
+        points.append(("bridge-entry", "fail",
+                       f"the hooks bridge is not inserted in {patch}"))
+    else:
+        points.append(("bridge-entry", "ok", str(patch)))
+    loader = profile_dir / BRIDGE_LOADER
+    points.append(("bridge-loader",
+                   "ok" if loader.exists() else "fail",
+                   str(loader)))
+    if not hooks_json.exists():
+        points.append(("hooks-json", "fail", f"{hooks_json} missing"))
+    else:
+        text = hooks_json.read_text()
+        try:
+            json.loads(text)
+            parsed = "parses"
+        except ValueError as exc:
+            parsed = f"INVALID JSON: {exc}"
+        has_share = str(share) in text
+        has_sink = str(sink_url) in text
+        flags = all(f in text for f in ("MINDER_DECISION=",
+                                        "MINDER_SINK_URL=",
+                                        "MINDER_ASSIST="))
+        status = "ok" if (has_share and has_sink and flags
+                          and parsed == "parses") else "fail"
+        points.append(("hooks-json", status,
+                       f"{hooks_json} ({parsed}; share={has_share} "
+                       f"sink={has_sink} flags={flags})"))
+    ok = all(status == "ok" for _p, status, _d in points)
+    return ok, points
+
+
+def apply_profile(dsh_home, profile, share, sink_url, hooks_json=None):
+    """Wire the three points; caller decides whether to `dsh plugin add`."""
+    dsh_home = pathlib.Path(dsh_home)
+    profile_dir = dsh_home / "profiles" / profile
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    hooks_json = pathlib.Path(hooks_json or (share / "dsh" / "hooks.json"))
+    result = {"profile": profile, "profile_dir": str(profile_dir)}
+    result["hooks-json"] = write_hooks_json(hooks_json, share, sink_url)
+    result["bridge-loader"] = ensure_bridge_loader(profile_dir)
+    result["bridge-entry"] = ensure_patch_entry(profile_dir, hooks_json)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["apply", "remove", "check"])
-    ap.add_argument("--settings", required=True)
+    ap.add_argument("cmd", choices=["apply", "remove", "check",
+                                    "profile-apply", "profile-check"])
+    ap.add_argument("--settings", default=None,
+                    help="legacy ~/.dsh/settings.yaml (optional: modern dsh "
+                         "has no such file)")
     ap.add_argument("--hooks-json", default=None,
                     help="absolute path for the bridge configPath")
     ap.add_argument("--base-url", default="http://127.0.0.1:8390/v1")
     ap.add_argument("--n-ctx", type=int, default=32768)
+    ap.add_argument("--dsh-home", default=str(DEFAULT_DSH_HOME))
+    ap.add_argument("--profile", default=None,
+                    help="dsh profile name (default: auto-discover)")
+    ap.add_argument("--share", default=str(
+        pathlib.Path.home() / ".local/share/minder"))
+    ap.add_argument("--sink-url", default="http://127.0.0.1:8392")
     ap.add_argument("--efforts", default="",
                     help="comma list of CAP-measured effort levels to declare "
                          "on qwen-auto (e.g. off,low,medium,xhigh); empty = "
                          "skip (Law #9: nothing assumed)")
     args = ap.parse_args()
     auto_efforts = [e.strip() for e in args.efforts.split(",") if e.strip()]
+
+    if args.cmd in ("profile-apply", "profile-check"):
+        profile = args.profile or discover_profile(args.dsh_home)
+        share = pathlib.Path(args.share)
+        if args.cmd == "profile-check":
+            ok, points = check_profile(args.dsh_home, profile, share,
+                                       args.sink_url, args.hooks_json)
+            for point, status, detail in points:
+                print(f"{status:4} {point:14} {detail}")
+            print("OK" if ok else "FAIL: profile wiring incomplete")
+            return 0 if ok else 1
+        result = apply_profile(args.dsh_home, profile, share, args.sink_url,
+                               args.hooks_json)
+        for key, value in result.items():
+            print(f"{key}={value}")
+        return 0
+
+    if not args.settings:
+        print("FAIL: --settings is required for the legacy settings.yaml "
+              "commands. On a modern dsh use `profile-apply` / "
+              "`profile-check` instead (settings.yaml no longer exists).",
+              file=sys.stderr)
+        return 2
 
     settings = pathlib.Path(args.settings)
     original = settings.read_text()
