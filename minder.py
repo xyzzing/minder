@@ -52,6 +52,12 @@ DEFAULTS = {
 FAIL_SIGNS = (
     "old_string not found", "string to replace not found", "no match found",
     "exit code 1", "exit code 2", "exit code 127", "exit code 134",
+    # The harness's own shell-result marker is `[exit code: N]` (colon, in
+    # brackets) — see dsh's parseExitStatus. Without these forms a failed
+    # command with no traceback (the common case: `pytest`/`git`/`make`
+    # exit-code-only failures) was classified as a success and therefore
+    # never escalated.
+    "exit code: 1", "exit code: 2", "exit code: 127", "exit code: 134",
     "traceback (most recent call last)", "syntaxerror", "permission denied",
     "error:", "failed:", "command not found", "compilation failed",
 )
@@ -97,13 +103,28 @@ def _read_last_chain():
         return ""
 
 
+def _sink_client():
+    """The sink client when MINDER_SINK_URL is set, else None (inert).
+
+    Hooks run inside DSH's file sandbox and cannot write STATE_DIR; the
+    sidecar does it for them over loopback. Guarded + lazy so minder.py
+    keeps its stdlib-only import graph when the sidecar is not in use."""
+    try:
+        from memory import sink as _sink
+    except Exception:
+        return None
+    try:
+        return _sink if _sink.enabled() else None
+    except Exception:
+        return None
+
+
 def log(task, event, **kw):
     """Ledger (§5.5): append-only JSONL. Privacy: never log response bodies.
     With cfg audit_chain=true each record carries sha256(prev_chain+record) —
     tamper-evident history for audit-grade domains (legal, trading)."""
     global _chain_tail
     try:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
         rec = {"ts": time.time(), "task": task, "event": event, **kw}
         if cfg().get("audit_chain"):
             if _chain_tail is None:  # first chained write in this process
@@ -112,9 +133,13 @@ def log(task, event, **kw):
                 (_chain_tail + json.dumps(rec, sort_keys=True)).encode()
             ).hexdigest()
             _chain_tail = rec["chain"]
+        client = _sink_client()
+        if client is not None and client.append_jsonl("events.jsonl", rec):
+            return
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
         with open(STATE_DIR / "events.jsonl", "a") as f:
             f.write(json.dumps(rec) + "\n")
-    except OSError:
+    except Exception:
         pass
 
 
@@ -175,8 +200,22 @@ def load_state(task):
 
 
 def save_state(task, st):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    _state_path(task).write_text(json.dumps(st))
+    """Persist one session state document (sink first, local fallback)."""
+    text = json.dumps(st)
+    client = _sink_client()
+    if client is not None and client.write_state(task, text):
+        return
+    save_state_local(task, text)
+
+
+def save_state_local(task, text):
+    """The local write path — also the sink's own path, so both sides key
+    the file exactly the same way. Never raises."""
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        _state_path(task).write_text(text)
+    except Exception:
+        pass
 
 
 def snapshot_caps(task):
@@ -395,13 +434,17 @@ def _process(ev, c, out):
 def log_consult(task, key, attempts, error, response):
     """Consult trail (audit seam): one record per L2 frontier consult."""
     try:
+        rec = {"ts": time.time(), "task": task, "key": key,
+               "attempts": attempts,
+               "error": str(error)[:2000],
+               "response": str(response)[:4000]}
+        client = _sink_client()
+        if client is not None and client.append_jsonl("consults.jsonl", rec):
+            return
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         with open(STATE_DIR / "consults.jsonl", "a") as f:
-            f.write(json.dumps({"ts": time.time(), "task": task, "key": key,
-                                "attempts": attempts,
-                                "error": str(error)[:2000],
-                                "response": str(response)[:4000]}) + "\n")
-    except OSError:
+            f.write(json.dumps(rec) + "\n")
+    except Exception:
         pass
 
 

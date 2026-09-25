@@ -29,6 +29,26 @@ class SystemOneClient:
         raise NotImplementedError
 
 
+# The expensive provider (laya) is memoized per process and per mode. A
+# hook process builds it once and exits; the sink sidecar — which lives
+# for the whole session — builds it once *total*, which is what removes
+# the ~3.4 s per-tool-call model construction from the hot path.
+_CLIENTS = {}
+
+
+def warm_status():
+    """Names of the provider instances already built in this process."""
+    out = {}
+    for mode, client in _CLIENTS.items():
+        out[mode] = getattr(client, "provider", "") or type(client).__name__
+    return out
+
+
+def _reset_clients():
+    """Drop memoized providers (tests / config changes)."""
+    _CLIENTS.clear()
+
+
 def get_decision_client():
     """MINDER_DECISION-driven provider selection. Default (unset): None —
     the whole loop is off and behaviour is byte-identical to Phase 5.
@@ -36,7 +56,7 @@ def get_decision_client():
     "laya" returns the real laya 0.3.6 model when it is importable and
     cached locally; otherwise it degrades to NullClient so the shadow
     loop still runs (uniform + confidence 0) rather than silently
-    disabling itself."""
+    disabling itself (memoized: see _CLIENTS)."""
     try:
         mode = (os.environ.get("MINDER_DECISION") or "").strip().lower()
         if mode == "shadow":
@@ -44,6 +64,9 @@ def get_decision_client():
         if mode == "fake":
             return FakeClient()
         if mode == "laya":
+            cached = _CLIENTS.get("laya")
+            if cached is not None:
+                return cached
             from .providers.laya import try_laya_client
             try:
                 timeout_ms = int(os.environ.get("MINDER_LAYA_TIMEOUT_MS",
@@ -51,7 +74,9 @@ def get_decision_client():
             except ValueError:
                 timeout_ms = 500
             client = try_laya_client(timeout_ms=timeout_ms)
-            return client if client is not None else NullClient()
+            client = client if client is not None else NullClient()
+            _CLIENTS["laya"] = client
+            return client
         return None
     except Exception:
         return None

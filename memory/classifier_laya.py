@@ -95,6 +95,13 @@ def try_laya_classifier(timeout_ms=DEFAULT_TIMEOUT_MS):
         return clf
 
 
+def warm_status():
+    """Whether this process already paid the model-build cost — the sink
+    sidecar keeps it warm for every hook that follows."""
+    return {"tried": bool(_CACHE["tried"]),
+            "built": _CACHE["classifier"] is not None}
+
+
 def _build(timeout_ms):
     try:
         # CPU-only law: keep laya off the GPU unless the operator chose one
