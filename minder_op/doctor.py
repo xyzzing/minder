@@ -27,7 +27,11 @@ FLAG_VOCAB = {
     "MINDER_ASSIST": ("off", "retrieve", "block_duplicate_skill",
                       "shadow_suggest", "decision_skill"),
     "MINDER_CLASSIFIER": ("shadow",),
-    "MINDER_DECISION": ("shadow",),
+    # "laya" is the production value (the real model) — omitting it made a
+    # correct install report as a typo.
+    "MINDER_DECISION": ("shadow", "fake", "laya"),
+    # "advisory" is the only enabling value; anything else is inert.
+    "MINDER_SUCCESS_GUARD": ("advisory",),
 }
 FRESH_SECS = 48 * 3600
 STALE_SECS = 7 * 86400
@@ -179,6 +183,70 @@ def run_checks(db_path, probe=True, now=None):
             add("proxy", "info", detail)
     else:
         add("proxy", "info", "probe skipped (--no-probe)")
+
+    # Capture path (added with the sink): a confined hook cannot write the
+    # state dir, so without the sidecar every persistence write is dropped
+    # silently. This is the check that would have caught three days of loss.
+    try:
+        from memory import sink as sink_mod
+        sink_url = sink_mod.sink_url()
+        sink_source = sink_mod.sink_source()
+    except Exception:
+        sink_mod, sink_url, sink_source = None, None, None
+    if not sink_url:
+        add("capture", "warn",
+            "no sink configured (neither MINDER_SINK_URL nor the hook "
+            "command in hooks.json) — dsh hooks run inside the file sandbox "
+            "and cannot write the state dir; their records are dropped "
+            "silently. Run install.sh.")
+    elif not probe:
+        add("capture", "info",
+            f"sink probe skipped (--no-probe); {sink_url}")
+    else:
+        try:
+            stats = sink_mod.stats(timeout_ms=500)
+        except Exception:
+            stats = None
+        ops = (stats or {}).get("ops") or {}
+        ok_ops = sum(int(v.get("ok", 0)) for v in ops.values())
+        failed_ops = sum(int(v.get("failed", 0)) for v in ops.values())
+        if not stats:
+            add("capture", "fail",
+                f"sink declared at {sink_url} ({sink_source}) but "
+                "unreachable — hook writes are being dropped. Start it: "
+                "systemctl --user start minder-sink.service")
+        elif sink_source == "hooks.json" and ok_ops == 0:
+            # Declared and alive, but the running dsh host loaded its hook
+            # command before that URL was written: the one step operators
+            # miss, so it is called out instead of reporting a bare "ok".
+            add("capture", "warn",
+                f"sink reachable at {sink_url} but no hook has ever called "
+                "it — the dsh host reads hooks.json once at startup; "
+                "restart the dsh web host to load it.")
+        else:
+            add("capture", "ok",
+                f"sink reachable at {sink_url} via {sink_source} "
+                f"({ok_ops} ok / {failed_ops} failed op(s))")
+
+    try:
+        from minder_op import capture as capture_mod
+        report = capture_mod.build(db_path, now=now, window_hours=1)
+        cov = report["coverage"]
+        if cov["invocations"] and (cov["ratio"] or 0) < cov["min_ratio"]:
+            add("coverage", "fail",
+                f"hook coverage {cov['ratio']:.0%} in the last hour "
+                f"({cov['persisted']} persisted / {cov['invocations']} "
+                "invocations) — hooks fire but nothing is recorded")
+        elif cov["invocations"]:
+            add("coverage", "ok",
+                f"hook coverage {cov['ratio']:.0%} "
+                f"({cov['persisted']}/{cov['invocations']}) over the "
+                "last hour")
+        else:
+            add("coverage", "info",
+                "no dsh hook invocations in the last hour")
+    except Exception as exc:  # never let a health check crash doctor
+        add("coverage", "info", f"coverage unavailable: {exc}")
 
     suites = bench.list_suites()
     if not suites:

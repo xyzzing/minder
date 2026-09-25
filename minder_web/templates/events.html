@@ -1,17 +1,47 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>events <small>(raw observed events, newest first)</small></h1>
+{% if stale_days %}
+<p class="warn">
+  <strong>stale data:</strong> the newest observed event is {{ stale_days }} day(s) old.
+  That is a capture problem, not an empty queue — check
+  <a href="/capture">capture</a> before drawing conclusions from this page.
+</p>
+{% endif %}
+<form method="get" class="filters">
+  <select name="event_type">
+    <option value="">all types</option>
+    {% for t in filters.types %}
+    <option value="{{ t }}" {% if t == event_type %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+  <select name="tool">
+    <option value="">all tools</option>
+    {% for t in filters.tools %}
+    <option value="{{ t }}" {% if t == tool %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+  <select name="failure_key">
+    <option value="">all failure keys</option>
+    {% for k in filters.failure_keys %}
+    <option value="{{ k }}" {% if k == failure_key %}selected{% endif %}>{{ k }}</option>
+    {% endfor %}
+  </select>
+  <input type="search" name="session" value="{{ session }}" placeholder="session id contains">
+  <button type="submit">filter</button>
+  {% if event_type or tool or failure_key or session %}<a href="/events">reset</a>{% endif %}
+</form>
 <table>
   <thead><tr><th>ts</th><th>type</th><th>tool</th>
            <th>failure_key</th><th>session</th><th>episode</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr><td>{{ r.ts }}</td><td>{{ r.event_type }}</td>
-        <td>{{ r.tool }}</td><td>{{ r.failure_key }}</td>
-        <td>{{ r.session_id }}</td>
+        <td>{{ r.tool }}</td><td class="excerpt">{{ r.failure_key }}</td>
+        <td>{% if r.session_id %}<a href="/sessions/{{ r.session_id }}"><code>{{ r.session_id }}</code></a>{% else %}—{% endif %}</td>
         <td>{% if r.episode_id %}<a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a>{% else %}—{% endif %}</td></tr>
   {% else %}
-    <tr><td colspan="6" class="na">not available.</td></tr>
+    <tr><td colspan="6" class="na">no observed events for this filter{% if not stale_days %} (nothing has failed in the stored window){% endif %}.</td></tr>
   {% endfor %}
   </tbody>
 </table>

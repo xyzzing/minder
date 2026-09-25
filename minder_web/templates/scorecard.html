@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>scorecard <small>(what to improve next, from observed evidence)</small></h1>
+<p class="note">
+  last {{ scores and window_hours }}h (since {{ since }}). Every number is
+  read from data already on this machine — the console adds no collection.
+  "n/a" means the source is empty or unavailable, never zero.
+</p>
+
+<h2>focus</h2>
+{% if focus %}
+<ol class="focus">
+  {% for item in focus %}<li>{{ item }}</li>{% endfor %}
+</ol>
+{% else %}
+<p class="ok">nothing flagged for this window.</p>
+{% endif %}
+
+<h2>capture <small>(observation itself)</small></h2>
+<table class="kv">
+  <tr><th>coverage</th><td>
+    {% if scores.capture.coverage_ratio is none %}not measurable{% else %}
+      <span class="badge {% if scores.capture.coverage_ratio >= scores.capture.min_ratio %}badge-verified{% else %}badge-invalidated{% endif %}">
+        {{ '%.0f%%' % (scores.capture.coverage_ratio * 100) }}</span>
+      ({{ scores.capture.persisted }} / {{ scores.capture.invocations }} hooks)
+    {% endif %}</td></tr>
+  <tr><th>sink</th><td>configured {{ scores.capture.sink_configured }},
+    reachable {{ scores.capture.sink_reachable }}</td></tr>
+  <tr><th>stale stores</th><td>{{ scores.capture.stale_stores | join(', ') or 'none' }}</td></tr>
+</table>
+
+<h2>cost <small>(per tool call)</small></h2>
+<table class="kv">
+  <tr><th>hook p50</th><td>{{ scores.cost.hook_p50_ms or 'n/a' }} ms
+    (worst session {{ scores.cost.hook_p50_ms_max or 'n/a' }} ms,
+    {{ scores.cost.sessions_measured }} measured)</td></tr>
+</table>
+
+<h2>failures</h2>
+<table class="kv">
+  <tr><th>tool failures</th><td>{{ scores.failures.tool_failures if scores.failures.tool_failures is not none else 'n/a' }}</td></tr>
+  <tr><th>repeat failure keys</th><td>{{ scores.failures.repeat_failure_keys if scores.failures.repeat_failure_keys is not none else 'n/a' }}</td></tr>
+  <tr><th>episodes open / opened</th><td>{{ scores.failures.episodes_open if scores.failures.episodes_open is not none else 'n/a' }}
+    / {{ scores.failures.episodes_opened_in_window if scores.failures.episodes_opened_in_window is not none else 'n/a' }}</td></tr>
+</table>
+{% if scores.failures.top_failure_keys %}
+<table>
+  <thead><tr><th>failure key</th><th>failures</th></tr></thead>
+  <tbody>
+  {% for key, n in scores.failures.top_failure_keys %}
+    <tr><td class="excerpt">{{ key }}</td><td>{{ n }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>learning</h2>
+<table class="kv">
+  <tr><th>skill gaps open</th><td>{{ scores.learning.skill_gaps_open if scores.learning.skill_gaps_open is not none else 'n/a' }}</td></tr>
+  <tr><th>lessons verified / candidate</th><td>{{ scores.learning.lessons_verified if scores.learning.lessons_verified is not none else 'n/a' }}
+    / {{ scores.learning.lessons_candidate if scores.learning.lessons_candidate is not none else 'n/a' }}</td></tr>
+  <tr><th>decision traces / shadow rows</th><td>{{ scores.learning.decision_traces if scores.learning.decision_traces is not none else 'n/a' }}
+    / {{ scores.learning.classifier_shadow if scores.learning.classifier_shadow is not none else 'n/a' }}</td></tr>
+</table>
+
+<h2>context</h2>
+<table class="kv">
+  <tr><th>sessions measured</th><td>{{ scores.context.sessions }}
+    (over 80%: {{ scores.context.sessions_over_80pct }},
+    max {{ scores.context.max_pressure_pct }}%)</td></tr>
+  <tr><th>sessions with llm retries</th><td>{{ scores.context.sessions_with_llm_retries }}</td></tr>
+  <tr><th>tokens (dsh usage ledger)</th><td>{{ '{:,}'.format(scores.context.tokens_total) if scores.context.tokens_total else 'n/a' }}</td></tr>
+</table>
+
+<h2>hygiene</h2>
+<table class="kv">
+  <tr><th>sessions</th><td>{{ scores.hygiene.sessions }}</td></tr>
+  <tr><th>without projection cache</th><td>{{ scores.hygiene.without_projection }}</td></tr>
+  <tr><th>without a log file</th><td>{{ scores.hygiene.without_log }}</td></tr>
+  <tr><th>archived</th><td>{{ scores.hygiene.archived }}</td></tr>
+  <tr><th>no capture link</th><td>{{ scores.hygiene.no_capture_link }}</td></tr>
+</table>
+{% endblock %}

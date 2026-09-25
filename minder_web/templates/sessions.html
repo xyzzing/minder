@@ -1,16 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>sessions <small>(dsh session directories with episode linkage)</small></h1>
-<p class="na">{{ total }} session(s) found in <code>~/.dsh/sessions/</code>.</p>
+<h1>sessions <small>(dsh sessions joined with projections, workspace and episodes)</small></h1>
+<p class="note">
+  {{ counts.sessions }} session(s) · {{ counts.with_projection }} with a projection cache ·
+  {{ counts.archived }} archived · showing {{ rows | length }} ({{ sort }} first).
+  Session ids are dsh's own (<code>~/.dsh/sessions/</code>) — the same id the
+  hook records and <code>episodes.task_id</code> carries.
+</p>
+
+<form method="get" class="filters">
+  <input type="search" name="q" value="{{ query }}" placeholder="filter by path, title or id">
+  <select name="sort">
+    {% for option in sorts %}
+    <option value="{{ option }}" {% if option == sort %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">filter</button>
+  {% if query or sort != 'recent' %}<a href="/sessions">reset</a>{% endif %}
+</form>
+
 <table>
-  <thead><tr><th>project</th><th>session</th><th>episodes</th></tr></thead>
+  <thead><tr>
+    <th>project</th><th>title / session</th><th>last seen</th>
+    <th>turns</th><th>steps</th><th>tokens</th><th>context</th>
+    <th>sandbox</th><th>capture</th>
+  </tr></thead>
   <tbody>
   {% for r in rows %}
-    <tr><td>{{ r.project }}</td><td><code>{{ r.session }}</code></td>
-        <td>{% if r.has_episodes %}<span class="badge badge-verified">yes</span>{% else %}<span class="badge badge-candidate">no</span>{% endif %}</td></tr>
+    <tr>
+      <td title="{{ r.project_path }}">{{ r.project_title }}
+        {% if r.archived %}<span class="badge">archived</span>{% endif %}</td>
+      <td>
+        {% if r.title %}<div>{{ r.title }}</div>{% endif %}
+        <a href="/sessions/{{ r.session_id }}"><code>{{ r.session_id }}</code></a>
+        {% if not r.has_projection %}<span class="badge badge-candidate">no projection</span>{% endif %}
+      </td>
+      <td>{{ r.age }}<div class="excerpt">{{ r.format or '?' }} · {{ (r.log_bytes / 1024) | round(0) | int }} KiB</div></td>
+      <td>{{ r.turns if r.turns is not none else '—' }}</td>
+      <td>{{ r.steps if r.steps is not none else '—' }}</td>
+      <td>{{ '{:,}'.format(r.tokens_total) if r.tokens_total else '—' }}</td>
+      <td>{% if r.context_pressure_pct is not none %}{{ r.context_pressure_pct }}%{% else %}—{% endif %}</td>
+      <td>
+        {% if r.sandbox_mode == 'danger-full-access' %}
+          <span class="badge badge-verified">{{ r.sandbox_mode }}</span>
+        {% elif r.sandbox_mode %}
+          <span class="badge badge-candidate">{{ r.sandbox_mode }}</span>
+        {% else %}<span class="badge">unknown</span>{% endif %}
+      </td>
+      <td>
+        {% if r.episode_count %}<a href="/episodes">{{ r.episode_count }} ep</a>{% endif %}
+        {% if r.event_count %}<span class="badge">{{ r.event_count }} ev</span>{% endif %}
+        {% if not r.episode_count and not r.event_count %}<span class="badge">none</span>{% endif %}
+      </td>
+    </tr>
   {% else %}
-    <tr><td colspan="3" class="na">no sessions found.</td></tr>
+    <tr><td colspan="9" class="na">no sessions found — is <code>~/.dsh/sessions/</code> populated?</td></tr>
   {% endfor %}
   </tbody>
 </table>
+<p class="note">
+  "none" means no episode or observed event is linked to that session yet.
+  When a session has hook invocations but nothing captured, open
+  <a href="/capture">capture</a>, which compares the two directly.
+</p>
 {% endblock %}

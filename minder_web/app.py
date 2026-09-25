@@ -108,15 +108,38 @@ def difficulty(request: Request, limit: int = services.DEFAULT_LIMIT):
 
 
 @app.get("/events")
-def events(request: Request, limit: int = services.DEFAULT_LIMIT):
+def events(request: Request, limit: int = services.DEFAULT_LIMIT,
+           event_type: str = None, tool: str = None,
+           failure_key: str = None, session: str = None):
     return render(request, "events",
-                  services.events_page(_db_path(), limit))
+                  services.events_page(_db_path(), limit, event_type, tool,
+                                       failure_key, session))
 
 
 @app.get("/sessions")
-def sessions(request: Request):
+def sessions(request: Request, q: str = None, sort: str = None,
+             limit: int = services.DEFAULT_LIMIT):
     return render(request, "sessions",
-                  services.sessions_page(_db_path()))
+                  services.sessions_page(_db_path(), q, sort, limit))
+
+
+@app.get("/sessions/{session_id}")
+def session(request: Request, session_id: str):
+    detail = services.session_detail_page(_db_path(), session_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return render(request, "session", detail)
+
+
+@app.get("/capture")
+def capture(request: Request):
+    return render(request, "capture", services.capture_page(_db_path()))
+
+
+@app.get("/scorecard")
+def scorecard(request: Request, window_hours: int = 24):
+    return render(request, "scorecard",
+                  services.scorecard_page(_db_path(), window_hours))
 
 
 @app.get("/skills")

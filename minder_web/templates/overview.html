@@ -12,6 +12,25 @@
   <tr><th>schema version</th><td>{{ health.schema_version if health.schema_version is not none else 'not available' }}</td></tr>
 </table>
 
+{% if capture %}
+<h2>capture <small>(is the watchdog recording? — the first thing to check)</small></h2>
+<div class="strip">
+  <span class="stat"><b>
+    {% if capture.coverage.ratio is none %}n/a{% else %}{{ '%.0f%%' % (capture.coverage.ratio * 100) }}{% endif %}
+  </b>coverage ({{ capture.coverage.persisted }} / {{ capture.coverage.invocations }} hooks, {{ capture.window_hours }}h)</span>
+  <span class="stat"><b>{{ capture.sink.configured and 'yes' or 'no' }}</b>sink configured</span>
+  <span class="stat"><b>
+    {% set fresh = capture.stores | selectattr('status', 'equalto', 'fresh') | list | length %}
+    {{ fresh }}/{{ capture.stores | length }}</b>stores fresh</span>
+  <a href="/capture"><b>&rarr;</b>capture detail{% if not capture.ok %} ({{ capture.warnings | length }} warning(s)){% endif %}</a>
+</div>
+{% if not capture.ok %}
+<ul class="focus">
+  {% for warning in capture.warnings[:3] %}<li>{{ warning }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endif %}
+
 <h2>current flags <small>(environment/systemd owned — display only)</small></h2>
 <table>
   <thead><tr><th>flag</th><th>value</th></tr></thead>

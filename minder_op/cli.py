@@ -56,6 +56,24 @@ def build_parser():
                      help="skip the loopback proxy reachability probe")
     doc.add_argument("--json", action="store_true",
                      help="emit the check objects instead of text")
+    cap = sub.add_parser("capture", help=(
+        "capture health: hook invocations vs persisted records, store "
+        "freshness, sink reachability, sandbox modes (read-only)"))
+    cap.add_argument("--json", action="store_true",
+                     help="emit the report object instead of text")
+    cap.add_argument("--window-hours", type=int, default=1,
+                     help="coverage window in hours (default 1)")
+    cap.add_argument("--dsh-home", default=None,
+                     help="dsh home to read sessions from (default ~/.dsh)")
+    sc = sub.add_parser("scorecard", help=(
+        "improvement scorecard: capture, cost, failures, learning, "
+        "context, hygiene (read-only)"))
+    sc.add_argument("--json", action="store_true",
+                     help="emit the report object instead of text")
+    sc.add_argument("--window-hours", type=int, default=24,
+                     help="window in hours (default 24)")
+    sc.add_argument("--dsh-home", default=None,
+                     help="dsh home to read sessions from (default ~/.dsh)")
 
     ev = sub.add_parser("events", help="raw observed events")
     ev_sub = ev.add_subparsers(dest="subcommand", required=True)
@@ -405,6 +423,10 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_consult_show(args, path)
     if command == "decisions" and sub == "ls":
         return _cmd_decisions_ls(args, path)
+    if command == "capture":
+        return _cmd_capture(args, path)
+    if command == "scorecard":
+        return _cmd_scorecard(args, path)
     if command == "export-stats":
         return _cmd_export_stats(args)
     if command == "weekly-summary":
@@ -623,6 +645,69 @@ def _cmd_weekly_summary(args, path):
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         summary.render_text(report)
+    return EXIT_OK
+
+
+def _cmd_capture(args, path):
+    """Capture health: hook invocations vs persisted records."""
+    from minder_op import capture
+    report = capture.build(path, dsh_root=args.dsh_home,
+                           window_hours=args.window_hours)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(_capture_text(report))
+    return EXIT_OK if report["ok"] else EXIT_USAGE
+
+
+def _capture_text(report):
+    lines = [f"minder capture health — last {report['window_hours']}h",
+             f"state_dir: {report['state_dir']}", ""]
+    cov = report["coverage"]
+    ratio = cov["ratio"]
+    lines.append(f"  coverage        "
+                 f"{'n/a' if ratio is None else format(ratio, '.0%')}"
+                 f"  ({cov['persisted']} persisted / {cov['invocations']} "
+                 f"hook invocations in {cov['scanned']} session log(s)"
+                 f"{', truncated' if cov['truncated'] else ''})")
+    for session in cov["sessions"]:
+        p50 = session.get("hook_p50_ms")
+        lines.append(f"    {session['session_id'][:44]:44} "
+                     f"{session['invocations']:>4} invocations  "
+                     f"p50 {'-' if p50 is None else format(p50, '.0f')} ms")
+    lines.append("")
+    for store in report["stores"]:
+        when = ("never" if store["age_s"] is None
+                else f"{store['age']} ago")
+        lines.append(f"  {store['status']:8} {store['name']:20} "
+                     f"last write {when:10}  ({store['file']})")
+    sink = report["sink"]
+    lines.append("")
+    lines.append(f"  sink            configured={sink['configured']} "
+                 f"reachable={sink['reachable']} url={sink['url'] or '-'}")
+    if report["sandbox"]:
+        modes = ", ".join(f"{k}={v}"
+                          for k, v in sorted(report["sandbox"].items()))
+        lines.append(f"  sandbox modes   {modes}")
+    lines.append("")
+    if report["warnings"]:
+        lines.append("warnings")
+        for warning in report["warnings"]:
+            lines.append(f"  - {warning}")
+    else:
+        lines.append("no warnings — capture looks healthy.")
+    return "\n".join(lines)
+
+
+def _cmd_scorecard(args, path):
+    """The improvement scorecard (see docs/dsh-capture.md)."""
+    from minder_op import scorecard
+    report = scorecard.build(path, dsh_root=args.dsh_home,
+                             window_hours=args.window_hours)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(scorecard.render_text(report))
     return EXIT_OK
 
 
@@ -1362,7 +1447,7 @@ def main(argv=None):
         return EXIT_USAGE
     path = _resolve_db(args)
     needs_db = args.command not in ("flags", "export-stats", "benchmark",
-                                    "doctor")
+                                    "doctor", "capture", "scorecard")
     if needs_db:
         code = _guard_db(path)
         if code != EXIT_OK:

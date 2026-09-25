@@ -57,8 +57,8 @@ def _try(fn, *args, default=None, **kwargs):
 
 def overview(db_path):
     """Overview page model: health, env flags, the shared weekly
-    summary object, and the operator focus list (same object as the
-    CLI's weekly-summary)."""
+    summary object, the capture verdict, and the operator focus list
+    (same object as the CLI's weekly-summary)."""
     summary = _try(build_weekly_summary, db_path, default=None)
     try:
         status = queries.status(db_path)
@@ -66,13 +66,20 @@ def overview(db_path):
     except DBError:
         status = None
         db_ok = False
+    capture = capture_page(db_path)
+    # Capture breaks are the one failure that invalidates every other page,
+    # so they come first in the operator focus list.
+    focus = list((summary or {}).get("focus", []))
+    if not capture["ok"]:
+        focus = capture["warnings"][:2] + focus
     return {
         "db_ok": db_ok,
         "health": health(db_path),
         "flags": [{"name": var, "value": os.environ.get(var)
                    or "(unset)"} for var in FLAG_VARS],
         "summary": summary,
-        "focus": (summary or {}).get("focus", []),
+        "capture": capture,
+        "focus": focus[:3],
     }
 
 
@@ -212,40 +219,135 @@ def events_page(db_path, limit=DEFAULT_LIMIT):
             "limit": _bounded_limit(limit)}
 
 
-def sessions_page(db_path):
-    """Dsh session directories with episode linkage. Reads the dsh
-    session store (~/.dsh/sessions/) and cross-references the
-    episodes table. Read-only; no writes to dsh state."""
-    import os as _os
+def sessions_page(db_path, query=None, sort=None, limit=200,
+                  dsh_root=None):
+    """Dsh sessions joined with the projection cache, the workspace
+    registry and the memory DB. Read-only; no writes to dsh state."""
     from pathlib import Path as _Path
-    sessions_dir = _Path(_os.path.expanduser("~/.dsh/sessions"))
-    rows = []
-    if sessions_dir.is_dir():
-        # Gather episode task_ids from the DB
-        ep_tasks = set()
-        ep_rows = _try(queries.episodes, db_path, limit=500,
-                       default=[]) or []
-        for r in ep_rows:
-            if r.get("task_id"):
-                ep_tasks.add(r["task_id"])
-        for proj in sorted(sessions_dir.iterdir()):
-            if not proj.is_dir():
-                continue
-            for sess in sorted(proj.iterdir()):
-                if not sess.is_dir():
-                    continue
-                task_id = sess.name
-                has_episodes = task_id in ep_tasks
-                rows.append({
-                    "project": proj.name.strip("-").replace("--", "/")
-                               or proj.name,
-                    "session": task_id,
-                    "has_episodes": has_episodes,
-                })
-    # Newest first by project then session name (dirs are named by
-    # creation order in practice; sort by name as a stable tiebreak)
-    rows.sort(key=lambda r: (r["project"], r["session"]), reverse=True)
-    return {"rows": rows, "total": len(rows)}
+
+    from minder_op import dsh_sessions
+    linkage = _try(queries.session_linkage, db_path, default={}) or {}
+    model = dsh_sessions.list_sessions(root=dsh_root, db_counts=linkage)
+    rows = model["rows"]
+    if query:
+        needle = str(query).lower()
+        rows = [r for r in rows
+                if needle in (r.get("session_id") or "").lower()
+                or needle in (r.get("project_path") or "").lower()
+                or needle in (r.get("project_title") or "").lower()
+                or needle in (r.get("title") or "").lower()]
+    sort_key = {
+        "recent": lambda r: r.get("mtime") or 0,
+        "project": lambda r: (r.get("project_title") or "",
+                              -(r.get("mtime") or 0)),
+        "tokens": lambda r: r.get("tokens_total") or 0,
+        "steps": lambda r: r.get("steps") or 0,
+        "capture": lambda r: (r.get("event_count") or 0),
+    }
+    if sort in sort_key:
+        rows = sorted(rows, key=sort_key[sort],
+                      reverse=(sort != "project"))
+    total = len(rows)
+    rows = rows[:_bounded_limit(limit)]
+    for row in rows:
+        row["age"] = _age_text(row.get("age_s"))
+        row["capture_ok"] = (row.get("event_count") or 0) > 0
+    return {"rows": rows, "total": total,
+            "counts": model["counts"], "query": query or "",
+            "sort": sort or "recent",
+            "limit": _bounded_limit(limit),
+            "sorts": ("recent", "project", "tokens", "steps", "capture")}
+
+
+def session_detail_page(db_path, session_id, dsh_root=None):
+    """One session: projections, log-derived counters, DB linkage."""
+    from minder_op import dsh_sessions
+    linkage = _try(queries.session_linkage, db_path, default={}) or {}
+    detail = dsh_sessions.session_detail(session_id, root=dsh_root,
+                                         db_counts=linkage)
+    if detail is None:
+        return None
+    detail["age"] = _age_text(detail.get("age_s"))
+    detail["events"] = []
+    episodes = []
+    for episode_id in detail.get("episode_ids") or []:
+        episode = _try(queries.episode, db_path, episode_id, default=None)
+        if episode:
+            episodes.append(_safe_row(episode, ("repo", "task_id")))
+    detail["episodes"] = episodes
+    rows = _try(queries.events, db_path, session_id=session_id,
+                limit=MAX_LIMIT, default=[]) or []
+    detail["events"] = [_safe_row(r, ("failure_key", "error_excerpt",
+                                      "payload_json")) for r in rows][:50]
+    detail["capture_gap"] = (bool(detail.get("hook_invocations"))
+                             and not (detail.get("event_count") or 0))
+    return detail
+
+
+def _age_text(age_s):
+    if age_s is None:
+        return "unknown"
+    try:
+        age = float(age_s)
+    except (TypeError, ValueError):
+        return "unknown"
+    if age < 90:
+        return f"{int(age)}s ago"
+    if age < 48 * 3600:
+        return f"{int(age // 3600)}h ago"
+    return f"{int(age // 86400)}d ago"
+
+
+def capture_page(db_path, dsh_root=None):
+    """Capture health: is the watchdog actually persisting anything?"""
+    from minder_op import capture
+    report = capture.build(db_path, dsh_root=dsh_root)
+    for store in report["stores"]:
+        store["age"] = capture.age_text(store.get("age_s"))
+    for session in report["coverage"].get("sessions") or []:
+        session["short"] = str(session.get("session_id") or "")[8:20]
+    return report
+
+
+def scorecard_page(db_path, window_hours=24, dsh_root=None):
+    """The improvement scorecard as a page model."""
+    from minder_op import scorecard
+    report = scorecard.build(db_path, dsh_root=dsh_root,
+                             window_hours=window_hours)
+    report["focus"] = scorecard._focus(report)
+    return report
+
+
+def events_page(db_path, limit=DEFAULT_LIMIT, event_type=None, tool=None,
+                failure_key=None, session=None):
+    """Raw observed events, newest first, with the filter controls the
+    operator needs to answer "what failed, where, how often"."""
+    rows = _try(queries.events, db_path, failure_key=failure_key,
+                event_type=event_type, tool=tool, limit=_bounded_limit(limit),
+                default=[]) or []
+    if session:
+        rows = [r for r in rows
+                if session in str(r.get("session_id") or "")]
+    filters = _try(queries.event_filter_values, db_path, default={}) or {}
+    last = _try(queries.last_event_ts, db_path, default=None)
+    stale_days = None
+    if last:
+        try:
+            from datetime import datetime, timezone
+            parsed = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - parsed).total_seconds()
+            if age > 86400:
+                stale_days = int(age // 86400)
+        except (TypeError, ValueError):
+            stale_days = None
+    return {"rows": [_safe_row(r, ("failure_key", "error_excerpt",
+                                   "payload_json")) for r in rows],
+            "limit": _bounded_limit(limit),
+            "filters": filters, "event_type": event_type or "",
+            "tool": tool or "", "failure_key": failure_key or "",
+            "session": session or "", "stale_days": stale_days}
 
 
 def skills_page():

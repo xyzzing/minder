@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ title or 'session' }} <small>session detail</small></h1>
+<p class="note">
+  <code>{{ session_id }}</code> · {{ project_title }} ·
+  <span title="{{ project_path }}">{{ project_path }}</span> ·
+  {{ format or '?' }} log · {{ (log_bytes / 1024) | round(0) | int }} KiB ·
+  started {{ created_at }}
+</p>
+
+{% if capture_gap %}
+<p class="warn">
+  <strong>capture gap:</strong> this session has {{ hook_invocations }} hook
+  invocations but nothing persisted ({{ event_count }} events).
+  See <a href="/capture">capture</a> — the hook fired and its writes were
+  dropped.
+</p>
+{% endif %}
+
+<h2>work</h2>
+<table class="kv">
+  <tr><th>goal</th><td>{{ goal or '—' }}</td></tr>
+  <tr><th>last activity</th><td>{{ age }}</td></tr>
+  <tr><th>sandbox</th><td>{{ sandbox_mode or 'unknown' }}
+    ({{ permissions.preset or '?' }} preset, approval {{ permissions.approval or '?' }})</td></tr>
+  <tr><th>turns / steps</th><td>{{ turns if turns is not none else '—' }} /
+    {{ steps if steps is not none else '—' }}</td></tr>
+  <tr><th>tool calls</th><td>{{ stats.tool_calls }}</td></tr>
+  <tr><th>tool failures seen in log</th><td>{{ stats.tool_failures }}</td></tr>
+  <tr><th>llm / tool time</th><td>{{ llm_ms or '—' }} ms /
+    {{ tool_ms or '—' }} ms</td></tr>
+  <tr><th>context pressure</th><td>{% if context_pressure_pct is not none %}{{ context_pressure_pct }}%{% else %}—{% endif %}</td></tr>
+  <tr><th>tokens (total)</th><td>{{ '{:,}'.format(tokens_total) if tokens_total else '—' }}</td></tr>
+</table>
+
+<h2>hook cost <small>(every tool call pays this)</small></h2>
+<table class="kv">
+  <tr><th>invocations / results</th><td>{{ stats.hook_invocations }} /
+    {{ stats.hook_results }}</td></tr>
+  <tr><th>non-zero exits</th><td>{{ stats.hook_failures }}</td></tr>
+  <tr><th>duration p50 / p90 / max</th>
+      <td>{{ hook.p50_ms or '—' }} / {{ hook.p90_ms or '—' }} / {{ hook.max_ms or '—' }} ms
+      (n={{ hook.n }})</td></tr>
+  <tr><th>points</th><td>
+    {% for point, n in hook_points %}<span class="badge">{{ point }}: {{ n }}</span> {% endfor %}
+    {% if not hook_points %}—{% endif %}</td></tr>
+</table>
+{% if not log_stats_available %}
+<p class="note">session log counters unavailable — no readable
+<code>session.vN.jsonl.zstd</code> for this session (zstd reader missing or
+the log is absent).</p>
+{% endif %}
+
+<h2>tools used</h2>
+<table>
+  <thead><tr><th>tool</th><th>calls</th></tr></thead>
+  <tbody>
+  {% for name, n in tools %}
+    <tr><td>{{ name }}</td><td>{{ n }}</td></tr>
+  {% else %}
+    <tr><td colspan="2" class="na">nothing recorded in the log.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>episodes <small>(joined on task_id == session id)</small></h2>
+<table>
+  <thead><tr><th>episode</th><th>status</th><th>opened</th><th>repo</th></tr></thead>
+  <tbody>
+  {% for e in episodes %}
+    <tr><td><a href="/episodes/{{ e.episode_id }}">{{ e.episode_id }}</a></td>
+        <td>{{ e.status }}</td><td>{{ e.opened_at }}</td><td>{{ e.repo }}</td></tr>
+  {% else %}
+    <tr><td colspan="4" class="na">no episode linked to this session.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>observed events</h2>
+<table>
+  <thead><tr><th>ts</th><th>type</th><th>tool</th><th>failure key</th></tr></thead>
+  <tbody>
+  {% for e in events %}
+    <tr><td>{{ e.ts }}</td><td>{{ e.event_type }}</td><td>{{ e.tool }}</td>
+        <td class="excerpt">{{ e.failure_key }}</td></tr>
+  {% else %}
+    <tr><td colspan="4" class="na">nothing observed for this session.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if todos %}
+<h2>todos at last projection</h2>
+<ul>
+  {% for todo in todos %}<li>{{ todo.status }} — {{ todo.content }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

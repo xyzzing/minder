@@ -26,7 +26,11 @@ def test_overview_on_missing_db_never_raises(tmp_path):
     model = services.overview(tmp_path / "nope.sqlite")
     assert model["db_ok"] is False
     assert model["summary"] is None
-    assert model["focus"] == []
+    # The weekly summary is gone, but capture health is independent of the
+    # store and is the higher-priority signal, so focus is not empty when
+    # capture is broken (here: no sink configured).
+    assert model["capture"]["ok"] is False
+    assert any("sink" in item.lower() for item in model["focus"])
     assert model["health"]["status"] == "degraded"
 
 

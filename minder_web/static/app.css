@@ -48,6 +48,29 @@ code { font-family: ui-monospace, monospace; font-size: .85em; background: var(-
 .badge-invalidated, .label-harmful { background: var(--bad-bg); color: var(--bad); }
 .badge-open, .badge-unresolved { background: var(--cand-bg); color: var(--cand); }
 .badge-resolved, .label-inconclusive { background: var(--neutral-bg); color: var(--neutral); }
+.filters {
+  display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+  margin: .8rem 0; padding: .6rem .7rem; background: var(--card);
+  border: 1px solid var(--line); font-size: .85rem;
+}
+.filters input, .filters select, .filters button {
+  font: inherit; padding: .25rem .5rem; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); border-radius: .25rem;
+}
+.filters input[type="search"] { min-width: 16rem; }
+.filters button { cursor: pointer; }
+.warn { background: var(--bad-bg); color: var(--bad); padding: .5rem .7rem;
+        border-radius: .25rem; border: 1px solid var(--bad-bg); }
+.ok { background: var(--ok-bg); color: var(--ok); padding: .5rem .7rem;
+      border-radius: .25rem; border: 1px solid var(--ok-bg); }
+.strip { display: flex; flex-wrap: wrap; gap: .5rem; margin: .6rem 0; }
+.strip a, .strip span.stat {
+  display: block; padding: .45rem .7rem; background: var(--card);
+  border: 1px solid var(--line); border-radius: .25rem;
+  color: var(--ink); text-decoration: none; font-size: .85rem;
+}
+.strip a:hover { border-color: var(--muted); }
+.strip .stat b { display: block; font-size: 1.05rem; }
 footer {
   max-width: 68rem; margin: 2rem auto; padding: 0 1.2rem;
   color: var(--muted); font-size: .8rem;

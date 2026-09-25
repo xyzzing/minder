@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>capture <small>(is the watchdog actually recording anything?)</small></h1>
+<p class="note">
+  Every hook write is fail-open: a confined hook that cannot write the state
+  directory still exits 0. The only reliable symptom is the gap between
+  <em>hook invocations</em> (dsh's own session logs) and <em>persisted
+  records</em> — compared below.
+</p>
+
+<h2>verdict</h2>
+{% if ok %}
+<p class="ok"><strong>capture healthy</strong> — no warnings in the last {{ window_hours }}h.</p>
+{% else %}
+<ul class="focus">
+  {% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<h2>coverage <small>(last {{ window_hours }}h)</small></h2>
+<table class="kv">
+  <tr><th>hook invocations (from session logs)</th><td>{{ coverage.invocations }}
+    ({{ coverage.scanned }} log(s) scanned{% if coverage.truncated %}, truncated{% endif %})</td></tr>
+  <tr><th>persisted hook records</th><td>{{ coverage.persisted }}
+    (ledger {{ coverage.persisted_ledger }}, db {{ coverage.persisted_db if coverage.persisted_db is not none else 'n/a' }})</td></tr>
+  <tr><th>ratio</th><td>
+    {% if coverage.ratio is none %}not measurable{% else %}
+      <span class="badge {% if coverage.ratio >= coverage.min_ratio %}badge-verified{% else %}badge-invalidated{% endif %}">
+        {{ '%.0f%%' % (coverage.ratio * 100) }}</span>
+      (floor {{ '%.0f%%' % (coverage.min_ratio * 100) }})
+    {% endif %}</td></tr>
+</table>
+
+{% if coverage.sessions %}
+<table>
+  <thead><tr><th>session</th><th>invocations</th><th>hook p50</th></tr></thead>
+  <tbody>
+  {% for s in coverage.sessions %}
+    <tr><td><a href="/sessions/{{ s.session_id }}"><code>{{ s.short }}…</code></a></td>
+        <td>{{ s.invocations }}</td>
+        <td>{% if s.hook_p50_ms is not none %}{{ s.hook_p50_ms }} ms{% else %}—{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>stores</h2>
+<table>
+  <thead><tr><th>store</th><th>file</th><th>last write</th><th>status</th></tr></thead>
+  <tbody>
+  {% for s in stores %}
+    <tr><td>{{ s.name }}</td><td class="excerpt">{{ s.file }}</td>
+        <td>{{ s.age }} ago</td>
+        <td><span class="badge {% if s.status == 'fresh' %}badge-verified{% elif s.status == 'warn' %}badge-candidate{% else %}badge-invalidated{% endif %}">{{ s.status }}</span></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>sink <small>(the sandboxed hook's write path)</small></h2>
+<table class="kv">
+  <tr><th>configured</th><td>{{ 'yes' if sink.configured else 'no — confined hooks cannot persist' }}</td></tr>
+  <tr><th>url</th><td>{{ sink.url or '—' }}</td></tr>
+  <tr><th>reachable</th><td>{{ 'yes' if sink.reachable else 'no' }}</td></tr>
+  {% if sink.stats %}
+  <tr><th>ops</th><td>
+    {% for op, counts in sink.stats.ops | dictsort %}
+      <span class="badge">{{ op }}: {{ counts.ok }} ok{% if counts.failed %} / {{ counts.failed }} failed{% endif %}</span>
+    {% endfor %}
+  </td></tr>
+  <tr><th>warm providers</th><td><code>{{ sink.stats.warm }}</code></td></tr>
+  <tr><th>last persist</th><td>{{ sink.stats.last_persist_ts or '—' }}</td></tr>
+  {% endif %}
+</table>
+
+<h2>sandbox modes <small>(why some sessions can write and others cannot)</small></h2>
+<table>
+  <thead><tr><th>mode</th><th>sessions</th></tr></thead>
+  <tbody>
+  {% for mode, n in sandbox | dictsort %}
+    <tr><td>{{ mode }}</td><td>{{ n }}</td></tr>
+  {% else %}
+    <tr><td colspan="2" class="na">no projection data.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">state dir: <code>{{ state_dir }}</code> · generated
+  {{ now | int }} (unix seconds).</p>
+{% endblock %}

@@ -22,6 +22,9 @@ def build_parser():
     parser.add_argument("--db",
                         help="memory sqlite path (default: the "
                              "standard minder state location)")
+    parser.add_argument("--dsh-home",
+                        help="dsh home to read sessions/projections from "
+                             "(default: $MINDER_DSH_HOME or ~/.dsh)")
     return parser
 
 
@@ -35,6 +38,8 @@ def main(argv=None):
         return 1
     if args.db:
         os.environ["MINDER_WEB_DB"] = args.db
+    if args.dsh_home:
+        os.environ["MINDER_DSH_HOME"] = args.dsh_home
     import uvicorn
     from minder_web.app import app
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

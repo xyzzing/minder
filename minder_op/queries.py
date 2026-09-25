@@ -202,7 +202,7 @@ def decisions(path, limit=25):
 
 
 def events(path, failure_key=None, event_type=None, episode_id=None,
-           limit=25):
+           session_id=None, tool=None, limit=25):
     """Raw observed events, newest first. The episode column comes
     from a subquery so unlinked events still list."""
     sql = ("SELECT e.*, (SELECT ee.episode_id FROM episode_events ee"
@@ -215,6 +215,12 @@ def events(path, failure_key=None, event_type=None, episode_id=None,
     if event_type:
         sql += " AND e.event_type = ?"
         params.append(event_type)
+    if tool:
+        sql += " AND e.tool = ?"
+        params.append(tool)
+    if session_id:
+        sql += " AND e.session_id = ?"
+        params.append(session_id)
     if episode_id:
         sql += (" AND e.event_id IN (SELECT event_id FROM episode_events"
                 " WHERE episode_id = ?)")
@@ -235,3 +241,51 @@ def event(path, event_id):
 def last_event_ts(path):
     row = _one(path, "SELECT MAX(ts) AS last FROM events")
     return row["last"] if row else None
+
+
+def session_linkage(path):
+    """{task_id: {"episode_ids": [...], "event_count": n}}.
+
+    `episodes.task_id` and `events.session_id` carry the DSH session id
+    (`session-<uuid>`), which is also the session directory name — this is
+    the join the console's sessions view needs, computed in one pass so a
+    page render never issues per-session queries."""
+    out = {}
+    for row in _rows(path, "SELECT episode_id, task_id FROM episodes"
+                           " WHERE task_id IS NOT NULL"
+                           " ORDER BY opened_at DESC"):
+        task = row["task_id"]
+        entry = out.setdefault(task, {"episode_ids": [], "event_count": 0})
+        entry["episode_ids"].append(row["episode_id"])
+    for row in _rows(path, "SELECT session_id, COUNT(*) AS n FROM events"
+                           " WHERE session_id IS NOT NULL"
+                           " GROUP BY session_id"):
+        entry = out.setdefault(row["session_id"],
+                               {"episode_ids": [], "event_count": 0})
+        entry["event_count"] = int(row["n"] or 0)
+    return out
+
+
+def event_types(path, limit=200):
+    """Distinct event types with counts, most frequent first."""
+    return _rows(path, "SELECT event_type, COUNT(*) AS n FROM events"
+                       " GROUP BY event_type ORDER BY n DESC LIMIT ?",
+                 (int(limit),))
+
+
+def event_filter_values(path):
+    """Distinct values for the /events filter controls."""
+    return {
+        "types": [r["event_type"] for r in
+                  _rows(path, "SELECT DISTINCT event_type FROM events"
+                              " ORDER BY event_type")],
+        "tools": [r["tool"] for r in
+                  _rows(path, "SELECT DISTINCT tool FROM events"
+                              " WHERE tool IS NOT NULL AND tool <> ''"
+                              " ORDER BY tool")],
+        "failure_keys": [r["failure_key"] for r in
+                         _rows(path, "SELECT DISTINCT failure_key FROM events"
+                                     " WHERE failure_key IS NOT NULL"
+                                     " ORDER BY failure_key LIMIT 100")],
+    }
+
