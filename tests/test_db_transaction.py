@@ -10,8 +10,9 @@ from minder_memory import db as _db
 from minder_memory import resume_evidence
 
 INSERT = ("INSERT INTO career_assertions (assertion_id, created_at, "
-          "subject_digest, claim_text, wording_variants_json) VALUES "
-          "('a1', '2026-01-01T00:00:00Z', 'd1', 'claim', '[]')")
+          "subject_digest, claim_text, wording_variants_json, actor) "
+          "VALUES ('a1', '2026-01-01T00:00:00Z', 'd1', 'claim', '[]', "
+          "'user')")
 
 
 def _count(dbp, table):
