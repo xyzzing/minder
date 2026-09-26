@@ -22,9 +22,7 @@ def record_decision(db_path=None, contract_id="", contract_version="",
         trace_id = f"dt_{uuid.uuid4().hex[:12]}"
         menu_json = json.dumps(list(menu or []))
         state_hash = hashlib.sha256(str(state or "").encode()).hexdigest()[:16]
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO decision_traces (id, ts, contract_id,"
                 " contract_version, session_id, failure_key, state_hash,"
@@ -45,10 +43,7 @@ def record_decision(db_path=None, contract_id="", contract_version="",
                  getattr(response, "provider", ""),
                  getattr(response, "model_version", ""),
                  _as_float(getattr(response, "latency_ms", 0.0))))
-            conn.execute("COMMIT")
-            return trace_id
-        finally:
-            conn.close()
+        return trace_id
     except Exception:
         return None
 

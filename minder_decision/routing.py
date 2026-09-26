@@ -192,31 +192,27 @@ def _record(*, db_path, contract, session_id, task_id, declared_domain,
             candidate, intent, response, decision, abstained,
             abstain_reason, validation):
     trace_id = f"rt_{uuid.uuid4().hex[:12]}"
-    conn = _db.connect(db_path)
     try:
-        conn.execute("BEGIN IMMEDIATE")
-        conn.execute(
-            "INSERT INTO route_traces (trace_id, ts, contract_id,"
-            " contract_version, session_id, task_id, declared_domain,"
-            " candidate_domain, transition, intent_kind, confidence,"
-            " abstained, abstain_reason, provider, model_version,"
-            " provenance, validation_result, latency_ms)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-            " ?, ?)",
-            (trace_id, datetime.now(timezone.utc).isoformat(),
-             contract.contract_id, contract.version, session_id, task_id,
-             declared_domain, candidate, decision.policy_decision, intent,
-             float(decision.confidence or 0.0), 1 if abstained else 0,
-             abstain_reason,
-             response.provider or "", response.model_version or "",
-             "declared" if validation == "approved" else "router_proposed",
-             validation, float(response.latency_ms or 0.0)))
-        conn.execute("COMMIT")
+        with _db.transaction(db_path) as conn:
+            conn.execute(
+                "INSERT INTO route_traces (trace_id, ts, contract_id,"
+                " contract_version, session_id, task_id, declared_domain,"
+                " candidate_domain, transition, intent_kind, confidence,"
+                " abstained, abstain_reason, provider, model_version,"
+                " provenance, validation_result, latency_ms)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+                " ?, ?)",
+                (trace_id, datetime.now(timezone.utc).isoformat(),
+                 contract.contract_id, contract.version, session_id, task_id,
+                 declared_domain, candidate, decision.policy_decision, intent,
+                 float(decision.confidence or 0.0), 1 if abstained else 0,
+                 abstain_reason,
+                 response.provider or "", response.model_version or "",
+                 "declared" if validation == "approved" else "router_proposed",
+                 validation, float(response.latency_ms or 0.0)))
         return trace_id
     except Exception:  # noqa: BLE001 — trace failure never blocks
         return None
-    finally:
-        conn.close()
 
 
 # list_routes lives here so the CLI and the future console share one
