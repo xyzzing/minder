@@ -68,7 +68,7 @@ else
 - Memory v1: canonical failure keys, SQLite episode/lesson store, duplicate-action guard with verified-lesson retrieval
 - Memory v1.5: progressive skill disclosure, temp plans, propose-only skill candidates, SQLite graph scoping + invalidation + impact suggestions
 - Token accounting in the ledger; CAP-measured effort vocabulary surfaced to harness UIs
-- 217 tests, Python 3.10+ stdlib only
+- 779 tests, Python 3.10+ stdlib only
 
 Install: \`./install.sh\` — see the README."
   say "released $TAG"
