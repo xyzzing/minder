@@ -142,6 +142,21 @@ def test_frontier_command_from_config_not_env(tmp_path):
     assert (tmp_path / "state" / "consults.jsonl").exists()
 
 
+def test_frontier_command_quoted_args_no_shell(tmp_path):
+    """F5: the frontier command runs as a direct argv (no shell), and a
+    multi-word command with a quoted argument still executes intact."""
+    cfg = {"fail_threshold": 1, "cooldown_turns": 0, "think_budget": 1,
+           "frontier_budget": 1}
+    (tmp_path / "minder.json").write_text(json.dumps(cfg))
+    run_hook(dict(FAIL_EVENT), "dsh", tmp_path)  # L1 first
+    ev2 = dict(FAIL_EVENT, tool_input={"file_path": "/x/q.py"})
+    proc = run_hook(ev2, "dsh", tmp_path,
+                    frontier_cmd="python3 -c 'print(\"frontier-quoted-ok\")'")
+    assert proc.returncode == 2
+    assert "FRONTIER RESPONSE" in proc.stderr
+    assert "frontier-quoted-ok" in proc.stderr
+
+
 def test_session_start_compact_emits_failure_brief(tmp_path):
     """G1: compaction survives — failure memory re-enters context."""
     cfg = {"fail_threshold": 1, "cooldown_turns": 99}

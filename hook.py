@@ -18,6 +18,7 @@ lets the tool result through untouched.
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -193,7 +194,15 @@ def capture_probe(session):
 
 def frontier_cmd():
     """Command resolution: MINDER_FRONTIER_CMD env overrides; else the
-    `frontier_command` key in minder.json (what install.sh wires)."""
+    `frontier_command` key in minder.json (what install.sh wires).
+
+    Trust boundary: this string is OPERATOR-owned config (root-owned
+    minder.json / operator shell env), never agent- or event-derived;
+    untrusted event data only ever reaches the command as stdin JSON.
+    It is executed as a direct argv (shlex.split, no shell), so shell
+    metacharacters (pipes, redirections, $VAR expansion) in the config
+    value are NOT interpreted — name a binary and its args, not a
+    pipeline."""
     return (os.environ.get("MINDER_FRONTIER_CMD")
             or minder.cfg().get("frontier_command"))
 
@@ -213,7 +222,7 @@ def run_frontier(payload):
         return ("FRONTIER RESPONSE: (no frontier command configured — proceed "
                 "with your own root-cause analysis; state a hypothesis first.)")
     try:
-        r = subprocess.run(cmd, shell=True,
+        r = subprocess.run(shlex.split(cmd), shell=False,
                            input=json.dumps(payload), capture_output=True,
                            text=True, timeout=FRONTIER_TIMEOUT)
         answer = (r.stdout or "").strip()[:4000]
@@ -240,7 +249,7 @@ def run_verify(payload):
                            "VERIFY: (no frontier command configured)")
         return
     try:
-        r = subprocess.run(cmd, shell=True,
+        r = subprocess.run(shlex.split(cmd), shell=False,
                            input=json.dumps(payload), capture_output=True,
                            text=True, timeout=FRONTIER_TIMEOUT)
         answer = (r.stdout or "").strip()[:4000] or \
