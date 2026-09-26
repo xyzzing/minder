@@ -105,22 +105,37 @@ def assess_route(*, declared_domain=None, task_id="default",
                         thresholds=ROUTE_THRESHOLDS)
         candidate = response.top_choice("candidate_domain")
         intent = response.top_choice("intent_kind")
-        # abstain: the provider had no real opinion (unknown candidate)
-        # or the gate routed to a human clarify
-        abstained = candidate in (None, "unknown") or \
-            decision.policy_decision == "human" or \
-            decision.override == "low_confidence"
-        if decision.policy_decision == "human":
-            validation = "restricted"     # clarify a human; never apply
-        elif decision.model_recommendation and \
-                decision.model_recommendation != "stay":
-            validation = "shadow"         # observed proposal, not applied
+        # Structural restriction (route/v1): without an explicit
+        # declaration NOTHING routes. The deterministic provider
+        # self-limits (it never proposes without one); a neural provider
+        # cannot be trusted to (measured 2026-09-26: calibrated laya
+        # answers injection/out-of-domain cases confidently). This is the
+        # contract's own precondition, enforced here so no provider can
+        # trade it for accuracy.
+        undeclared = declared_domain in (None, "")
+        policy_transition = decision.policy_decision
+        if undeclared:
+            policy_transition = "uncertain"
+            abstained = True
+            validation = "restricted"
+            abstain_reason = "no_explicit_declaration"
         else:
-            validation = "approved"       # deterministic declaration path
-        abstain_reason = (decision.override
-                          or ("routed_to_human_clarify"
-                              if decision.policy_decision == "human"
-                              else None)) if abstained else None
+            # abstain: the provider had no real opinion (unknown
+            # candidate) or the gate routed to a human clarify
+            abstained = candidate in (None, "unknown") or \
+                decision.policy_decision == "human" or \
+                decision.override == "low_confidence"
+            if decision.policy_decision == "human":
+                validation = "restricted"     # clarify a human; never apply
+            elif decision.model_recommendation and \
+                    decision.model_recommendation != "stay":
+                validation = "shadow"         # observed proposal, not applied
+            else:
+                validation = "approved"       # deterministic declaration path
+            abstain_reason = (decision.override
+                              or ("routed_to_human_clarify"
+                                  if decision.policy_decision == "human"
+                                  else None)) if abstained else None
         trace_id = None
         if record:
             trace_id = _record(db_path=db_path, contract=contract,
@@ -134,7 +149,7 @@ def assess_route(*, declared_domain=None, task_id="default",
             _log_usage(contract=contract, response=response,
                        decision=decision, provider=provider,
                        abstained=abstained)
-        return {"policy_transition": decision.policy_decision,
+        return {"policy_transition": policy_transition,
                 "candidate_domain": candidate, "intent_kind": intent,
                 "abstained": abstained, "validation": validation,
                 "decision": decision, "trace_id": trace_id}

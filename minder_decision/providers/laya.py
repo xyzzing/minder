@@ -6,6 +6,7 @@ run, and never authoritative (shadow only)."""
 import os
 import threading
 
+from ..types import top_two_margin
 from .adapter import ModelBackedClient
 
 DEFAULT_TIMEOUT_MS = 500
@@ -117,6 +118,28 @@ _ALL_INSTRUCTIONS = {
     **DIFFICULTY_INSTRUCTIONS,
 }
 
+# Adapter-side confidence calibration (measured, not assumed — Law #9):
+# laya's self-reported confidence scalar is compressed on closed menus.
+# Measured on routing-core-v1 (40 cases, laya 0.3.6 CPU, 2026-09-26):
+# self-report 0.11-0.28 while the top choice is 2.5-3x uniform lift where
+# laya is right and near-tied exactly where it is wrong. The margin over
+# the runner-up carries that signal, so the confidence the policy gate
+# sees is derived from the primary distribution; the raw self-report is
+# diagnostic-only and is not persisted. The pinned gate
+# thresholds are untouched — the adapter translates, the gate decides.
+CALIBRATION_MARGIN_SCALE = 2.0  # a 50-point margin reads as full confidence
+
+
+def calibrated_confidence(choice_probs):
+    """clip01(2 x margin) over the primary choice distribution. A tie is
+    zero confidence; a 50-point lead over the runner-up is full. Pure
+    function; never raises."""
+    try:
+        margin = top_two_margin(choice_probs or {})
+        return max(0.0, min(1.0, margin * CALIBRATION_MARGIN_SCALE))
+    except Exception:
+        return 0.0
+
 
 class LayaSystemOneClient:
     """SystemOneClient over a laya >= 0.3.6 Agent. Maps decision-contract
@@ -164,7 +187,6 @@ class LayaSystemOneClient:
         answers = raw.get("answers") or {}
         usage = raw.get("usage") or {}
         spec = {}
-        confidence = 0.0
         primary = _primary_choice_id(questions)
         for question in questions:
             options = getattr(question, "options", None)
@@ -189,13 +211,12 @@ class LayaSystemOneClient:
             if not isinstance(probs, dict) and answer.get("choice"):
                 probs = {answer["choice"]: 1.0}
             spec[f"{question.id}_probs"] = _match_options(probs, options)
-            if question.id == primary:
-                try:
-                    confidence = min(1.0, max(
-                        0.0, float(answer.get("confidence", 0.0))))
-                except (TypeError, ValueError):
-                    confidence = 0.0
-        spec["confidence"] = confidence
+        # The gate judges the margin-calibrated confidence. The model's
+        # raw self-report is diagnostic-only (measured 0.11-0.28 on
+        # closed menus, no routing signal) and nothing reads it, so it
+        # is dropped here rather than persisted.
+        spec["confidence"] = calibrated_confidence(
+            spec.get(f"{primary}_probs"))
         key = f"laya:{id(self)}"
         # key_fn=lambda s: key — FakeClient's default _state_key extracts
         # failure_key from the state, which is absent here (the state is

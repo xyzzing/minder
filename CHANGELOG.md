@@ -3,6 +3,35 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## Unreleased — laya confidence calibration (measured) + declaration guard
+
+- **Laya's confidence is now derived from its distribution, not its
+  self-report.** Measured on routing-core-v1 (40 cases, laya 0.3.6 CPU):
+  the model's self-reported confidence lands at 0.11-0.28 while its
+  actual distribution is informative — top choices 2.5-3x uniform where
+  laya is right, near-tied exactly where it is wrong. The adapter now
+  maps the primary choice margin to confidence (2x margin, clipped), so
+  the pinned gate thresholds judge a meaningful signal. Replay: correct
+  14/40 -> 35/40 with zero protected-metric violations; the deterministic
+  rules baseline stays 40/40. The raw self-report is dropped at the
+  adapter — it carries no routing signal and no trace column stores it.
+  The margin scale is a measured
+  constant (`CALIBRATION_MARGIN_SCALE`), and the first version of this
+  change shipped a bug worth recording: a wrong relative import inside a
+  fail-open helper silently returned 0.0 for everything — `tests/
+  test_laya_calibration.py` pins the function so that cannot recur.
+- **Declaration precondition is now structural** (`routing.assess_route`):
+  without an explicit domain declaration in the request, nothing routes —
+  `uncertain`/`restricted`/`abstained` with the proposal still visible as
+  `router_proposed`. The first calibration pass violated
+  `external_prohibited_egress` twice (confident answers on injection /
+  out-of-domain cases that must abstain); the deterministic provider
+  self-limited all along, and the guard makes that precondition hold for
+  every future provider instead of trusting it.
+- Live installs: `MINDER_SUCCESS_GUARD=block` is now the declared runtime
+  value (idempotent `profile-apply --success-guard block`; reinstall
+  preserves it).
+
 ## Unreleased — ecosystem pass (namespaces, minder_core, --generic, wheel)
 
 The panel's strategic recommendations, landed: adoptable packaging, a

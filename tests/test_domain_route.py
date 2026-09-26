@@ -66,8 +66,12 @@ def test_rules_provider_without_declaration_abstains(tmp_path):
 
 
 def test_router_proposal_is_never_applied(tmp_path):
-    """A confident fake 'switch' proposal is recorded as a shadow trace
-    and mutates nothing: observe-only is a hard Phase 1 invariant."""
+    """A confident fake 'switch' proposal on a state with no explicit
+    declaration is RESTRICTED (uncertain, never applied) and still
+    recorded as a router_proposed trace: observe-only is a hard Phase 1
+    invariant, and the declaration precondition is structural (measured
+    2026-09-26: calibrated providers answer undeclared cases unless the
+    guard enforces it)."""
     from minder_decision.providers.fake import FakeClient
     dbp = _mig(tmp_path)
     task_context.declare_task("coding", task_id="t1", db_path=dbp)
@@ -92,15 +96,17 @@ def test_router_proposal_is_never_applied(tmp_path):
     result = routing.assess_route(
         task_id="t1", db_path=dbp, record=True, provider=provider,
         state_key="state1")
-    assert result["policy_transition"] == "switch"  # gate passed it
-    assert result["validation"] == "shadow"          # and nothing applied
+    assert result["policy_transition"] == "uncertain"  # never applied
+    assert result["validation"] == "restricted"
+    assert result["abstained"] is True
+    assert result["decision"].model_recommendation == "switch"  # shadowed
     ctx = task_context.task_status(task_id="t1", db_path=dbp)
     assert ctx["open"]["domain"] == "coding"         # unchanged
     transitions = _rows(dbp, "SELECT * FROM domain_transitions")
     assert transitions == []                         # no lifecycle change
     trace = _rows(dbp, "SELECT * FROM route_traces")[0]
     assert trace["provenance"] == "router_proposed"
-    assert trace["validation_result"] == "shadow"
+    assert trace["validation_result"] == "restricted"
     assert trace["candidate_domain"] == "trading_research"
 
 
