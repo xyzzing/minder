@@ -6,6 +6,7 @@ hook processes never hold locks; writes go through BEGIN IMMEDIATE with a
 import os
 import pathlib
 import sqlite3
+from contextlib import contextmanager
 
 import minder
 
@@ -72,3 +73,31 @@ def write(conn, sql, params=()):
     except Exception:
         conn.execute("ROLLBACK")
         raise
+
+
+@contextmanager
+def transaction(db_path=None):
+    """One BEGIN IMMEDIATE write transaction on its own short-lived
+    connection: connect → BEGIN → yield conn → COMMIT; on any exception,
+    best-effort ROLLBACK and re-raise; the connection always closes.
+
+    Contract: this re-raises — callers own their fail-open policy
+    (`except Exception: return None` at ONE place, not per statement).
+    Reads may share the transaction (SELECT inside the `with` body sees
+    its own uncommitted writes). Do NOT nest: a second BEGIN IMMEDIATE
+    while this holds the write lock busy-times out — read helpers must
+    stay on their own `connect()`."""
+    conn = connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+            conn.execute("COMMIT")
+        except Exception:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+    finally:
+        conn.close()
