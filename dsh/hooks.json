@@ -23,6 +23,18 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "MINDER_HOOK_TRACE=1 MINDER_ASSIST=decision_skill MINDER_CLASSIFIER=shadow MINDER_DECISION=laya MINDER_SUCCESS_GUARD=advisory MINDER_SINK_URL=__MINDER_SINK_URL__ python3 __MINDER_SHARE__/hook.py --transport dsh --pre-tool",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

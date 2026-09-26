@@ -111,37 +111,93 @@ def record(hook_ev, db_path=None, cfg=None):
 
 
 _LAST_SUCCESS_ADVISORY = None
+_LAST_SUCCESS_DIRECTIVE = None
 
 
 def _observe_success(ev, out, db_path):
     """Success-loop guard (flag-gated, docs/success-loop-guard-design.md):
-    record the normalized action+result signature and stash an advisory
-    for the hook's model-visible stderr channel. Fails open; without
-    MINDER_SUCCESS_GUARD=advisory this does nothing at all."""
-    global _LAST_SUCCESS_ADVISORY
+    record the normalized action+result signature and stash the delivery
+    payload for the hook layer. In `advisory` mode that payload is a note
+    the bridge injects via additionalContext; in `block` mode it is a
+    structured stop directive. Fails open; with the flag off (default)
+    this does nothing at all.
+
+    The result text differs by caller shape, and getting this wrong is
+    silent: `to_event()` maps a raw hook payload's `tool_response` onto
+    `error_excerpt` (it holds the whole response, not just a failure), so
+    reading only `tool_response` signs every real dsh success as the empty
+    string — the counter still fires on exact repeats, but it can no
+    longer tell two different results from one action apart. Read both.
+    """
+    global _LAST_SUCCESS_ADVISORY, _LAST_SUCCESS_DIRECTIVE
     try:
         from . import success_guard
         if not success_guard.guard_enabled():
             return
         repo = ev.get("repo") or ""
+        output = ev.get("tool_response")
+        if output is None:
+            output = ev.get("error_excerpt") or ""
         result = success_guard.observe(
             ev.get("session_id") or "unknown", ev.get("tool") or "",
             canon.action_fingerprint(ev, repo),
-            ev.get("exit_code", 0), str(ev.get("tool_response", "")),
+            ev.get("exit_code", 0), str(output),
             db_path=db_path)
         out["success_advisory"] = result.get("advisory")
         _LAST_SUCCESS_ADVISORY = result.get("advisory")
+        _LAST_SUCCESS_DIRECTIVE = result.get("directive")
     except Exception:
         pass
 
 
 def success_advisory():
-    """Advisory from the most recent successful record() in this hook
-    process, or None. Read only when MINDER_SUCCESS_GUARD=advisory."""
+    """Advisory note from the most recent record() in this hook process,
+    or None. Only `advisory` mode delivers it — `block` mode delivers the
+    stop directive instead, so the two never both fire."""
     from . import success_guard
-    if not success_guard.guard_enabled():
+    if success_guard.guard_mode() != "advisory":
         return None
     return _LAST_SUCCESS_ADVISORY
+
+
+def success_directive():
+    """Structured stop directive from the most recent record(), or None.
+    Non-None only in `block` mode."""
+    from . import success_guard
+    if success_guard.guard_mode() != "block":
+        return None
+    return _LAST_SUCCESS_DIRECTIVE
+
+
+def blocked_action_directive(hook_ev, db_path=None):
+    """PreToolUse pre-emption: the requested action has already looped in
+    this session, so stop it before it runs.
+
+    The pre-tool payload has no result, but it does not need one — the
+    fingerprint is derived from the requested action alone (identical to
+    the PostToolUse fingerprint for the same call), and the ledger already
+    knows which actions reached the threshold.
+
+    Returns the stop directive, or None. Never raises."""
+    try:
+        from . import success_guard
+        if success_guard.guard_mode() != "block":
+            return None
+        ev = to_event(hook_ev)
+        repo = ev.get("repo") or ""
+        found = success_guard.blocked_action(
+            ev.get("session_id") or "", canon.action_fingerprint(ev, repo),
+            db_path=db_path)
+        if not found:
+            return None
+        return success_guard.stop_directive(
+            tool=found.get("tool") or ev.get("tool") or "",
+            count=found.get("repeats", 0),
+            window_min=found.get("window_min", 30),
+            exit_code=found.get("exit_code"),
+            excerpt=found.get("excerpt") or "")
+    except Exception:
+        return None
 
 
 def _close_on_success(hook_ev, ev, out, db_path):

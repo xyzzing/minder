@@ -15,7 +15,7 @@ HOOK = str(Path(__file__).resolve().parent.parent / "hook.py")
 
 
 def run_hook(event, transport, tmp_path, caps=None, frontier_cmd=None,
-             extra_args=()):
+             extra_args=(), env_extra=None):
     env = {
         "PATH": "/usr/bin:/bin:/usr/local/bin",
         "MINDER_STATE_DIR": str(tmp_path / "state"),
@@ -25,6 +25,7 @@ def run_hook(event, transport, tmp_path, caps=None, frontier_cmd=None,
     }
     if frontier_cmd:
         env["MINDER_FRONTIER_CMD"] = frontier_cmd
+    env.update(env_extra or {})
     if caps is not None:
         (tmp_path / "caps.json").write_text(json.dumps(caps))
     proc = subprocess.run(
@@ -246,3 +247,169 @@ def test_verify_consult_fires_on_frontier_deescalate(tmp_path):
     verify = [json.loads(l) for l in consults
               if json.loads(l)["response"].startswith("VERIFY")]
     assert verify, consults
+
+
+# --- success-loop guard: delivery channels and the pre-emptive stop -------
+#
+# The live DBS incident: the identical curl succeeded 20+ times, the guard
+# detected it, and nothing reached the model — the advisory was written to
+# stderr on a successful exit, which the bridge only keeps as a bounded,
+# log-only stderrSummary. These tests pin the two real channels.
+
+# Verbose-volatile curl progress output: differs only in numbers, so all
+# three normalize to ONE result signature (the incident's own property).
+CURL_1 = "  0 181.2k  0  0  1.24M --:--:-- 100"
+CURL_2 = "  0 181.2k  0  0  905.5k --:--:-- 100"
+CURL_3 = "  0 181.2k  0  0 573.6k --:--:-- 100"
+
+
+def _loop_payload(response="", event="PostToolUse"):
+    return {"session_id": "hook-s1", "hook_event_name": event,
+            "tool_name": "bash",
+            "tool_input": {"command": "curl -L -o dbs.pdf URL"},
+            "tool_response": response}
+
+
+def _seed_loop(tmp_path, payloads, name="seed.sqlite"):
+    """Pre-seed the guard ledger through the REAL production path
+    (from_hook.record with a raw dsh payload, not success_guard.observe
+    directly) and return the db path.
+
+    Going through record() matters: the guard's result text is read from
+    the *canonical* event, where to_event maps a raw payload's
+    `tool_response` onto `error_excerpt`. Seeding around that path is how
+    the empty-signature bug stayed invisible while the unit tests passed.
+    """
+    from unittest import mock
+
+    from memory import db as _db, from_hook
+    dbp = tmp_path / name
+    _db.connect(dbp).close()
+    with mock.patch.dict(os.environ, {"MINDER_SUCCESS_GUARD": "advisory"}):
+        for payload in payloads:
+            from_hook.record(_loop_payload(payload), db_path=dbp)
+    return dbp
+
+
+def test_pretool_blocks_a_looping_action(tmp_path):
+    """block mode: the repeat of an action that already looped is stopped
+    BEFORE it runs, with the directive as the reason."""
+    dbp = _seed_loop(tmp_path, (CURL_1, CURL_2, CURL_3))
+    proc = run_hook(_loop_payload(), "dsh", tmp_path,
+                    extra_args=("--pre-tool",),
+                    env_extra={"MINDER_SUCCESS_GUARD": "block",
+                               "MINDER_MEMORY_DB": str(dbp)})
+    assert proc.returncode == 2, (proc.returncode, proc.stdout, proc.stderr)
+    assert proc.stdout == ""
+    assert "EXECUTION PAUSED" in proc.stderr
+    assert "Do not repeat this action" in proc.stderr
+    assert "Change at least one causal element" in proc.stderr
+
+
+def test_pretool_is_inert_when_mode_off_or_advisory(tmp_path):
+    """Only `block` stops anything; off and advisory both let the call run.
+    A misconfigured or absent flag must never start blocking."""
+    dbp = _seed_loop(tmp_path, (CURL_1, CURL_2, CURL_3))
+    for mode in (None, "advisory", "typo"):
+        env = {"MINDER_MEMORY_DB": str(dbp)}
+        if mode is not None:
+            env["MINDER_SUCCESS_GUARD"] = mode
+        proc = run_hook(_loop_payload(), "dsh", tmp_path,
+                        extra_args=("--pre-tool",), env_extra=env)
+        assert proc.returncode == 0, (mode, proc.stderr)
+        assert proc.stdout == ""
+
+
+def test_pretool_does_not_record_a_bogus_observation(tmp_path):
+    """A pre-tool payload has no result. Recording it would insert a
+    zero-output row and corrupt the very counts the stop relies on."""
+    from memory import db as _db
+    dbp = _seed_loop(tmp_path, (CURL_1,))
+
+    def rows():
+        conn = _db.connect(dbp)
+        try:
+            return conn.execute("SELECT COUNT(*) FROM success_observations"
+                                ).fetchone()[0]
+        finally:
+            conn.close()
+
+    before = rows()
+    proc = run_hook(_loop_payload(), "dsh", tmp_path,
+                    extra_args=("--pre-tool",),
+                    env_extra={"MINDER_SUCCESS_GUARD": "block",
+                               "MINDER_MEMORY_DB": str(dbp)})
+    assert proc.returncode == 0  # below threshold: no stop
+    assert rows() == before, "PreToolUse must not write observations"
+
+
+def test_advisory_rides_additional_context_not_stderr(tmp_path):
+    """advisory mode: the note goes to exit-0 stdout as
+    hookSpecificOutput.additionalContext (the channel the bridge injects
+    into the next request) and NEVER blocks."""
+    dbp = _seed_loop(tmp_path, (CURL_1, CURL_2))
+    proc = run_hook(_loop_payload(CURL_1), "dsh", tmp_path,
+                    env_extra={"MINDER_SUCCESS_GUARD": "advisory",
+                               "MINDER_MEMORY_DB": str(dbp)})
+    assert proc.returncode == 0, (proc.returncode, proc.stderr)
+    assert proc.stderr == ""
+    payload = json.loads(proc.stdout)
+    assert "decision" not in payload, payload  # advisory never blocks
+    ctx = payload["hookSpecificOutput"]["additionalContext"]
+    assert payload["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert "success-loop" in ctx and "3 times" in ctx
+
+
+def test_block_mode_directive_blocks_the_posttool_repeat(tmp_path):
+    """block mode after the fact: a repeat that already ran comes back as
+    a block whose reason is the structured directive."""
+    dbp = _seed_loop(tmp_path, (CURL_1, CURL_2))
+    proc = run_hook(_loop_payload(CURL_1), "dsh", tmp_path,
+                    env_extra={"MINDER_SUCCESS_GUARD": "block",
+                               "MINDER_MEMORY_DB": str(dbp)})
+    assert proc.returncode == 2, (proc.returncode, proc.stdout)
+    assert "EXECUTION PAUSED" in proc.stderr
+    assert "Do not repeat this action" in proc.stderr
+
+
+def test_flag_off_is_byte_inert_for_a_looping_session(tmp_path):
+    """The default-off path must stay exactly as it was: exit 0, no
+    stdout, no stderr, and not one observation written."""
+    from memory import db as _db
+    off = tmp_path / "off.sqlite"
+    proc = run_hook(_loop_payload(CURL_1), "dsh", tmp_path,
+                    env_extra={"MINDER_MEMORY_DB": str(off)})
+    assert proc.returncode == 0
+    assert proc.stdout == "" and proc.stderr == ""
+    conn = _db.connect(off)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM success_observations"
+                            ).fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_real_payload_signs_the_actual_output_not_the_empty_string(tmp_path):
+    """Regression: _observe_success must sign the tool's real output.
+
+    to_event() maps a raw payload's `tool_response` onto `error_excerpt`,
+    so reading only `tool_response` off the canonical event signed every
+    production success as the empty string. Two different results from one
+    action then shared a signature — the counter over-fires."""
+    from unittest import mock
+
+    from memory import db as _db, from_hook, success_guard
+    dbp = tmp_path / "sig.sqlite"
+    _db.connect(dbp).close()
+    with mock.patch.dict(os.environ, {"MINDER_SUCCESS_GUARD": "advisory"}):
+        from_hook.record(_loop_payload(CURL_1), db_path=dbp)
+        from_hook.record(_loop_payload("completely different body"),
+                         db_path=dbp)
+    conn = _db.connect(dbp)
+    try:
+        sigs = [r[0] for r in conn.execute(
+            "SELECT result_signature FROM success_observations").fetchall()]
+    finally:
+        conn.close()
+    assert len(sigs) == 2 and sigs[0] != sigs[1], sigs
+    assert success_guard.result_signature(0, "") not in sigs

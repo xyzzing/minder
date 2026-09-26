@@ -6,7 +6,11 @@ One script, two transports (prd.md §5.1/§5.2 + dsh hooks-bridge semantics):
       {"decision": "block", "reason": <digest>} on stdout.
   dsh:             Claude-Code hooks-bridge command hook — block = exit 2 with
       the digest on stderr (the bridge's verified model-visible channel);
-      non-block = exit 0, silent.
+      non-block = exit 0, silent. Non-blocking model-visible notes ride
+      exit-0 stdout as hookSpecificOutput.additionalContext.
+
+Hook points: SessionStart, PostToolUse, and (success-loop block mode
+only) PreToolUse for pre-emptive stops.
 
 Detection never blocks the hot path (Law #6): every failure mode exits 0 and
 lets the tool result through untouched.
@@ -262,10 +266,33 @@ def emit(digest, transport):
     return 0
 
 
+def emit_context(event_name, text, transport):
+    """Attach model-visible context WITHOUT blocking the action.
+
+    On dsh the bridge reads `hookSpecificOutput.additionalContext` from
+    exit-0 stdout and injects it into the next model request. stderr on a
+    successful exit is NOT model-visible — the bridge only keeps it as a
+    bounded, log-only `stderrSummary` — so an advisory written there is
+    silently dropped (which is exactly what happened to the success-loop
+    advisory before this). zcode has no additionalContext contract, so it
+    keeps the stderr channel it has always used.
+    """
+    if not text:
+        return 0
+    if transport != "dsh":
+        sys.stderr.write(text + "\n")
+        sys.stderr.flush()
+        return 0
+    sys.stdout.write(json.dumps({"hookSpecificOutput": {
+        "hookEventName": event_name, "additionalContext": text}}))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--transport", choices=["zcode", "dsh"], default="zcode")
     ap.add_argument("--session-start", action="store_true")
+    ap.add_argument("--pre-tool", action="store_true")
     args = ap.parse_args(argv)
 
     try:
@@ -310,6 +337,30 @@ def main(argv=None):
         if out or args.transport != "dsh":
             sys.stdout.write(json.dumps(out))
         return 0
+
+    # PreToolUse (block mode only): the success-loop ledger already knows
+    # which actions have looped in this session, so stop the repeat before
+    # it runs rather than advising after the fact for the 79th time.
+    #
+    # Deliberately BEFORE from_hook.record(): a pre-tool payload carries no
+    # result, so recording it would insert a bogus zero-output observation
+    # into success_observations and corrupt the very counts used here.
+    if args.pre_tool or ev.get("hook_event_name") == "PreToolUse":
+        directive = None
+        if memory_from_hook is not None:
+            try:
+                directive = memory_from_hook.blocked_action_directive(ev)
+            except Exception:
+                directive = None
+        if directive:
+            try:
+                minder.log(session, "loop_block", point="PreToolUse")
+            except Exception:
+                pass
+            _log_timing(session, ev, t0, extra={"loop": "block-pre"})
+            return emit(directive, args.transport)
+        _log_timing(session, ev, t0)
+        return emit(None, args.transport)
 
     # Memory v1 (PR 5): record the observation BEFORE the Warden runs, so
     # the duplicate guard reads fresh counts. Fail-open: directive never
@@ -418,20 +469,33 @@ def main(argv=None):
         if guard:
             digest = guard["digest"]
     _phase("policy", started)
-    # Success-loop guard (advisory only): repeated identical successful
-    # actions -> model-visible stderr note. NEVER a block decision and
-    # never touches the Warden digest/outcome; flag-gated
-    # (MINDER_SUCCESS_GUARD=advisory, default off = byte-inert); fail-open.
+    # Success-loop guard (see memory/success_guard.py).
+    #   advisory — the note rides PostToolUse additionalContext, the channel
+    #              the bridge actually injects into the next request.
+    #   block    — the structured directive becomes the block reason, so a
+    #              repeat is stopped and the model is told what must change.
+    # Flag-gated (MINDER_SUCCESS_GUARD, default off = byte-inert) and
+    # fail-open: any problem leaves the Warden outcome untouched.
+    loop_state = None
+    advisory_context = None
     if memory_from_hook is not None:
         try:
-            note = memory_from_hook.success_advisory()
-            if note:
-                sys.stderr.write(note + "\n")
+            directive = memory_from_hook.success_directive()
+            if directive:
+                digest = directive
+                loop_state = "block"
+            else:
+                advisory_context = memory_from_hook.success_advisory()
+                if advisory_context:
+                    loop_state = "advisory"
         except Exception:
             pass
     _log_timing(session, ev, t0, extra={"action": out.get("action"),
                                         "level": out.get("level"),
-                                        "policy": policy_state})
+                                        "policy": policy_state,
+                                        "loop": loop_state})
+    if advisory_context:
+        return emit_context("PostToolUse", advisory_context, args.transport)
     return emit(digest, args.transport)
 
 

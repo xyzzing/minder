@@ -56,7 +56,14 @@ def test_hooks_json_carries_flags_and_sink(tmp_path, mod):
     config = json.loads(hooks.read_text())
     commands = [h["command"] for event in config["hooks"].values()
                 for group in event for h in group["hooks"]]
-    assert len(commands) == 2
+    assert len(commands) == 3
+    # the success-loop block mode needs a pre-execution hook point: without
+    # PreToolUse the guard can only advise after the tool already ran.
+    assert set(config["hooks"]) == {"SessionStart", "PostToolUse",
+                                    "PreToolUse"}
+    pre = [h["command"] for h in
+           config["hooks"]["PreToolUse"][0]["hooks"]]
+    assert len(pre) == 1 and pre[0].endswith("--pre-tool")
     for command in commands:
         for flag in ("MINDER_ASSIST=", "MINDER_CLASSIFIER=",
                      "MINDER_DECISION=", "MINDER_SUCCESS_GUARD=",
