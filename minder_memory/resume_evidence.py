@@ -82,9 +82,7 @@ def assert_career_fact(claim_text, *, wording_variants=(), actor="user",
         if support not in SUPPORT_CLASSES:
             return None, f"rejected:unknown_support:{support}"
         variants = [v for v in (wording_variants or ()) if v]
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             aid = assertion_id or _uid("as")
             conn.execute(
                 "INSERT INTO career_assertions (assertion_id, created_at,"
@@ -93,13 +91,10 @@ def assert_career_fact(claim_text, *, wording_variants=(), actor="user",
                 " VALUES (?, ?, ?, ?, ?, ?, 'active', 0, ?)",
                 (aid, _now(), _digest(claim_text), claim_text,
                  json.dumps(variants), support, actor))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM career_assertions WHERE assertion_id = ?",
                 (aid,)).fetchone()
             return dict(row), "asserted"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -108,9 +103,7 @@ def approve_wording(assertion_id, *, phrase, actor="user", scope="any",
                     db_path=None):
     """Approve one phrasing as accurate (any scope, or one JD)."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             assertion = conn.execute(
                 "SELECT * FROM career_assertions WHERE assertion_id = ?",
                 (assertion_id,)).fetchone()
@@ -126,13 +119,10 @@ def approve_wording(assertion_id, *, phrase, actor="user", scope="any",
                 " phrase, scope, status, created_at, actor)"
                 " VALUES (?, ?, ?, ?, 'approved', ?, ?)",
                 (wording_id, assertion_id, phrase, scope, _now(), actor))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM approved_wordings WHERE wording_id = ?",
                 (wording_id,)).fetchone()
             return dict(row), "approved"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -143,9 +133,7 @@ def mark_uncertain(assertion_id, *, actor="user", question=None,
     uncertain and its approved wordings drop to review until an explicit
     factual/wording answer exists. No intent can be set meanwhile."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             assertion = conn.execute(
                 "SELECT * FROM career_assertions WHERE assertion_id = ?",
                 (assertion_id,)).fetchone()
@@ -167,13 +155,10 @@ def mark_uncertain(assertion_id, *, actor="user", question=None,
                  question or f"does '{assertion['claim_text']}' overstate"
                  " your role?", json.dumps([{"type": "career_assertion",
                                              "id": assertion_id}])))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM career_assertions WHERE assertion_id = ?",
                 (assertion_id,)).fetchone()
             return dict(row), "review_requested"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -186,9 +171,7 @@ def set_intent(jd_id, jd_digest, assertion_id, *, chosen_variant,
     MINDER_RESUME_RETENTION_DAYS, per-call retention_days override)."""
     try:
         import os
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             assertion = conn.execute(
                 "SELECT * FROM career_assertions WHERE assertion_id = ?",
                 (assertion_id,)).fetchone()
@@ -219,13 +202,10 @@ def set_intent(jd_id, jd_digest, assertion_id, *, chosen_variant,
                 (intent_id, jd_id, jd_digest, assertion_id,
                  chosen_variant, created.isoformat(), actor,
                  expires.isoformat()))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM application_intents WHERE intent_id = ?",
                 (intent_id,)).fetchone()
             return dict(row), "intent_recorded"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -238,9 +218,7 @@ def expire_intents(*, now=None, db_path=None):
         now_dt = now or datetime.now(timezone.utc)
         if isinstance(now_dt, str):
             now_dt = datetime.fromisoformat(now_dt)
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             rows = conn.execute(
                 "SELECT intent_id, expires_at FROM application_intents"
                 " WHERE status = 'active'").fetchall()
@@ -256,10 +234,7 @@ def expire_intents(*, now=None, db_path=None):
                         " 'expired', expired_at = ? WHERE intent_id = ?",
                         (now_dt.isoformat(), row["intent_id"]))
                     expired += 1
-            conn.execute("COMMIT")
             return {"expired": expired}
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return {"expired": 0, "status": f"error:{type(exc).__name__}"}
 
@@ -269,9 +244,7 @@ def record_draft(draft_id, assertion_id, *, phrase, jd_id=None,
     """Record which phrase appears in which draft (append-only). An
     unapproved phrase is recorded and flagged, never silently dropped."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             assertion = conn.execute(
                 "SELECT * FROM career_assertions WHERE assertion_id = ?",
                 (assertion_id,)).fetchone()
@@ -288,15 +261,12 @@ def record_draft(draft_id, assertion_id, *, phrase, jd_id=None,
                 " VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (usage_id, draft_id, jd_id, assertion_id, phrase,
                  _now(), flagged))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM draft_usages WHERE usage_id = ?",
                 (usage_id,)).fetchone()
             status = "recorded" if not flagged \
                 else f"flagged:{flagged}"
             return dict(row), status
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -309,9 +279,7 @@ def correct_fact(assertion_id, *, corrected_claim, actor="user",
     human event. History stays auditable; unaffected assertions are
     untouched."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             old = conn.execute(
                 "SELECT * FROM career_assertions WHERE assertion_id = ?",
                 (assertion_id,)).fetchone()
@@ -368,13 +336,10 @@ def correct_fact(assertion_id, *, corrected_claim, actor="user",
                  json.dumps([{"type": "career_assertion",
                               "id": assertion_id},
                              {"type": "career_assertion", "id": new_id}])))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM career_assertions WHERE assertion_id = ?",
                 (new_id,)).fetchone()
             return dict(row), "corrected"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
