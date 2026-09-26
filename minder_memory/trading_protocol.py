@@ -66,9 +66,7 @@ def register_family(method_digest, *, planned_metric, split_scheme,
                 isinstance(s, dict) and s.get("digest") and s.get("as_of")
                 for s in sources):
             return None, "rejected:data_sources need digest + as_of each"
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             latest = _latest_family(conn, family_id) if family_id else None
             if family_id and latest:
                 version = latest["version"] + 1
@@ -91,13 +89,10 @@ def register_family(method_digest, *, planned_metric, split_scheme,
                     " superseded_by = ? WHERE family_id = ? AND version = ?",
                     (f"{family_id}:v{version}", family_id,
                      latest["version"]))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM hypothesis_families WHERE family_id = ?"
                 " AND version = ?", (family_id, version)).fetchone()
             return dict(row), "registered"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -114,9 +109,7 @@ def record_trial(family_id, *, config_hash, dataset_vintage,
                 not dataset_vintage.get("digest") or \
                 not dataset_vintage.get("as_of"):
             return None, "rejected:dataset_vintage needs digest + as_of"
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             family = _latest_family(conn, family_id)
             if not family or family["status"] != "registered":
                 return None, "rejected:unknown_family"
@@ -146,14 +139,11 @@ def record_trial(family_id, *, config_hash, dataset_vintage,
                 (trial_id, family_id, _now(), config_hash,
                  json.dumps(dataset_vintage), split_assignment,
                  json.dumps(result_summary), flagged))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM trial_records WHERE trial_id = ?",
                 (trial_id,)).fetchone()
             status = "recorded" if not flagged else f"flagged:{flagged}"
             return dict(row), status
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -178,9 +168,7 @@ def mark_vintage_changed(family_id, *, new_vintage, reason, actor,
         if not isinstance(new_vintage, dict) or \
                 not new_vintage.get("digest"):
             return None, "rejected:new_vintage needs digest"
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             family = _latest_family(conn, family_id)
             if not family:
                 return None, "rejected:unknown_family"
@@ -191,13 +179,10 @@ def mark_vintage_changed(family_id, *, new_vintage, reason, actor,
                 " VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (event_id, family_id, _now(), old_digest,
                  new_vintage["digest"], reason, actor))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM vintage_events WHERE event_id = ?",
                 (event_id,)).fetchone()
             return dict(row), "ok"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -214,9 +199,7 @@ def record_analysis(family_id, *, method, code_digest,
             return None, f"rejected:unknown_method:{method}"
         if not code_digest:
             return None, "rejected:code_digest required"
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             family = _latest_family(conn, family_id)
             if not family:
                 return None, "rejected:unknown_family"
@@ -236,14 +219,11 @@ def record_analysis(family_id, *, method, code_digest,
                 (analysis_id, family_id, _now(), method, code_digest,
                  n_trials_referenced, trial_sharpe_variance,
                  json.dumps(verdict) if verdict else None, flagged))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM analysis_artifacts WHERE analysis_id = ?",
                 (analysis_id,)).fetchone()
             status = "recorded" if not flagged else f"flagged:{flagged}"
             return dict(row), status
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
