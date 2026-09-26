@@ -1,8 +1,7 @@
 """Frontier consult trace tests (docs/prd-memory-v1.md PR 7)."""
-import json
 
 import frontier
-from memory import frontier_traces
+from minder_memory import frontier_traces
 
 CFG = {"frontier_providers": [
     {"name": "probe-a", "base_url": "http://probe/a", "model": "m-a",
@@ -36,7 +35,6 @@ def test_trace_stored_with_hashes_not_raw_prompt(tmp_path, monkeypatch):
                                 on_trace=on_trace)
     assert "SYNTH-ANSWER" in answer and "PANEL CONSULT" in answer
     # route the metadata through the store like frontier.main does
-    from memory import db as mdb
     trace_id = frontier_traces.record(
         {"key": captured["failure_key"], "attempts": captured["local_attempts"],
          "prompt": captured["request_hash_source"],

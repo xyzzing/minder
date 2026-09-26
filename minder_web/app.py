@@ -10,10 +10,11 @@ not installed (`pip install -r requirements-web.txt`) importing this
 module fails cleanly — it is never imported by hook.py/proxy.py or any
 hot runtime path.
 """
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -24,6 +25,36 @@ templates = Jinja2Templates(directory=str(_PACKAGE_DIR / "templates"))
 
 app = FastAPI(title="minder operator console", docs_url=None,
               redoc_url=None, openapi_url=None)
+
+# The console holds private evidence (episodes, consult traces, failure
+# excerpts) and is deliberately unauthenticated, so the Host header is the
+# one thing standing between it and DNS rebinding: a page at attacker.com
+# re-resolved to 127.0.0.1 sends Host: attacker.com, and the browser
+# happily hands the response to that page's scripts. Only loopback names
+# are answered. A missing Host (HTTP/1.0 health probes) passes.
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def host_from_header(value):
+    """Hostname part of a Host header, port-stripped, IPv6-aware."""
+    v = (value or "").strip().lower()
+    if not v:
+        return ""
+    if v.startswith("["):  # [::1]:8765
+        return v[1:v.index("]")] if "]" in v else v
+    if v.count(":") > 1:  # bare IPv6 address, no port
+        return v
+    return v.rsplit(":", 1)[0]
+
+
+@app.middleware("http")
+async def _loopback_host_guard(request, call_next):
+    host = host_from_header(request.headers.get("host"))
+    if host and host not in _LOOPBACK_HOSTS:
+        return Response(
+            json.dumps({"detail": f"refusing non-loopback Host {host!r}"}),
+            status_code=403, media_type="application/json")
+    return await call_next(request)
 
 
 def _db_path():

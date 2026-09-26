@@ -9,7 +9,7 @@ import sqlite3
 
 import pytest
 
-from memory import db as _db, task_context, trading_protocol as tp
+from minder_memory import db as _db, trading_protocol as tp
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 VINTAGE = {"digest": "d1" * 8, "as_of": "2024-12-31"}

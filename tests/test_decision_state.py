@@ -1,8 +1,8 @@
 """Decision state + menu tests (Phase 5.5 slice B)."""
 import json
 
-from decision import menu as dmenu
-from decision import state as dstate
+from minder_decision import menu as dmenu
+from minder_decision import state as dstate
 
 SECRET = "sk-proj-quantumleek12345678"
 

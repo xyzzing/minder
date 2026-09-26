@@ -1,5 +1,4 @@
 """CAP probe + Mode Adapter tests (AT-15, AT-7a/b/c mock-level, §6.6 table)."""
-import pytest
 
 import adapter
 from mock_upstream import MockUpstream

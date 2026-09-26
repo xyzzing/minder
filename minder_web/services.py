@@ -11,7 +11,7 @@ import os
 from minder_op import benchmark as bench
 from minder_op import format as fmt
 from minder_op import queries
-from minder_op.queries import DBError, UNCLASSIFIED
+from minder_op.queries import DBError
 from minder_op.summary import build_weekly_summary
 
 FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
@@ -62,10 +62,9 @@ def overview(db_path):
     (same object as the CLI's weekly-summary)."""
     summary = _try(build_weekly_summary, db_path, default=None)
     try:
-        status = queries.status(db_path)
+        queries.status(db_path)  # raises DBError when unreadable
         db_ok = True
     except DBError:
-        status = None
         db_ok = False
     capture = capture_page(db_path)
     # Capture breaks are the one failure that invalidates every other page,
@@ -210,21 +209,10 @@ def difficulty_page(limit=DEFAULT_LIMIT):
             "total": total, "by_label": by_label}
 
 
-def events_page(db_path, limit=DEFAULT_LIMIT):
-    """Raw observed events, newest first. The episode column comes from
-    a subquery so unlinked events still list."""
-    rows = _try(queries.events, db_path,
-                limit=_bounded_limit(limit), default=[]) or []
-    return {"rows": [_safe_row(r, ("failure_key", "error_excerpt",
-                                    "payload_json")) for r in rows],
-            "limit": _bounded_limit(limit)}
-
-
 def sessions_page(db_path, query=None, sort=None, limit=200,
                   dsh_root=None):
     """Dsh sessions joined with the projection cache, the workspace
     registry and the memory DB. Read-only; no writes to dsh state."""
-    from pathlib import Path as _Path
 
     from minder_op import dsh_sessions
     linkage = _try(queries.session_linkage, db_path, default={}) or {}
@@ -356,7 +344,7 @@ def skills_page():
     risk) plus whether each body file is present. No body text is
     served — the console is read-only and bodies are operator-owned."""
     try:
-        from memory import skill_load
+        from minder_memory import skill_load
         rows = []
         for meta in skill_load.list_skill_metadata():
             name = meta.get("name")
@@ -412,7 +400,7 @@ def _review_row(review):
 def traces_page(db_path, limit=DEFAULT_LIMIT):
     """Stored trace reviews, newest first. A missing DB or an unmigrated
     schema reads as an empty list, never a 500."""
-    from memory import trace_reviews
+    from minder_memory import trace_reviews
     rows = trace_reviews.list_reviews(limit=_bounded_limit(limit),
                                       db_path=db_path)
     stats = trace_reviews.acceptance_stats(db_path=db_path)
@@ -447,7 +435,7 @@ def _finding_row(finding, verdicts):
 def trace_detail(db_path, review_id):
     """One review with its findings, verdicts and feedback. None when the
     review does not exist (the route turns that into a 404)."""
-    from memory import trace_reviews
+    from minder_memory import trace_reviews
     review = trace_reviews.get_review(review_id, db_path=db_path)
     if review is None:
         return None

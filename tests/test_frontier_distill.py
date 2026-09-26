@@ -2,7 +2,7 @@
 Only locally verified consults become candidate lessons; raw provider text
 and model attributions never reach the instruction; candidates are invisible
 to retrieve_lessons until an operator promotes them."""
-from memory import (db as _db, frontier_distill, frontier_traces, lessons,
+from minder_memory import (db as _db, frontier_distill, frontier_traces, lessons,
                     retrieval, store)
 
 REPO = "/repo"

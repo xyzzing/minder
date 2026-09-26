@@ -13,7 +13,7 @@ lexicographically, matching how every writer stamps rows.
 """
 from datetime import datetime, timedelta, timezone
 
-from memory.canonicalise import redact
+from minder_memory.canonicalise import redact
 
 from minder_op import format as fmt
 from minder_op.queries import UNCLASSIFIED, _rows

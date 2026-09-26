@@ -14,8 +14,8 @@ import os
 import sys
 from pathlib import Path
 
-from memory import trace_reviews
-from trace import evaluate, normalize
+from minder_memory import trace_reviews
+from minder_trace import evaluate, normalize
 from . import format as fmt
 
 EXIT_OK = 0

@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 from mock_upstream import MockUpstream
 
@@ -85,19 +84,19 @@ def test_at11_branch_a_kwargs_full_install(tmp_path):
     share = home / ".local" / "share" / "minder"
     assert (share / "proxy.py").exists()
     assert (share / "dsh" / "hooks.json").exists()
-    # 8A-0: decision/ staged beside memory/ so the installed hook can
-    # import it (MINDER_DECISION stays off by default — staging only)
-    assert (share / "decision" / "policy_gate.py").exists()
+    # 8A-0: minder_decision/ staged beside minder_memory/ so the installed
+    # hook can import it (MINDER_DECISION stays off by default — staging)
+    assert (share / "minder_decision" / "policy_gate.py").exists()
     assert (share / "minder_op" / "cli.py").exists()
     env = dict(os.environ)
     env["PYTHONPATH"] = str(share)
     probe = subprocess.run(
         [sys.executable, "-c",
-         "import decision, decision.policy_gate, minder_op; "
-         "print(decision.__name__)"],
+         "import minder_decision, minder_decision.policy_gate, minder_op; "
+         "print(minder_decision.__name__)"],
         capture_output=True, text=True, env=env)
     assert probe.returncode == 0, probe.stderr
-    assert "decision" in probe.stdout
+    assert "minder_decision" in probe.stdout
     # caps written and fingerprints only
     caps = json.loads((home / ".config" / "minder" /
                        "model_caps.json").read_text())
@@ -172,3 +171,26 @@ def test_uninstall_restores_scratch_home(tmp_path):
     assert zcfg["hooks"]["events"] == SCRATCH_ZCODE_CONFIG["hooks"]["events"]
     assert not (home / ".local" / "share" / "minder").exists()
     assert not (home / ".config" / "minder").exists()
+
+
+def test_generic_install_touches_no_harness_or_systemd(tmp_path):
+    """--generic: code + config + shims only. The headline path for any
+    OpenAI-compatible harness that is not dsh/zcode: nothing may be
+    written into ~/.dsh, ~/.zcode or ~/.config/systemd."""
+    with MockUpstream("default") as mock:
+        home = scratch_home(tmp_path)
+        r = run_installer(home, mock.url, "--generic")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "mechanism=kwargs" in r.stdout
+    share = home / ".local" / "share" / "minder"
+    assert (share / "proxy.py").exists()
+    assert (share / "minder_memory" / "canonicalise.py").exists()
+    assert (share / "minder_core" / "comparator.py").exists()
+    # harness configs byte-untouched
+    assert json.loads((home / ".zcode" / "cli" / "config.json")
+                      .read_text()) == SCRATCH_ZCODE_CONFIG
+    assert "minder" not in (home / ".dsh" / "settings.yaml").read_text()
+    # no systemd units, and the operator is told how to run manually
+    assert not (home / ".config" / "systemd" / "user").exists()
+    assert "generic mode" in r.stdout
+    assert "harness base URL" in r.stdout

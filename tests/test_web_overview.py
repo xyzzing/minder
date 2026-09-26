@@ -36,7 +36,7 @@ def test_overview_missing_db_renders_not_available(tmp_path, monkeypatch):
 
 
 def _latest_schema():
-    from memory import db as _db
+    from minder_memory import db as _db
     return max(int(f.name.split("_", 1)[0]) for f in
                _db.MIGRATIONS_DIR.glob("*.sql") if f.name[0].isdigit())
 

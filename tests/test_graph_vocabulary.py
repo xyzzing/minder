@@ -5,8 +5,7 @@ fail-open return-None behaviour would hide typos); all pre-existing
 call sites use vocabulary types and must stay green."""
 import pytest
 
-from memory import db as _db, graph
-from memory import lessons as memory_lessons, store
+from minder_memory import db as _db, graph
 
 
 def _mig(tmp_path):

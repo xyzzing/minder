@@ -1,7 +1,7 @@
 """Operator list/show tests (8A): episodes, lessons (verified vs
 candidate), gaps. Candidate lessons appear only under --status
 candidate; free-text output is redacted."""
-from memory import (db as _db, lessons as memory_lessons, skills, store)
+from minder_memory import (db as _db, lessons as memory_lessons, skills, store)
 from minder_op.cli import EXIT_OK, main
 
 REPO = "/repo"

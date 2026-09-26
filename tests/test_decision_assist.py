@@ -2,9 +2,8 @@
 may inject ONE low-risk gateway-selected SKILL digest, only when every
 gate passes. Default off; NullClient never attaches; the gateway can
 never create a frontier consult."""
-import pytest
 
-from memory import (canonicalise as canon_mod, from_hook,
+from minder_memory import (canonicalise as canon_mod, from_hook,
                     policy as memory_policy)
 
 REPO = "/repo"
@@ -28,7 +27,7 @@ def fake_spec(ev):
 
 
 def install_client(monkeypatch, client):
-    from decision import client as dclient
+    from minder_decision import client as dclient
     monkeypatch.setattr(dclient, "get_decision_client",
                         lambda: client, raising=False)
 
@@ -39,7 +38,7 @@ def seed_world(dbp, ev, n=2):
 
 
 def shortlist_stub(monkeypatch, names):
-    from decision import skill_select as dskill
+    from minder_decision import skill_select as dskill
     monkeypatch.setattr(dskill, "build_skill_shortlist",
                         lambda event, index_path=None: tuple(names))
 
@@ -54,7 +53,7 @@ def test_all_gates_pass_attaches_one_low_risk_skill(tmp_path, monkeypatch):
     fkey, fixtures = fake_spec(ev)
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     shortlist_stub(monkeypatch, ("diagnose-environment",))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
@@ -73,7 +72,7 @@ def test_null_client_never_attaches(tmp_path, monkeypatch):
     ev = hook_event()
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import NullClient
+    from minder_decision.client import NullClient
     install_client(monkeypatch, NullClient())
     shortlist_stub(monkeypatch, ("diagnose-environment",))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
@@ -89,7 +88,7 @@ def test_low_any_skill_applies_never_attaches(tmp_path, monkeypatch):
     fixtures[fkey] = dict(fixtures[fkey], any_skill_applies=0.4)
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     shortlist_stub(monkeypatch, ("diagnose-environment",))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
@@ -105,7 +104,7 @@ def test_skill_outside_shortlist_menu_never_attaches(tmp_path, monkeypatch):
     fixtures[fkey] = dict(fixtures[fkey], best_skill="rewrite-everything")
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     shortlist_stub(monkeypatch, ("diagnose-environment",))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
@@ -121,7 +120,7 @@ def test_no_attach_when_assist_off(tmp_path, monkeypatch):
     fkey, fixtures = fake_spec(ev)
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     shortlist_stub(monkeypatch, ("diagnose-environment",))
     monkeypatch.delenv("MINDER_ASSIST", raising=False)
@@ -154,7 +153,7 @@ def test_gate_override_to_human_blocks_attach(tmp_path, monkeypatch):
                           next_step="environment_check", confidence=0.7)
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     shortlist_stub(monkeypatch, ("diagnose-environment",))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
@@ -170,7 +169,7 @@ def test_missing_body_blocks_attach(tmp_path, monkeypatch):
     fixtures[fkey] = dict(fixtures[fkey], best_skill="ghost-skill")
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     shortlist_stub(monkeypatch, ("ghost-skill",))  # in the live shortlist
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")

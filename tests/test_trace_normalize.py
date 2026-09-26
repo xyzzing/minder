@@ -15,7 +15,7 @@ import os
 
 import pytest
 
-from trace import normalize
+from minder_trace import normalize
 from tracebuild import build_session, call, result
 
 

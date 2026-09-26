@@ -4,7 +4,7 @@ with fixed timestamps so page content is deterministic; free-text
 fields carry a marker secret / hostile payload so redaction and
 escaping are asserted, not assumed.
 """
-from memory import db as _db
+from minder_memory import db as _db
 
 SECRET = "sk-proj-operatorleak99999999"
 HOSTILE = "<script>alert('x')</script>"
@@ -13,7 +13,7 @@ TS = "2026-09-22T10:00:00+00:00"
 
 def new_db(tmp_path):
     dbp = tmp_path / "m.sqlite"
-    _db.connect(dbp).close()  # migrate to v10
+    _db.connect(dbp).close()  # migrate to the latest schema
     return dbp
 
 
@@ -22,7 +22,9 @@ def client_for(dbp, monkeypatch):
     monkeypatch.setenv("MINDER_WEB_DB", str(dbp))
     from fastapi.testclient import TestClient
     from minder_web.app import app
-    return TestClient(app)
+    # loopback base_url: the app refuses non-loopback Host headers
+    # (DNS-rebinding guard), and TestClient's default is "testserver".
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def _ins(dbp, sql, params):

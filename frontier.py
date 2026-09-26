@@ -270,7 +270,7 @@ def egress_precheck(payload, cfg):
     'deny'. Fail-open to 'allow' — the Warden owns whether we consult,
     this only vetoes what may leave the machine."""
     try:
-        from memory import egress as memory_egress
+        from minder_memory import egress as memory_egress
         event = {
             "key": payload.get("key"),
             "task_id": payload.get("task") or payload.get("episode_id"),
@@ -367,7 +367,7 @@ def main():
     def _trace(meta):
         """PR 7: hashed consult metadata → memory store (fail-open, additive)."""
         try:
-            from memory import frontier_traces
+            from minder_memory import frontier_traces
             frontier_traces.record(
                 {"key": meta.get("failure_key"),
                  "attempts": meta.get("local_attempts"),

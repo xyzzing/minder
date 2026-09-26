@@ -7,7 +7,7 @@ synthetic dsh home, so they never depend on the developer's own ~/.dsh.
 """
 import dshseed
 from fastapi.testclient import TestClient
-from memory import db as _db
+from minder_memory import db as _db
 from minder_op import dsh_sessions
 from webseed import HOSTILE, SECRET
 
@@ -58,7 +58,9 @@ def _db_with_session(tmp_path, session_id=SID):
 def _client(dbp, monkeypatch):
     monkeypatch.setenv("MINDER_WEB_DB", str(dbp))
     from minder_web.app import app
-    return TestClient(app)
+    # loopback base_url: the app refuses non-loopback Host headers
+    # (DNS-rebinding guard); TestClient's default host is "testserver".
+    return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
 def test_sessions_page_uses_the_real_workspace_and_title(tmp_path,
@@ -187,3 +189,22 @@ def test_route_surface_is_still_get_only():
         methods = getattr(route, "methods", None)
         if methods:
             assert not methods & unsafe, (route.path, methods)
+
+
+def test_non_loopback_host_header_is_refused(monkeypatch):
+    """DNS-rebinding guard: a page at an attacker domain re-resolved to
+    127.0.0.1 sends its own hostname in Host; the console must not answer
+    it, because the browser would hand the private evidence in the response
+    to that page's scripts."""
+    from minder_web.app import app
+    monkeypatch.delenv("MINDER_WEB_DB", raising=False)
+    from fastapi.testclient import TestClient
+    client = TestClient(app, base_url="http://evil.example:8765")
+    resp = client.get("/healthz")
+    assert resp.status_code == 403
+    assert "evil.example" in resp.text
+    # loopback names still answer
+    loopback = TestClient(app, base_url="http://127.0.0.1:8765")
+    assert loopback.get("/healthz").status_code == 200
+    assert TestClient(app, base_url="http://localhost:8765")\
+        .get("/healthz").status_code == 200

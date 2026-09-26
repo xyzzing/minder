@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from minder_op.benchmark import BenchmarkError, manifest_fingerprint
-from memory.canonicalise import redact
+from minder_memory.canonicalise import redact
 
 RUNNER_KIND = "pytest"
 DEFAULT_TIMEOUT = 120

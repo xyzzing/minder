@@ -20,6 +20,11 @@ import time
 PLUGIN_NAME = "@deepseek-ai/dsh-hooks-claude-code"
 PROVIDER_NAME = "minder"
 
+# Legal MINDER_SUCCESS_GUARD values (minder_memory/success_guard.py GUARD_MODES
+# minus "off": a hook command carrying =off, or a typo, silently disables
+# the loop stop — guard_mode() reads anything unknown as off).
+GUARD_VALUES = ("advisory", "block")
+
 
 # ---------------------------------------------------------------------------
 # Line scanning (block-scalar aware)
@@ -32,7 +37,6 @@ def block_scalar_mask(lines):
     while i < len(lines):
         stripped = lines[i].strip()
         indent = len(lines[i]) - len(lines[i].lstrip())
-        key_part = stripped.split(":")[0] if ":" in stripped else ""
         scalar_sigil = stripped.rstrip().endswith(
             ("|", ">", "|-", ">-", "|+", ">+", "|2", ">2"))
         if scalar_sigil and ":" in lines[i]:
@@ -105,25 +109,25 @@ def provider_block(provider_name, base_url, n_ctx, api_key_env,
                    auto_efforts=None):
     lines = [
         f"    {provider_name}:",
-        f"      displayName: Minder (Turnstile escalation watchdog)",
-        f"      api: openai-completions",
+        "      displayName: Minder (Turnstile escalation watchdog)",
+        "      api: openai-completions",
         f"      baseURL: {base_url}",
     ]
     if api_key_env:
         lines.append(f"      apiKeyEnv: {api_key_env}")
     lines += [
         f"      defaultContextWindow: {min(n_ctx, 32768)}",
-        f"      models:",
-        f"        - id: qwen-exec",
-        f"          name: Qwen Exec (minder)",
+        "      models:",
+        "        - id: qwen-exec",
+        "          name: Qwen Exec (minder)",
         f"          contextWindow: {n_ctx}",
         f"          maxTokens: {max_tokens_exec}",
-        f"        - id: qwen-think",
-        f"          name: Qwen Think (minder)",
+        "        - id: qwen-think",
+        "          name: Qwen Think (minder)",
         f"          contextWindow: {n_ctx}",
         f"          maxTokens: {max_tokens_think}",
-        f"        - id: qwen-auto",
-        f"          name: Qwen Auto (minder)",
+        "        - id: qwen-auto",
+        "          name: Qwen Auto (minder)",
         f"          contextWindow: {n_ctx}",
         f"          maxTokens: {max_tokens_think}",
     ]
@@ -133,8 +137,8 @@ def provider_block(provider_name, base_url, n_ctx, api_key_env,
         lines.append(f"          reasoningEfforts: "
                      f"[{', '.join(auto_efforts)}]")
     lines += [
-        f"        - id: frontier",
-        f"          name: Frontier (minder)",
+        "        - id: frontier",
+        "          name: Frontier (minder)",
         f"          contextWindow: {n_ctx}",
         f"          maxTokens: {max_tokens_exec}",
     ]
@@ -232,10 +236,10 @@ def ensure_provider_efforts(settings_text, efforts,
 def plugin_block(plugin_name, hooks_json_path):
     return [ln + "\n" for ln in [
         f"  '{plugin_name}':",
-        f"    enabled: true",
-        f"    config:",
+        "    enabled: true",
+        "    config:",
         f"      configPath: {hooks_json_path}",
-        f"      defaultTimeoutMs: 600000",
+        "      defaultTimeoutMs: 600000",
     ]]
 
 
@@ -295,7 +299,7 @@ def register_plugin(settings_text, hooks_json_path,
         # create the section at the end
         if lines and lines[-1].strip():
             lines.append("\n")
-        lines.append(f"plugins:\n")
+        lines.append("plugins:\n")
         lines += plugin_block(plugin_name, hooks_json_path)
         return "".join(lines), "created-section"
     for idx in section_block(lines, plug_idx, 0):
@@ -432,24 +436,60 @@ def discover_profile(dsh_home):
     return DEFAULT_PROFILE
 
 
-def render_hooks_json(share, sink_url, template=None):
+def existing_success_guard(path):
+    """The MINDER_SUCCESS_GUARD value the live hooks.json carries, or None.
+
+    Reinstall must not silently downgrade the operator's chosen mode: the
+    2026-09-25 live install ran `block` while the template pinned
+    `advisory`, so the next reinstall would have switched the loop stop
+    off without touching a single line of repo code."""
+    import re
+    try:
+        match = re.search(r"MINDER_SUCCESS_GUARD=(\S+)",
+                          pathlib.Path(path).read_text())
+        if not match:
+            return None
+        value = match.group(1).strip("\"'")
+        # an unrendered template copied into place: nothing to preserve
+        return None if value.startswith("__") else value
+    except OSError:
+        return None
+
+
+def render_hooks_json(share, sink_url, template=None, success_guard=None):
     """The hook command carries the production flag set (the bridge reads
     this file once at host start, so this is the only place the runtime
     flags are declared for dsh) plus the sink URL the confined hook needs
-    to persist anything at all."""
+    to persist anything at all. `success_guard` fills the guard mode
+    placeholder; the caller (write_hooks_json) decides preserve-vs-default."""
     text = (template or repo_hooks_template()).read_text()
     if "__MINDER_SHARE__" not in text:
         raise SystemExit(
             f"FAIL: {template or repo_hooks_template()} is not the minder "
             "hooks template (no __MINDER_SHARE__ placeholder) — refusing to "
             "guess.")
-    return (text.replace("__MINDER_SHARE__", str(share))
-                .replace("__MINDER_SINK_URL__", str(sink_url)))
+    rendered = (text.replace("__MINDER_SHARE__", str(share))
+                .replace("__MINDER_SINK_URL__", str(sink_url))
+                .replace("__MINDER_SUCCESS_GUARD__", str(success_guard)))
+    if "__MINDER_" in rendered:
+        raise SystemExit(
+            "FAIL: hooks template still carries an unfilled __MINDER_* "
+            "placeholder after rendering — template/render mismatch, "
+            "refusing to write it.")
+    return rendered
 
 
-def write_hooks_json(path, share, sink_url, template=None):
+def write_hooks_json(path, share, sink_url, template=None, success_guard=None):
+    if success_guard is not None and success_guard not in GUARD_VALUES:
+        raise SystemExit(
+            f"FAIL: MINDER_SUCCESS_GUARD={success_guard!r} is not one of "
+            f"{GUARD_VALUES} — an unknown value reads as off, which would "
+            "silently disable the loop stop.")
+    # Explicit wins; otherwise keep whatever mode the live file already
+    # declares (reinstall is an upgrade, never a downgrade); else advisory.
+    guard = success_guard or existing_success_guard(path) or "advisory"
     path = pathlib.Path(path)
-    text = render_hooks_json(share, sink_url, template)
+    text = render_hooks_json(share, sink_url, template, success_guard=guard)
     json.loads(text)  # fail before writing anything
     if path.exists() and path.read_text() == text:
         return "already-present"
@@ -529,6 +569,14 @@ def check_profile(dsh_home, profile, share, sink_url, hooks_json=None):
         flags = all(f in text for f in ("MINDER_DECISION=",
                                         "MINDER_SINK_URL=",
                                         "MINDER_ASSIST="))
+        # The value matters as much as the name: guard_mode() reads any
+        # unknown value as "off", so a typo'd or placeholder guard is an
+        # inert loop stop that still looks wired.
+        import re as _re
+        guard_match = _re.search(r"MINDER_SUCCESS_GUARD=(\S+)", text)
+        guard_value = guard_match.group(1).strip("\"'") \
+            if guard_match else None
+        guard_ok = guard_value in GUARD_VALUES
         # The success-loop stop needs a pre-execution hook point: without
         # PreToolUse, MINDER_SUCCESS_GUARD=block can only ever advise after
         # the fact, and nothing else would say so.
@@ -536,23 +584,26 @@ def check_profile(dsh_home, profile, share, sink_url, hooks_json=None):
             if isinstance(obj, dict) else set()
         has_pretool = "PreToolUse" in hook_points
         status = "ok" if (has_share and has_sink and flags and has_pretool
-                          and parsed == "parses") else "fail"
+                          and guard_ok and parsed == "parses") else "fail"
         points.append(("hooks-json", status,
                        f"{hooks_json} ({parsed}; share={has_share} "
                        f"sink={has_sink} flags={flags} "
+                       f"guard={guard_value!r} "
                        f"pretool={has_pretool})"))
     ok = all(status == "ok" for _p, status, _d in points)
     return ok, points
 
 
-def apply_profile(dsh_home, profile, share, sink_url, hooks_json=None):
+def apply_profile(dsh_home, profile, share, sink_url, hooks_json=None,
+                  success_guard=None):
     """Wire the three points; caller decides whether to `dsh plugin add`."""
     dsh_home = pathlib.Path(dsh_home)
     profile_dir = dsh_home / "profiles" / profile
     profile_dir.mkdir(parents=True, exist_ok=True)
     hooks_json = pathlib.Path(hooks_json or (share / "dsh" / "hooks.json"))
     result = {"profile": profile, "profile_dir": str(profile_dir)}
-    result["hooks-json"] = write_hooks_json(hooks_json, share, sink_url)
+    result["hooks-json"] = write_hooks_json(hooks_json, share, sink_url,
+                                            success_guard=success_guard)
     result["bridge-loader"] = ensure_bridge_loader(profile_dir)
     result["bridge-entry"] = ensure_patch_entry(profile_dir, hooks_json)
     return result
@@ -579,6 +630,11 @@ def main():
     ap.add_argument("--share", default=str(
         pathlib.Path.home() / ".local/share/minder"))
     ap.add_argument("--sink-url", default="http://127.0.0.1:8392")
+    ap.add_argument("--success-guard", default=None, choices=GUARD_VALUES,
+                    help="MINDER_SUCCESS_GUARD to declare in hooks.json "
+                         "(advisory|block). Omitted: preserve the value the "
+                         "live file already carries — reinstall upgrades, "
+                         "never downgrades.")
     ap.add_argument("--efforts", default="",
                     help="comma list of CAP-measured effort levels to declare "
                          "on qwen-auto (e.g. off,low,medium,xhigh); empty = "
@@ -597,7 +653,8 @@ def main():
             print("OK" if ok else "FAIL: profile wiring incomplete")
             return 0 if ok else 1
         result = apply_profile(args.dsh_home, profile, share, args.sink_url,
-                               args.hooks_json)
+                               args.hooks_json,
+                               success_guard=args.success_guard)
         for key, value in result.items():
             print(f"{key}={value}")
         return 0

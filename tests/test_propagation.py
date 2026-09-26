@@ -13,7 +13,7 @@ random DAG builder plays the fuzzer):
 """
 import random
 
-from memory import db as _db, graph, propagation
+from minder_memory import db as _db, graph, propagation
 
 NODE_TYPES = ("File", "Test", "Lesson")
 EDGE_TYPES = ("DEPENDS_ON", "SUPPORTS", "SUPERSEDES", "AFFECTS",

@@ -7,9 +7,8 @@ no-match cases keep the full gate 4 floor.
 Note: the P2.5 _skill_section path (in _evaluate) also attaches a matching
 skill to the guard digest independently of the gateway. The gateway is
 verified by the assist="decision_skill" key, which only the gateway sets."""
-import pytest
 
-from memory import (canonicalise as canon_mod, from_hook,
+from minder_memory import (canonicalise as canon_mod, from_hook,
                     policy as memory_policy)
 
 REPO = "/repo"
@@ -27,7 +26,7 @@ def fkey_of(ev):
 
 
 def install_client(monkeypatch, client):
-    from decision import client as dclient
+    from minder_decision import client as dclient
     monkeypatch.setattr(dclient, "get_decision_client",
                         lambda: client, raising=False)
 
@@ -63,7 +62,7 @@ def test_single_match_attaches_despite_low_choice_confidence(tmp_path,
     fixtures = {fkey: _spec(fkey, applies=0.9, confidence=0.2)}
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
     monkeypatch.delenv("MINDER_CLASSIFIER", raising=False)
@@ -84,7 +83,7 @@ def test_single_match_rejected_when_model_disagrees(tmp_path, monkeypatch):
     fixtures = {fkey: _spec(fkey, applies=0.3, confidence=0.9)}
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
 
@@ -105,7 +104,7 @@ def test_multi_match_keeps_full_confidence_floor(tmp_path, monkeypatch):
     fixtures = {fkey: _spec(fkey, applies=0.9, confidence=0.2)}
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
 
@@ -125,7 +124,7 @@ def test_multi_match_attaches_when_confident(tmp_path, monkeypatch):
     fixtures = {fkey: _spec(fkey, applies=0.9, confidence=0.9)}
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
 
@@ -149,7 +148,7 @@ def test_no_match_keeps_full_confidence_floor(tmp_path, monkeypatch):
                        "best_skill": "diagnose-environment"}}
     dbp = tmp_path / "m.sqlite"
     seed_world(dbp, ev)
-    from decision.client import FakeClient
+    from minder_decision.client import FakeClient
     install_client(monkeypatch, FakeClient(fixtures))
     monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
 

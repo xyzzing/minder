@@ -41,7 +41,7 @@ DEFAULT_ZCODE_CONFIG = Path.home() / ".zcode" / "cli" / "config.json"
 
 
 def _latest_schema():
-    from memory import db as _db
+    from minder_memory import db as _db
     nums = []
     for path in _db.MIGRATIONS_DIR.glob("*.sql"):
         try:
@@ -151,6 +151,36 @@ def run_checks(db_path, probe=True, now=None):
                     f"last event {_age_text(age)} ago — hook silent "
                     "for over a week; is the wiring alive?")
 
+    # The values the *hook command* declares (hooks.json is the source of
+    # truth for dsh installs, and each hook spawn reads it fresh).
+    # The 2026-09-25 live incident: this file carried the feature flags
+    # while the operator believed env did — validate it with the same
+    # vocabulary instead of trusting names only.
+    try:
+        from minder_memory import sink as sink_flags
+        declared = sink_flags.declared_flags() or {}
+    except Exception:
+        declared = {}
+    declared_bad = {var: value for var, value in declared.items()
+                    if var in FLAG_VOCAB and value not in FLAG_VOCAB[var]}
+    if declared_bad:
+        detail = "; ".join(f"{var}={value!r} not in "
+                           f"{FLAG_VOCAB[var]}"
+                           for var, value in sorted(declared_bad.items()))
+        add("hook-flags", "fail",
+            f"hooks.json declares {detail} — an unknown value reads as "
+            "off, so the feature is inert despite looking wired")
+    elif declared:
+        tracked = ", ".join(f"{var}={declared[var]}"
+                            for var in sorted(declared)
+                            if var in FLAG_VOCAB)
+        add("hook-flags", "ok",
+            tracked or "no vocabulary flags declared in hooks.json")
+    else:
+        add("hook-flags", "info",
+            "no live hooks.json flags found (dsh not installed, or "
+            "template never rendered)")
+
     share = Path(os.environ.get("MINDER_SHARE") or DEFAULT_SHARE)
     zcode_cfg = Path(os.environ.get("MINDER_ZCODE_CONFIG")
                      or DEFAULT_ZCODE_CONFIG)
@@ -189,7 +219,7 @@ def run_checks(db_path, probe=True, now=None):
     # state dir, so without the sidecar every persistence write is dropped
     # silently. This is the check that would have caught three days of loss.
     try:
-        from memory import sink as sink_mod
+        from minder_memory import sink as sink_mod
         sink_url = sink_mod.sink_url()
         sink_source = sink_mod.sink_source()
     except Exception:

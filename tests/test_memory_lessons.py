@@ -1,7 +1,6 @@
 """Verified lesson create/retrieve/invalidate (docs/prd-memory-v1.md PR 4)."""
-import pytest
 
-from memory import lessons, policy, retrieval, store
+from minder_memory import lessons, policy, retrieval, store
 
 REPO = "/repo"
 KEY = "bash|keyerror|supplier_id|app/supplier.py"
@@ -111,7 +110,7 @@ def test_duplicate_guard_digest_includes_lesson(tmp_path):
     raw = {"session_id": "guard-l1", "hook_event_name": "PostToolUse",
            "tool_name": "Bash", "tool_input": {"command": "make lint"},
            "tool_response": "process failed: exit code 2", "repo": "/repo"}
-    from memory import canonicalise as canon
+    from minder_memory import canonicalise as canon
     for _ in range(2):
         e = policy._as_event(raw)
         e["failure_key"] = canon.failure_key(e, "/repo")

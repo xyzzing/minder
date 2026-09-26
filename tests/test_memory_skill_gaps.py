@@ -1,5 +1,5 @@
 """Skill-gap record tests (docs/prd-memory-v1.md PR 6)."""
-from memory import skills
+from minder_memory import skills
 
 REPO = "/repo"
 

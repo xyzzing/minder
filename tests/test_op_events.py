@@ -1,7 +1,7 @@
 """Events listing tests (operator usability #2): the raw events table
 was the one surface the CLI could not show. Filters, ordering, show,
 redaction, standard exit codes."""
-from memory import db as _db
+from minder_memory import db as _db
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 SECRET = "sk-proj-operatorleak99999999"

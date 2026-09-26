@@ -3,7 +3,7 @@ D). The suite must pass WITHOUT the laya package; only the explicitly
 `laya`-marked test touches a real installation."""
 import pytest
 
-from memory import classifier, classifier_laya
+from minder_memory import classifier, classifier_laya
 
 
 def test_adapter_returns_none_without_laya(monkeypatch):

@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 import minder
-from memory import canonicalise as canon
-from memory import policy, store
+from minder_memory import canonicalise as canon
+from minder_memory import policy, store
 
 HOOK = str(Path(__file__).resolve().parent.parent / "hook.py")
 SUBPROC_TIMEOUT = int(os.environ.get("MINDER_TEST_TIMEOUT", "60"))
@@ -179,13 +179,12 @@ def test_duplicate_without_skill_gets_temp_plan(tmp_path):
     _seed(dbp, ev, n=1)
     out2 = policy.evaluate(ev, db_path=dbp, repo="/repo")
     assert out2 and "TEMPORARY PLAN" in out2["digest"]
-    from memory import plans
     open_plans = [p for p in _all_plans(dbp) if p["status"] == "open"]
     assert len(open_plans) == 1  # no plan spam
 
 
 def _all_plans(dbp):
-    from memory import db as mdb
+    from minder_memory import db as mdb
     conn = mdb.connect(dbp)
     try:
         return [dict(r) for r in conn.execute("SELECT * FROM temp_plans")]
@@ -195,7 +194,6 @@ def _all_plans(dbp):
 
 def test_no_skill_no_plan_still_lesson_only_digest(tmp_path):
     dbp = tmp_path / "m.sqlite"
-    from memory import plans
     # make plan creation fail (read-only db for plans is same db…) — use a
     # nonexistent plans table instead: point policy at a store whose plans
     # table is absent is overkill; instead verify the no-crash contract by

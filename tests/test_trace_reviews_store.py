@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from memory import db as _db, trace_reviews
+from minder_memory import db as _db, trace_reviews
 
 FINDINGS = [
     {"finding_id": "trf_a", "session_id": "session-1", "evaluator": "x",

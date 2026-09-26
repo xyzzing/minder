@@ -26,9 +26,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import minder
 import reflex
 try:
-    from memory import from_hook as memory_from_hook
-    from memory import policy as memory_policy
-    from memory import sink as memory_sink
+    from minder_memory import from_hook as memory_from_hook
+    from minder_memory import policy as memory_policy
+    from minder_memory import sink as memory_sink
 except Exception:  # memory is optional; the watchdog never depends on it
     memory_from_hook = None
     memory_policy = None
@@ -144,7 +144,10 @@ def trace_invocation(ev):
     rec = {"ts": time.time(),
            "hook_event_name": ev.get("hook_event_name"),
            "tool_name": ev.get("tool_name"),
-           "session": str(ev.get("session_id", ""))[:40]}
+           # Full id, never truncated: dsh session ids are
+           # `session-<uuid>` (44 chars) and slicing to 40 broke every
+           # join between this ledger and ~/.dsh/sessions.
+           "session": str(ev.get("session_id", ""))}
     try:
         if _sink_enabled() and memory_sink.append_jsonl("hook-trace.jsonl",
                                                         rec):
@@ -179,7 +182,7 @@ def capture_probe(session):
             verdict["sink_reachable"] = memory_sink.append_jsonl(
                 "hook-trace.jsonl",
                 {"ts": time.time(), "hook_event_name": "CaptureProbe",
-                 "tool_name": None, "session": str(session)[:40]})
+                 "tool_name": None, "session": str(session)})
         except Exception:
             verdict["sink_reachable"] = False
     else:
@@ -305,7 +308,9 @@ def main(argv=None):
     trace_invocation(ev)
 
     t0 = time.perf_counter()
-    session = ev.get("session_id") or "default"
+    # session_key, not `or "default"`: a sessionless payload must never
+    # share budgets/breakers/state with every other sessionless payload.
+    session = minder.session_key(ev)
     if args.session_start or ev.get("hook_event_name") == "SessionStart":
         started = time.perf_counter()
         try:

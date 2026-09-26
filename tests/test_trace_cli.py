@@ -131,13 +131,13 @@ def test_review_no_store_overrides_the_flag(env, capsys, monkeypatch):
     _review(env, "--no-store")
     data = _captured_json(capsys)
     assert data["review_id"] is None
-    from memory import trace_reviews
+    from minder_memory import trace_reviews
     assert trace_reviews.list_reviews(db_path=env["db"]) == []
 
 
 def test_review_stores_when_the_flag_is_on(env, capsys, monkeypatch):
     rid, _fid = _store_a_review(env, capsys, monkeypatch)
-    from memory import trace_reviews
+    from minder_memory import trace_reviews
     assert trace_reviews.get_review(rid, db_path=env["db"]) is not None
 
 
@@ -215,7 +215,7 @@ def test_feedback_dry_run_writes_nothing(env, capsys, monkeypatch):
                  "--level", "run", "--category", "partly_correct",
                  "--finding", fid, "--verdict", "confirm"]) == EXIT_OK
     assert "dry-run" in capsys.readouterr().out
-    from memory import trace_reviews
+    from minder_memory import trace_reviews
     assert trace_reviews.list_feedback(rid, db_path=env["db"]) == []
 
 
@@ -225,7 +225,7 @@ def test_feedback_confirms_a_finding(env, capsys, monkeypatch):
                  "--level", "run", "--category", "evidence_quality",
                  "--finding", fid, "--verdict", "confirm",
                  "--comment", "confirmed", "--yes"]) == EXIT_OK
-    from memory import trace_reviews
+    from minder_memory import trace_reviews
     assert trace_reviews.finding_verdicts(rid,
                                          db_path=env["db"])[fid] == "confirm"
 
@@ -316,8 +316,8 @@ def test_regress_refuses_a_non_failure_shaped_finding(env, capsys,
                                                       monkeypatch):
     """Advisory judgements are not converted: encoding 'fewer calls' as a
     test is the prescriptive trap the product avoids."""
-    from memory import trace_reviews
-    from trace import evaluate, normalize
+    from minder_memory import trace_reviews
+    from minder_trace import evaluate, normalize
     monkeypatch.setenv("MINDER_TRACE_REVIEW", "on")
     run, report = normalize.load_session("session-loop")
     findings = evaluate.run_all(run, report, config_overrides={

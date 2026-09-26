@@ -5,9 +5,8 @@ read as a classified label. The decisions listing is checked against a
 real in-process shadow evaluate (never through hook.py), and the digest
 identity assertion from Phase 5.5 is re-checked here.
 """
-import os
 
-from memory import (db as _db, from_hook, frontier_traces,
+from minder_memory import (db as _db, from_hook, frontier_traces,
                     policy as memory_policy)
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
@@ -79,7 +78,7 @@ def test_export_stats_missing_path_exit_usage_no_traceback(tmp_path, capsys):
 
 
 def test_export_stats_on_real_export(tmp_path, capsys):
-    from memory import (lessons as memory_lessons, store as mstore,
+    from minder_memory import (lessons as memory_lessons, store as mstore,
                         train_export)
     dbp = tmp_path / "m.sqlite"
     _db.connect(dbp).close()

@@ -12,7 +12,7 @@ import urllib.request
 import pytest
 
 import sink as sink_mod
-from memory import sink as client
+from minder_memory import sink as client
 
 
 class _Server:
@@ -40,10 +40,18 @@ class _Server:
         self.httpd.shutdown()
         self.httpd.server_close()
 
-    def post(self, path, payload):
+    def post(self, path, payload, auth="auto"):
+        headers = {"Content-Type": "application/json"}
+        if auth == "auto":  # attach the state dir's token like the client does
+            token_file = self.state_dir / "sink.token"
+            if token_file.exists():
+                headers["Authorization"] = \
+                    f"Bearer {token_file.read_text().strip()}"
+        elif auth:
+            headers["Authorization"] = auth
         req = urllib.request.Request(
             self.url + path, data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"}, method="POST")
+            headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=5) as r:
                 return r.status, json.loads(r.read())
@@ -64,7 +72,15 @@ def server(tmp_path, monkeypatch):
     monkeypatch.setattr(sink_mod, "_STATS", {
         "started_ts": sink_mod.time.time(), "ops": {}, "errors": [],
         "last_persist_ts": None})
-    srv = _Server(tmp_path / "state", monkeypatch)
+    monkeypatch.setattr(sink_mod, "_AUTH", {"token": None})
+    # patch STATE_DIR *before* ensure_token, or the token lands in the
+    # operator's real state dir
+    state = tmp_path / "state"
+    monkeypatch.setattr(sink_mod.minder, "STATE_DIR", state)
+    monkeypatch.setenv("MINDER_STATE_DIR", str(state))
+    token_state = sink_mod.ensure_token()
+    srv = _Server(state, monkeypatch)
+    srv.token_state = token_state
     try:
         yield srv
     finally:
@@ -116,9 +132,12 @@ def test_append_jsonl_rejects_anything_but_the_known_ledgers(server, name):
     status, body = server.post("/persist", {
         "op": "append_jsonl", "name": name, "record": {}})
     assert status in (400, 500) and body["ok"] is False
-    # nothing was created inside the state dir by rejection, and no
-    # traversal target outside it was touched
-    assert list(server.state_dir.glob("**/*")) == []
+    # nothing was created inside the state dir by rejection (the auth
+    # token is the one legitimate file), and no traversal target outside
+    # it was touched
+    leftovers = [p for p in server.state_dir.glob("**/*")
+                 if p.name != "sink.token"]
+    assert leftovers == []
 
 
 def test_unknown_op_is_rejected_and_counted(server):
@@ -153,7 +172,11 @@ def test_record_op_runs_the_memory_pipeline(server, monkeypatch):
 
 
 def test_bad_body_and_bad_json_are_rejected(server):
+    # authenticated (auth failures are checked first; this pins the body
+    # validation behind them)
+    token = (server.state_dir / "sink.token").read_text().strip()
     req = urllib.request.Request(server.url + "/persist", data=b"x" * 4,
+                                 headers={"Authorization": f"Bearer {token}"},
                                  method="POST")
     with pytest.raises(urllib.error.HTTPError) as exc:
         urllib.request.urlopen(req, timeout=5)
@@ -295,3 +318,53 @@ def test_sink_adopts_hook_flags_but_never_overrides_its_own(tmp_path,
     flags = sink_mod._effective_flags()
     assert flags["MINDER_ASSIST"] == "decision_skill"
     assert flags["MINDER_DECISION"] == "shadow"
+
+
+def test_writes_without_the_token_are_refused(server):
+    status, body = server.post("/persist",
+                               {"op": "append_jsonl", "name": "events.jsonl",
+                                "record": {"a": 1}}, auth=None)
+    assert status == 401 and body["ok"] is False
+    status, body = server.post("/persist",
+                               {"op": "append_jsonl", "name": "events.jsonl",
+                                "record": {"a": 1}}, auth="Bearer wrong")
+    assert status == 401
+    assert not (server.state_dir / "events.jsonl").exists()
+
+
+def test_reads_stay_open_but_writes_need_the_token(server):
+    assert server.get("/healthz")[0] == 200
+    assert server.get("/stats")[0] == 200
+    assert server.post("/persist", {"op": "append_jsonl",
+                                    "name": "events.jsonl",
+                                    "record": {"a": 1}})[0] == 200
+
+
+def test_token_file_is_created_operator_private(server):
+    import os
+    import stat
+    token_file = server.state_dir / "sink.token"
+    assert token_file.exists()
+    mode = stat.S_IMODE(os.stat(token_file).st_mode)
+    assert mode == 0o600, oct(mode)
+    assert len(token_file.read_text().strip()) >= 32
+
+
+def test_without_a_token_file_writes_stay_open(tmp_path, monkeypatch):
+    """Escape hatch: no token in force at request time → the sink serves
+    writes unauthenticated rather than half-blocking the capture path.
+    (This server never runs ensure_token, so _AUTH stays empty.)"""
+    monkeypatch.setattr(sink_mod, "_STATS", {
+        "started_ts": sink_mod.time.time(), "ops": {}, "errors": [],
+        "last_persist_ts": None})
+    monkeypatch.setattr(sink_mod, "_AUTH", {"token": None})
+    monkeypatch.delenv("MINDER_STATE_DIR", raising=False)
+    srv = _Server(tmp_path / "state2", monkeypatch)
+    try:
+        status, _ = srv.post("/persist", {"op": "append_jsonl",
+                                          "name": "events.jsonl",
+                                          "record": {"open": True}},
+                             auth=None)
+        assert status == 200
+    finally:
+        srv.stop()

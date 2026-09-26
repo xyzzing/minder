@@ -3,6 +3,99 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## Unreleased — ecosystem pass (namespaces, minder_core, --generic, wheel)
+
+The panel's strategic recommendations, landed: adoptable packaging, a
+dependency-free extractable core, and a first-class path for harnesses
+that are not dsh/zcode. Also fixes a latent install bug: `trace/` was
+never staged to the share, so `minder-op trace ls|review` broke on live
+installs with an ImportError.
+
+- **Internal packages namespaced**: `memory/` → `minder_memory/`,
+  `decision/` → `minder_decision/`, `trace/` → `minder_trace/`. The old
+  top-level names collide with the stdlib (`trace`) and PyPI reality
+  (`memory`), which made honest packaging impossible. All imports,
+  benchmark fixture paths, and install staging updated; install.sh now
+  also stages `minder_trace/` and `minder_core/` (fixing the trace gap
+  above). Behaviour unchanged: 764 tests pass.
+- **`minder_core`** — the extractable, citable surface: `comparator`
+  (the protected-metric verdict law) and `identity` (canonical failure
+  keys, action fingerprints, redaction, result signatures). Stdlib only,
+  imports nothing from minder, pinned by AST tests
+  (`tests/test_minder_core.py`). `minder_memory.canonicalise`,
+  `minder_memory.success_guard` and `minder_op.benchmark` re-export the
+  same objects — no forked laws.
+- **`install.sh --generic`** — code, config and operator shims only: no
+  dsh/zcode wiring, no systemd units. Any OpenAI-compatible harness then
+  points at the self-started proxy (`http://127.0.0.1:8390/v1`); the
+  escalation markers in recent context do the rest. README restructured
+  around it.
+- **Wheel packaging** (`pyproject.toml`): the operator plane,
+  evidence store, decision gateway and minder_core are pip-installable
+  (`minder-op` / `minder-web` entry points; migrations + console
+  templates ship as package data; version is dynamic from
+  `MINDER_VERSION`). Hook transports/proxy/sink stay install.sh-staged —
+  they need a real upstream and harness to be honest about what they are.
+- **ADRs published**: `docs/adr/0001–0004` are tracked again (private
+  info reviewed; none found), so CONTRIBUTING's design-convention links
+  resolve for cloners.
+
+## Unreleased — QA panel hardening (session-id joins, reinstall guard, sink auth)
+
+Findings from an external-perspective architecture/QA review; every fix
+landed with a regression test.
+
+- **Reinstall can no longer downgrade the loop stop.** The live hooks.json
+  ran `MINDER_SUCCESS_GUARD=block` while the repo template pinned
+  `advisory`, `check_profile` validated flag *names* but not values, and a
+  reinstall silently restored `advisory`. The guard mode is now a template
+  placeholder: `dsh_install profile-apply` preserves the live value unless
+  `--success-guard` says otherwise, `check_profile` fails on an illegal
+  value (a typo reads as `off` in `guard_mode()`), and `minder-op doctor`
+  gained a `hook-flags` check that validates the values the hook command
+  actually declares.
+- **Session ids are never truncated.** `hook.py` sliced ids to 40 chars
+  while dsh ids are 44 (`session-<uuid>`) — the missing tail broke every
+  join between the JSONL ledgers and `~/.dsh/sessions` (the stale
+  `/sessions` page). Full ids are now written everywhere.
+- **Sessionless payloads no longer share one `default` bucket.** A payload
+  without a session id used to merge failure counters, escalation budgets
+  and breaker memory across unrelated sessions. `minder.session_key()`
+  derives an action-scoped `sessionless-<sha1>` key instead: identical
+  calls still accumulate into one countable loop, different actions never
+  share a bucket, and the self-describing key name makes the degraded
+  identity visible in the ledger and state dir.
+- **Migrations are atomic.** A migration failing mid-file used to leave
+  partial DDL with the old `user_version` stamped, so every later
+  `connect()` re-ran the broken file and raised forever (fail-open to "no
+  memory"). Each migration now runs in one transaction with its version
+  bump; a failure rolls back whole and the retry starts clean.
+- **Console Host allowlist.** The read-only console is deliberately
+  unauthenticated, so a DNS-rebinding page re-resolving to 127.0.0.1 could
+  read private evidence cross-origin. Non-loopback `Host` headers are now
+  refused with 403 (`minder_web.app.host_from_header`; loopback names and
+  missing-host HTTP/1.0 probes still answer).
+- **Sink writes need the shared secret.** Loopback was "not an auth
+  boundary" while sink writes flow back into agent context — local memory
+  poisoning was a one-POST affair. The sink now ensures
+  `STATE_DIR/sink.token` (0600) at startup and requires
+  `Authorization: Bearer` on `POST /persist`; clients read the token
+  per-spawn. `GET /healthz`/`/stats` stay open, and a missing token file
+  still opens writes (documented escape hatch, never a half-state).
+- **Context injection is bounded.** The compaction brief is capped at 20
+  failure keys / 4000 chars so a long session cannot crowd out the context
+  the summarizer just kept.
+- **CI now lints.** A `ruff` job (config: `ruff.toml`, default rule set +
+  bare-except ban; test-only idioms ignored per-file) runs beside the test
+  matrix. Landing it cleaned 90+ findings: dead imports/variables, a
+  redefined `events_page`, leftover locals — no behavior changes intended
+  or observed (757 tests pass).
+- **Out-of-band health signal.** install.sh writes an optional
+  `minder-doctor.service` + daily `minder-doctor.timer` (skipped under
+  `MINDER_NO_SYSTEMD`): doctor runs daily, files
+  `$STATE/doctor-last.txt`, and exits non-zero on an unhealthy verdict so
+  a silent watchdog shows in `systemctl --user --failed`.
+
 ## Unreleased — trace review + a loop stop that actually stops
 
 Post-run evaluation of completed dsh sessions, and the fix for the live

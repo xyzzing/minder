@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 from minder_op import format as fmt
 from minder_op import queries
@@ -23,7 +24,7 @@ def trace_reviews_mod():
     """Lazy import: the memory plane is optional for the operator CLI (the
     watchdog never depends on it), so a module-level import here would make
     every `minder-op` command depend on it."""
-    from memory import trace_reviews
+    from minder_memory import trace_reviews
     return trace_reviews
 
 # Kept visible where an operator will look: deferred out of 8A–8C by the
@@ -673,8 +674,10 @@ def _cmd_decisions_ls(args, path):
 
 
 def _cmd_export_stats(args):
-    from memory import train_eval
-    path = args.path or "memory/exports/training_candidates.jsonl"
+    from minder_memory import train_eval
+    path = args.path or str(Path(__file__).resolve().parent.parent
+                            / "minder_memory" / "exports"
+                            / "training_candidates.jsonl")
     if not os.path.exists(path):
         print(f"error: export not found: {path}", file=sys.stderr)
         return EXIT_USAGE
@@ -829,7 +832,7 @@ def _cmd_events_show(args, path):
 
 
 def _cmd_task_declare(args, path):
-    from memory import task_context
+    from minder_memory import task_context
     previous = task_context.find_open_context(args.task, db_path=path)
     row, status = task_context.declare_task(
         args.domain, task_id=args.task, actor=args.actor,
@@ -848,7 +851,7 @@ def _cmd_task_declare(args, path):
     # Phase 2 calibration: shadow what the router WOULD propose against
     # this human label. Observe-only — the declaration stays
     # authoritative regardless of what the provider says.
-    from decision import routing
+    from minder_decision import routing
     shadow = routing.assess_route(
         declared_domain=args.domain, task_id=args.task,
         current_domain=(previous or {}).get("domain"),
@@ -861,7 +864,7 @@ def _cmd_task_declare(args, path):
 
 
 def _cmd_task_status(args, path):
-    from memory import task_context
+    from minder_memory import task_context
     state = task_context.task_status(task_id=args.task, db_path=path)
     open_row = state.get("open")
     if not open_row:
@@ -877,7 +880,7 @@ def _cmd_task_status(args, path):
 
 
 def _cmd_task_close(args, path):
-    from memory import task_context
+    from minder_memory import task_context
     row, status = task_context.close_task(task_id=args.task,
                                           reason=args.reason, db_path=path)
     if row is None:
@@ -896,7 +899,7 @@ def _json_arg(text, what):
 
 
 def _cmd_families_register(args, path):
-    from memory import trading_protocol as tp
+    from minder_memory import trading_protocol as tp
     try:
         sources = _json_arg(args.sources, "--sources")
     except ValueError as exc:
@@ -917,7 +920,7 @@ def _cmd_families_register(args, path):
 
 
 def _cmd_families_trial(args, path):
-    from memory import trading_protocol as tp
+    from minder_memory import trading_protocol as tp
     try:
         vintage = _json_arg(args.vintage, "--vintage")
         result = _json_arg(args.result, "--result")
@@ -938,7 +941,7 @@ def _cmd_families_trial(args, path):
 
 
 def _cmd_families_analysis(args, path):
-    from memory import trading_protocol as tp
+    from minder_memory import trading_protocol as tp
     try:
         verdict = _json_arg(args.verdict, "--verdict") if args.verdict \
             else None
@@ -962,7 +965,7 @@ def _cmd_families_analysis(args, path):
 
 
 def _cmd_families_status(args, path):
-    from memory import trading_protocol as tp
+    from minder_memory import trading_protocol as tp
     status = tp.manifest_status(args.family, db_path=path)
     fmt.kv([(key, status[key]) for key in
             ("family_id", "registered", "version", "trials",
@@ -975,14 +978,13 @@ def _cmd_families_status(args, path):
 
 
 def _cmd_families_unlock(args, path):
-    from memory import trading_protocol as tp
     if not args.yes:
         print("PLAN (dry — nothing written):")
         print(f"  holdout unlock for {args.family} by {args.actor} "
               "(recorded as a human_input_event)")
         print("re-run with --yes to record the decision")
         return EXIT_USAGE
-    from memory import task_context
+    from minder_memory import task_context
     event, status = task_context.record_human_input(
         "holdout_unlock", actor=args.actor, authority="user",
         decision="approved",
@@ -1000,13 +1002,13 @@ def _cmd_families_unlock(args, path):
 
 
 def _cmd_routes_eval(args, path):
-    from decision import routing
-    from decision.providers.null import NullClient
+    from minder_decision import routing
+    from minder_decision.providers.null import NullClient
     provider = {"rules": routing.RulesRouteProvider,
                 "null": NullClient}.get(args.provider)
     provider = provider() if provider else None
     if args.provider == "laya":
-        from decision.providers.laya import try_laya_client
+        from minder_decision.providers.laya import try_laya_client
         provider = try_laya_client()
         if provider is None:
             print("error: laya provider unavailable", file=sys.stderr)
@@ -1033,7 +1035,7 @@ def _cmd_routes_eval(args, path):
 
 
 def _cmd_routes_ls(args, path):
-    from decision import routing
+    from minder_decision import routing
     rows = routing.list_routes(limit=args.limit, db_path=path)
     fmt.table([{"id": r["trace_id"], "ts": r["ts"],
                 "declared": r["declared_domain"] or "-",
@@ -1052,13 +1054,13 @@ def _cmd_routes_ls(args, path):
 
 
 def _cmd_routes_replay(args, path):
-    from decision import routing
-    from decision.providers.null import NullClient
+    from minder_decision import routing
+    from minder_decision.providers.null import NullClient
     provider = {"rules": routing.RulesRouteProvider,
                 "null": NullClient}.get(args.provider)
     provider = provider() if provider else None
     if args.provider == "laya":
-        from decision.providers.laya import try_laya_client
+        from minder_decision.providers.laya import try_laya_client
         provider = try_laya_client()
         if provider is None:
             print("error: laya provider unavailable (package missing or "
@@ -1096,7 +1098,7 @@ def _cmd_routes_replay(args, path):
 
 
 def _cmd_routes_ambiguity(args, path):
-    from decision import routing
+    from minder_decision import routing
     report = routing.ambiguity_report(days=args.days, db_path=path)
     fmt.kv([(key, report[key]) for key in
             ("window_days", "sessions", "failure_events",
@@ -1110,7 +1112,7 @@ def _cmd_routes_ambiguity(args, path):
 
 
 def _cmd_resume_assert(args, path):
-    from memory import resume_evidence
+    from minder_memory import resume_evidence
     row, status = resume_evidence.assert_career_fact(
         args.claim, wording_variants=args.variant, actor=args.actor,
         db_path=path)
@@ -1124,7 +1126,7 @@ def _cmd_resume_assert(args, path):
 
 
 def _cmd_resume_approve(args, path):
-    from memory import resume_evidence
+    from minder_memory import resume_evidence
     row, status = resume_evidence.approve_wording(
         args.assertion, phrase=args.phrase, actor=args.actor,
         scope=args.scope, db_path=path)
@@ -1137,7 +1139,7 @@ def _cmd_resume_approve(args, path):
 
 
 def _cmd_resume_uncertain(args, path):
-    from memory import resume_evidence
+    from minder_memory import resume_evidence
     row, status = resume_evidence.mark_uncertain(
         args.assertion, actor=args.actor, db_path=path)
     if row is None:
@@ -1151,7 +1153,7 @@ def _cmd_resume_uncertain(args, path):
 
 
 def _cmd_resume_intent(args, path):
-    from memory import resume_evidence
+    from minder_memory import resume_evidence
     row, status = resume_evidence.set_intent(
         args.jd, args.jd_digest, args.assertion,
         chosen_variant=args.phrase, actor=args.actor,
@@ -1168,7 +1170,7 @@ def _cmd_resume_intent(args, path):
 
 
 def _cmd_resume_draft(args, path):
-    from memory import resume_evidence
+    from minder_memory import resume_evidence
     row, status = resume_evidence.record_draft(
         args.draft, args.assertion, phrase=args.phrase, jd_id=args.jd,
         db_path=path)
@@ -1181,7 +1183,7 @@ def _cmd_resume_draft(args, path):
 
 
 def _cmd_resume_impact(args, path):
-    from memory import resume_evidence
+    from minder_memory import resume_evidence
     preview = resume_evidence.impact_preview(args.assertion, db_path=path)
     print(f"impact preview for {args.assertion} (read-only; corrections "
           "are human-gated):")
@@ -1198,7 +1200,7 @@ def _cmd_resume_impact(args, path):
 
 
 def _cmd_resume_correct(args, path):
-    from memory import resume_evidence
+    from minder_memory import resume_evidence
     if not args.yes:
         print("PLAN (dry — nothing written):")
         print(f"  resume correct {args.assertion} -> '{args.claim}' "
@@ -1220,7 +1222,7 @@ def _cmd_resume_correct(args, path):
 
 
 def _cmd_resume_expire(args, path):
-    from memory import resume_evidence
+    from minder_memory import resume_evidence
     now = args.now or None
     summary = resume_evidence.expire_intents(now=now, db_path=path)
     fmt.kv([("expired", summary["expired"]),
@@ -1230,7 +1232,7 @@ def _cmd_resume_expire(args, path):
 
 
 def _cmd_success_loops_ls(args, path):
-    from memory import success_guard
+    from minder_memory import success_guard
     rows = success_guard.list_success_loops(limit=args.limit,
                                             db_path=path)
     fmt.table([{"ts": r["ts"], "session": r["session_id"],
@@ -1452,7 +1454,7 @@ def _refuse_without_yes(args, plan):
 
 
 def _cmd_lessons_invalidate(args, path):
-    from memory import lessons as memory_lessons
+    from minder_memory import lessons as memory_lessons
     if _refuse_without_yes(
             args, f"lessons invalidate {args.id} reason={args.reason!r}"):
         return EXIT_USAGE
@@ -1468,7 +1470,7 @@ def _cmd_lessons_invalidate(args, path):
 
 
 def _cmd_lessons_promote(args, path):
-    from memory import lessons as memory_lessons
+    from minder_memory import lessons as memory_lessons
     if _refuse_without_yes(
             args, f"lessons promote episode={args.episode_id} "
                   f"instruction={args.instruction!r} "
@@ -1490,7 +1492,7 @@ def _cmd_lessons_promote(args, path):
 
 
 def _cmd_gaps_close(args, path):
-    from memory import skills as memory_skills
+    from minder_memory import skills as memory_skills
     if _refuse_without_yes(
             args, f"gaps close {args.id} reason={args.reason!r}"):
         return EXIT_USAGE

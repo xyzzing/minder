@@ -19,7 +19,7 @@
       "tier": 1,
       "family": "decision_replay",
       "title": "Deterministic replay of the failure-triage decision eval fixtures",
-      "fixtures": ["../../decision/evals/failure_triage"],
+      "fixtures": ["../../minder_decision/evals/failure_triage"],
       "expected": "tests_pass",
       "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "network", "package_install", "ssh", "writes_outside_sandbox"]
     },

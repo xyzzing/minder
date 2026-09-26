@@ -3,9 +3,8 @@ P7.2). Counts, families, held-out ratio, redaction check — and nothing
 that resembles training."""
 import json
 
-import pytest
 
-from memory import train_eval
+from minder_memory import train_eval
 
 FIXTURE = "tests/fixtures/export/held_out.json"
 
@@ -59,4 +58,4 @@ def test_no_training_surface():
             imported.update(a.name.split(".")[0] for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
-    assert imported <= {"json", "pathlib", "memory", "canonicalise"}
+    assert imported <= {"json", "pathlib", "minder_memory", "canonicalise"}

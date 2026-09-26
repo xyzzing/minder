@@ -237,9 +237,10 @@ def _difficulty_state(req):
     for m in req.get("messages") or []:
         if m.get("role") == "user":
             try:
-                from memory.canonicalise import redact
+                from minder_memory.canonicalise import redact
             except Exception:
-                redact = lambda s: s
+                def redact(s):
+                    return s
             return {"task": redact(str(m.get("content", "")))[:500],
                     "turn": len(req.get("messages") or [])}
     return {"task": "", "turn": len(req.get("messages") or [])}
@@ -256,9 +257,9 @@ def _difficulty_opinion(req, session_fp, cfg, level, client_effort):
         router = (cfg.get("difficulty_router") or "off").strip().lower()
         if router not in ("shadow", "active") or level or client_effort:
             return None
-        from decision.contracts import task_difficulty_contract
-        from decision.difficulty import resolve_difficulty
-        from decision.client import get_decision_client
+        from minder_decision.contracts import task_difficulty_contract
+        from minder_decision.difficulty import resolve_difficulty
+        from minder_decision.client import get_decision_client
         client = get_decision_client()
         if client is None:
             return None
@@ -341,7 +342,7 @@ def _downgrade_band(band, session_fp, cfg):
     if idx >= len(_BAND_ORDER) - 1:
         return None
     lower = _BAND_ORDER[idx + 1]
-    from decision.difficulty import band_for
+    from minder_decision.difficulty import band_for
     new_band = band_for(lower, cfg)
     minder.log(session_fp, "spend_guardrail_downgrade",
                from_label=band.get("label"), to_label=lower)
@@ -386,7 +387,7 @@ def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None,
                 if downgraded is not None:
                     band = downgraded
                     label = band["label"]
-            from decision.difficulty import apply_band
+            from minder_decision.difficulty import apply_band
             applied = apply_band(req, band, cfg)
             effort = applied["effort"]
             budget = applied["budget"]

@@ -13,7 +13,7 @@ the live DBS failure the guard was built for.
 import json
 
 
-from trace import evaluate, normalize
+from minder_trace import evaluate, normalize
 from tracebuild import bash, call, hook, result
 
 # Volatile-number-only differences: one signature (the incident's own

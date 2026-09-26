@@ -9,7 +9,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from memory import db as _db
+from minder_memory import db as _db
 
 UNCLASSIFIED = "(unclassified)"
 

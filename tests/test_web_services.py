@@ -5,7 +5,6 @@ candidate lesson stays a candidate; secrets are redacted before any
 template can see them. The HTTP surface is GET-only — asserted on the
 route table itself.
 """
-import pytest
 
 from minder_web import services
 

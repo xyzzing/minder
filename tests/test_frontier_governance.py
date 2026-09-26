@@ -4,7 +4,7 @@ classify_consult never raises; external-prohibited refuses response-derived
 text."""
 import json
 
-from memory import frontier_traces
+from minder_memory import frontier_traces
 
 SECRET = "sk-proj-supersecret1234567890"
 

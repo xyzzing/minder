@@ -8,8 +8,8 @@ import textwrap
 
 import pytest
 
-from memory import db as mdb
-from memory import store
+from minder_memory import db as mdb
+from minder_memory import store
 
 REPO = "/home/operator/projects/minder"
 
@@ -89,7 +89,7 @@ def test_concurrent_writers_do_not_corrupt(tmp_path):
     worker = textwrap.dedent("""
         import sys
         sys.path.insert(0, {root!r})
-        from memory import store
+        from minder_memory import store
         for i in range(20):
             store.record_event({{**{base!r}, "payload_json": '{{"w": %s}}' % i}},
                                db_path={dbp!r})

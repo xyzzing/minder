@@ -1,5 +1,5 @@
 """Change-impact suggestion tests (spec P3.4)."""
-from memory import impact, lessons, store
+from minder_memory import impact, lessons, store
 
 REPO = "/repo"
 KEY = "bash|keyerror|supplier_id|app/supplier.py"

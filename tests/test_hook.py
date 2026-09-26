@@ -9,7 +9,6 @@ from pathlib import Path
 # raise under load instead of flaking.
 SUBPROC_TIMEOUT = int(os.environ.get("MINDER_TEST_TIMEOUT", "60"))
 
-import minder
 
 HOOK = str(Path(__file__).resolve().parent.parent / "hook.py")
 
@@ -244,8 +243,8 @@ def test_verify_consult_fires_on_frontier_deescalate(tmp_path):
                        tool_response="patched cleanly"), "dsh", tmp_path)
     assert ok.returncode == 0
     consults = (tmp_path / "state" / "consults.jsonl").read_text().splitlines()
-    verify = [json.loads(l) for l in consults
-              if json.loads(l)["response"].startswith("VERIFY")]
+    verify = [json.loads(c) for c in consults
+              if json.loads(c)["response"].startswith("VERIFY")]
     assert verify, consults
 
 
@@ -282,7 +281,7 @@ def _seed_loop(tmp_path, payloads, name="seed.sqlite"):
     """
     from unittest import mock
 
-    from memory import db as _db, from_hook
+    from minder_memory import db as _db, from_hook
     dbp = tmp_path / name
     _db.connect(dbp).close()
     with mock.patch.dict(os.environ, {"MINDER_SUCCESS_GUARD": "advisory"}):
@@ -323,7 +322,7 @@ def test_pretool_is_inert_when_mode_off_or_advisory(tmp_path):
 def test_pretool_does_not_record_a_bogus_observation(tmp_path):
     """A pre-tool payload has no result. Recording it would insert a
     zero-output row and corrupt the very counts the stop relies on."""
-    from memory import db as _db
+    from minder_memory import db as _db
     dbp = _seed_loop(tmp_path, (CURL_1,))
 
     def rows():
@@ -375,7 +374,7 @@ def test_block_mode_directive_blocks_the_posttool_repeat(tmp_path):
 def test_flag_off_is_byte_inert_for_a_looping_session(tmp_path):
     """The default-off path must stay exactly as it was: exit 0, no
     stdout, no stderr, and not one observation written."""
-    from memory import db as _db
+    from minder_memory import db as _db
     off = tmp_path / "off.sqlite"
     proc = run_hook(_loop_payload(CURL_1), "dsh", tmp_path,
                     env_extra={"MINDER_MEMORY_DB": str(off)})
@@ -398,7 +397,7 @@ def test_real_payload_signs_the_actual_output_not_the_empty_string(tmp_path):
     action then shared a signature — the counter over-fires."""
     from unittest import mock
 
-    from memory import db as _db, from_hook, success_guard
+    from minder_memory import db as _db, from_hook, success_guard
     dbp = tmp_path / "sig.sqlite"
     _db.connect(dbp).close()
     with mock.patch.dict(os.environ, {"MINDER_SUCCESS_GUARD": "advisory"}):
@@ -413,3 +412,20 @@ def test_real_payload_signs_the_actual_output_not_the_empty_string(tmp_path):
         conn.close()
     assert len(sigs) == 2 and sigs[0] != sigs[1], sigs
     assert success_guard.result_signature(0, "") not in sigs
+
+
+def test_trace_keeps_the_full_session_id(tmp_path):
+    """Regression: the trace used to slice session ids to 40 chars, and dsh
+    session ids are `session-<uuid>` = 44 chars — the last 4 UUID characters
+    were chopped, breaking every join between hook-trace.jsonl /
+    events.jsonl and ~/.dsh/sessions. The full id must survive the hook."""
+    long_id = "session-be2cae94-11e2-4b52-bd3a-eee566295d45"
+    assert len(long_id) == 44
+    proc = run_hook(dict(FAIL_EVENT, session_id=long_id), "dsh", tmp_path,
+                    env_extra={"MINDER_HOOK_TRACE": "1"})
+    assert proc.returncode == 0
+    lines = (tmp_path / "state" / "hook-trace.jsonl").read_text()\
+        .splitlines()
+    assert lines, "hook trace was not written"
+    rec = json.loads(lines[-1])
+    assert rec["session"] == long_id

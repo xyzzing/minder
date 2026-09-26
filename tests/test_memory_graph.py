@@ -1,5 +1,5 @@
 """Graph table tests (spec P3.1). SQLite only, temporal edges, fail-open."""
-from memory import graph
+from minder_memory import graph
 
 
 def test_affects_link_idempotent(tmp_path):

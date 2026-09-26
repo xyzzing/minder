@@ -475,7 +475,6 @@ def test_mode_deep_sets_budget(proxy_over_mock):
 
 
 def test_thermal_downgrade_deep_to_lean(proxy_over_mock, monkeypatch, tmp_path):
-    import time as _t
     mock, srv, url = proxy_over_mock("default")
     try:
         write_caps("kwargs")
@@ -671,8 +670,8 @@ def test_client_effort_beats_scheduler(proxy_over_mock, tmp_path,
 def _fake_difficulty_client(monkeypatch, label, score, confidence=0.9):
     """Monkeypatch the decision client to a FakeClient that always answers
     the given difficulty label/score. Returns the client (for assertions)."""
-    import decision.client as decision_client
-    from decision.providers.fake import FakeClient
+    import minder_decision.client as decision_client
+    from minder_decision.providers.fake import FakeClient
     key = "difficulty-test"
     client = FakeClient(
         fixtures={key: {"difficulty": label, "difficulty_score": score,
@@ -810,7 +809,7 @@ def test_t11_laya_unavailable_falls_through(proxy_over_mock, tmp_path,
     try:
         write_caps("kwargs")
         _difficulty_cfg(tmp_path, "active", monkeypatch)
-        import decision.client as decision_client
+        import minder_decision.client as decision_client
         monkeypatch.setattr(decision_client, "get_decision_client",
                             lambda: None)
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,

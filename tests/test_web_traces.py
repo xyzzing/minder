@@ -8,7 +8,7 @@ never change what the agent does.
 import webseed
 from webseed import new_db
 
-from memory import trace_reviews
+from minder_memory import trace_reviews
 
 FINDING = {
     "finding_id": "trf_abc123",

@@ -374,7 +374,7 @@ def _store(name, filename, when, now, path):
 def _declared_flags():
     """{MINDER_*: value} as declared by the hook command ({} if unknown)."""
     try:
-        from memory import sink
+        from minder_memory import sink
         return sink.declared_flags() or {}
     except Exception:
         return {}
@@ -383,7 +383,7 @@ def _declared_flags():
 def _tracked_flags():
     """The policy flags both sides are expected to agree on."""
     try:
-        from memory import sink
+        from minder_memory import sink
         return sink.TRACKED_FLAGS
     except Exception:
         return ()
@@ -398,7 +398,7 @@ def _sink_report(state):
     out = {"configured": False, "url": None, "source": None,
            "declared": None, "reachable": False, "stats": None}
     try:
-        from memory import sink
+        from minder_memory import sink
     except Exception:
         return out
     try:

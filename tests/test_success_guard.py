@@ -8,12 +8,11 @@ MINDER_SUCCESS_GUARD=advisory nothing is recorded and no advisory is
 produced (byte-inert). Fail-open everywhere: a broken store never
 raises. Draft usages append; success observations are append-only too.
 """
-import json
 import sqlite3
 
 import pytest
 
-from memory import db as _db, from_hook, success_guard
+from minder_memory import db as _db, from_hook, success_guard
 from minder_op.cli import EXIT_OK, main
 
 # Verbatim from the live incident (three consecutive curl outputs).
@@ -259,3 +258,25 @@ def test_success_directive_only_in_block_mode(tmp_path, monkeypatch):
     assert from_hook.success_advisory() is None
     monkeypatch.setenv("MINDER_SUCCESS_GUARD", "advisory")
     assert from_hook.success_directive() is None
+
+
+def test_pretool_block_fires_for_sessionless_payloads(tmp_path,
+                                                      monkeypatch):
+    """Regression: blocked_action_directive queried under `""` while
+    observations were stored under the action-scoped sessionless key, so
+    block-mode pre-emption was dead for payloads without a session id."""
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+               "tool_input": {"command": "curl -s example.com > out.pdf"},
+               "tool_response": "ok 12345 bytes"}
+    pre_payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                   "tool_input": {"command": "curl -s example.com > out.pdf"}}
+    monkeypatch.setenv("MINDER_SUCCESS_GUARD", "block")
+    dbp = tmp_path / "pre.sqlite"
+    _db.connect(dbp).close()
+    for _ in range(3):  # threshold: the same result 3x in the window
+        from_hook.record(payload, db_path=dbp)
+    # the identical action, pre-execution: must be stopped
+    directive = from_hook.blocked_action_directive(pre_payload,
+                                                   db_path=dbp)
+    assert directive is not None
+    assert "REPEATED_SUCCESSFUL_ACTION" in directive

@@ -66,6 +66,13 @@ _EDIT_TOOLS = ("edit", "write", "multiedit", "apply_patch", "fs_write", "str_rep
 DIGEST_MARKERS = {1: "[minder] ESCALATION L1", 2: "[minder] ESCALATION L2",
                   3: "[minder] ESCALATION L3"}
 
+# Context-injection caps: the compact brief and advisories ride
+# additionalContext into the next model request. An uncapped brief (one
+# line per failure key, unbounded key count) could crowd out the very
+# context the summarizer just kept, so both dimensions are bounded.
+BRIEF_MAX_KEYS = 20
+BRIEF_MAX_CHARS = 4000
+
 
 def cfg():
     c = dict(DEFAULTS)
@@ -110,7 +117,7 @@ def _sink_client():
     sidecar does it for them over loopback. Guarded + lazy so minder.py
     keeps its stdlib-only import graph when the sidecar is not in use."""
     try:
-        from memory import sink as _sink
+        from minder_memory import sink as _sink
     except Exception:
         return None
     try:
@@ -165,6 +172,35 @@ def is_failure(text, extra=None):
     t = str(text).lower()
     signs = FAIL_SIGNS + tuple(extra or ())
     return any(s in t for s in signs)
+
+
+def session_key(ev):
+    """Session/task identity for state files, budgets and the ledger.
+
+    A payload with no session id must NOT fall into one shared bucket:
+    `default` merged failure counters, escalation budgets and breaker
+    memory across unrelated sessions. The fallback instead derives a
+    `sessionless-<sha1>` key from the event's action identity (tool +
+    arguments, in both the raw and canonical payload shapes), so repeated
+    identical calls still accumulate into one loop the warden can count,
+    while different actions never share a bucket. Deterministic, so every
+    consumer within one hook invocation derives the same key. The key
+    name is the observability: a state file or ledger record keyed
+    `sessionless-…` says the harness sent no session id. Never raises."""
+    sid = ev.get("session_id") if isinstance(ev, dict) else None
+    if isinstance(sid, str) and sid.strip():
+        return sid.strip()
+    try:
+        tool = ev.get("tool_name") or ev.get("tool") or "?"
+        args = ev.get("tool_input")
+        if not isinstance(args, dict) or not args:
+            args = ev.get("args_json") or ev.get("command") or ""
+        blob = json.dumps([ev.get("hook_event_name"), tool, args],
+                          sort_keys=True, default=str)
+        digest = hashlib.sha1(blob.encode()).hexdigest()[:12]
+        return f"sessionless-{digest}"
+    except Exception:
+        return "sessionless-unknown"
 
 
 # Floats are masked before hashing: run durations/percentages differ between
@@ -240,11 +276,15 @@ def compact_brief(task):
     the ledger doesn't. Empty string when nothing is pending."""
     st = load_state(task)
     lines = []
-    if st["failures"]:
-        lines.append("[minder] failure memory preserved across compaction:")
-        for key, rec in st["failures"].items():
-            lines.append(f"- {key}: failed {rec['n']}x, escalation level "
-                         f"{rec.get('level', 0)}")
+    keys = list(st["failures"].items())
+    for key, rec in keys[:BRIEF_MAX_KEYS]:
+        if not lines:  # header only when there is at least one failure
+            lines.append("[minder] failure memory preserved across compaction:")
+        lines.append(f"- {key}: failed {rec['n']}x, escalation level "
+                     f"{rec.get('level', 0)}")
+    if len(keys) > BRIEF_MAX_KEYS:
+        lines.append(f"- … and {len(keys) - BRIEF_MAX_KEYS} more failure "
+                     "keys (see the ledger)")
     if st.get("think_used") or st.get("frontier_used"):
         lines.append(f"[minder] escalation budgets used so far: "
                      f"think {st.get('think_used', 0)}, frontier "
@@ -257,7 +297,10 @@ def compact_brief(task):
         lines.append("[minder] ESCALATION L1 — an escalation was in flight "
                      "at compaction for the keys above; retry them with "
                      "deliberation, not verbatim.")
-    return "\n".join(lines)
+    brief = "\n".join(lines)
+    if len(brief) > BRIEF_MAX_CHARS:
+        brief = brief[:BRIEF_MAX_CHARS].rsplit("\n", 1)[0] + "\n- … (truncated)"
+    return brief
 
 
 # --- Digest templates (§5.6). Every template starts with the grep-able marker
@@ -308,7 +351,7 @@ def process(ev, c=None):
         return _process(ev, c, out)
     except Exception as e:  # Law #6: detection must never break the hot path
         try:
-            log(ev.get("session_id", "default"), "warden_error", error=str(e)[:200])
+            log(session_key(ev), "warden_error", error=str(e)[:200])
         except Exception:
             pass
         return out
@@ -316,7 +359,7 @@ def process(ev, c=None):
 
 def _process(ev, c, out):
     c = c or cfg()
-    task = ev.get("session_id") or "default"
+    task = session_key(ev)
     st = load_state(task)
     st["turn"] += 1
 

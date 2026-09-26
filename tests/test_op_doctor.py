@@ -7,7 +7,7 @@ loopback port). Staleness is deterministic via now= injection.
 import json
 import time
 
-from memory import db as _db
+from minder_memory import db as _db
 from minder_op import doctor
 
 
@@ -187,3 +187,42 @@ def test_doctor_json_shape(tmp_path, monkeypatch):
     for check in report["checks"]:
         assert check["status"] in ("ok", "warn", "info", "fail")
         assert check["detail"]
+
+
+def test_hook_flags_check_validates_declared_values(tmp_path, monkeypatch):
+    """The live hooks.json is the flag source of truth on dsh installs; the
+    2026-09-25 regression shipped an illegal MINDER_SUCCESS_GUARD value in
+    it while every name-only check stayed green. Doctor must validate the
+    declared *values* against the same vocabularies as the env flags."""
+    dbp = _mig(tmp_path)
+    hooks = tmp_path / "hooks.json"
+    monkeypatch.setenv("MINDER_HOOKS_JSON", str(hooks))
+
+    def declared(**flags):
+        hooks.write_text(json.dumps({"hooks": {"PostToolUse": [
+            {"matcher": "", "hooks": [{"type": "command", "command":
+             "MINDER_SINK_URL=http://127.0.0.1:8392 " + " ".join(
+                 f"{k}={v}" for k, v in flags.items()) +
+                 " python3 hook.py"}]}]}}))
+
+    declared(MINDER_SUCCESS_GUARD="advisroy", MINDER_ASSIST="decision_skill")
+    report = doctor.run_checks(dbp, probe=False, now=time.time())
+    check = next(c for c in report["checks"] if c["id"] == "hook-flags")
+    assert check["status"] == "fail"
+    assert "MINDER_SUCCESS_GUARD='advisroy'" in check["detail"]
+    assert report["healthy"] is False
+
+    declared(MINDER_SUCCESS_GUARD="block", MINDER_ASSIST="decision_skill",
+             MINDER_DECISION="laya")
+    report = doctor.run_checks(dbp, probe=False, now=time.time())
+    check = next(c for c in report["checks"] if c["id"] == "hook-flags")
+    assert check["status"] == "ok"
+    assert "MINDER_SUCCESS_GUARD=block" in check["detail"]
+
+
+def test_hook_flags_check_reports_absent_hooks_json(tmp_path, monkeypatch):
+    dbp = _mig(tmp_path)
+    monkeypatch.setenv("MINDER_HOOKS_JSON", str(tmp_path / "absent.json"))
+    report = doctor.run_checks(dbp, probe=False, now=time.time())
+    check = next(c for c in report["checks"] if c["id"] == "hook-flags")
+    assert check["status"] == "info"

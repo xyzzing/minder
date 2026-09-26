@@ -1,5 +1,5 @@
 """Output helpers: redaction + plain-text tables. stdlib only."""
-from memory.canonicalise import redact
+from minder_memory.canonicalise import redact
 
 TRUNCATE = 160
 

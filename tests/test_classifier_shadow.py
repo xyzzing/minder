@@ -3,9 +3,8 @@ P5.1). The classifier is log-only: policy outcomes are byte-identical with
 and without it, inner crashes degrade, and excerpts are redacted + truncated
 before any classifier sees them. These tests never require the laya
 package."""
-import pytest
 
-from memory import (classifier, db as _db, from_hook, policy as memory_policy)
+from minder_memory import (classifier, db as _db, from_hook, policy as memory_policy)
 
 REPO = "/repo"
 

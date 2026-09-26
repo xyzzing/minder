@@ -13,7 +13,7 @@ explicitly recorded at creation (expires_at) and mechanically enforced.
 """
 from datetime import datetime, timedelta, timezone
 
-from memory import db as _db, resume_evidence as resume
+from minder_memory import db as _db, resume_evidence as resume
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 NOW = datetime(2026, 9, 23, 12, 0, 0, tzinfo=timezone.utc)
@@ -227,8 +227,8 @@ def test_intent_expiry_does_not_touch_history(tmp_path):
 def test_classifier_label_cannot_create_correction(tmp_path):
     """Acceptance: a classifier intent_kind=factual_correction proposal
     is advisory only — routing must never write résumé evidence."""
-    from decision import routing
-    from decision.providers.fake import FakeClient
+    from minder_decision import routing
+    from minder_decision.providers.fake import FakeClient
 
     def mass(option, options):
         return {o: (1.0 if o == option else 0.0) for o in options}

@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from decision import routing
-from memory import db as _db
+from minder_decision import routing
+from minder_memory import db as _db
 from minder_op import benchmark as bench
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
@@ -39,7 +39,7 @@ def test_fixtures_validate_and_are_complete():
 
 
 def routing_load_cases():
-    from decision import routing
+    from minder_decision import routing
     doc, cases, digest = routing.load_cases(CASES)
     return doc, cases, digest
 
@@ -74,7 +74,7 @@ def test_replay_rules_baseline_is_clean_and_deterministic(tmp_path):
 
 
 def routing_replay(dbp, cases=CASES, now=NOW, provider=None):
-    from decision import routing
+    from minder_decision import routing
     return routing.replay_cases(cases, db_path=dbp, now=now,
                                 provider=provider)
 
@@ -86,7 +86,7 @@ def test_replay_with_laya_provider_is_comparable(tmp_path):
     and the comparator must return a definitive verdict (PASS or FAIL —
     never NON_COMPARABLE). Skips cleanly without laya."""
     import pytest as _pytest
-    from decision.providers.laya import try_laya_client
+    from minder_decision.providers.laya import try_laya_client
     client = try_laya_client()
     if client is None:
         _pytest.skip("laya 0.3.6 surface not available")

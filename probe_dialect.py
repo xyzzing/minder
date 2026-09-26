@@ -81,7 +81,6 @@ def classify(resp, max_tokens):
     except (KeyError, IndexError, TypeError):
         return "error", f"unparseable response shape: {str(resp)[:120]}"
     content = msg.get("content") or ""
-    reasoning = msg.get("reasoning_content") or ""
     calls = msg.get("tool_calls") or []
 
     args_blob = ""
@@ -113,7 +112,7 @@ def classify(resp, max_tokens):
     if content.strip():
         return "clean", f"finish={finish} text_only chars={len(content)}"
     if finish == "length":
-        return "runaway", f"finish=length, no content, no calls (burn)"
+        return "runaway", "finish=length, no content, no calls (burn)"
     return "clean", f"finish={finish} empty response (no tools offered case)"
 
 

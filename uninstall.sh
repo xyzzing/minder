@@ -10,12 +10,16 @@ say() { printf '[minder] %s\n' "$*"; }
 if [ "${MINDER_NO_SYSTEMD:-0}" = "1" ]; then
   say "systemd skipped (MINDER_NO_SYSTEMD=1)"
 else
+  systemctl --user disable --now minder-doctor.timer 2>/dev/null \
+    && say "doctor timer stopped" || say "doctor timer not active"
   systemctl --user disable --now minder-sink.service 2>/dev/null \
     && say "sink unit stopped" || say "sink unit not active"
   systemctl --user disable --now minder-web.service 2>/dev/null \
     && say "console unit stopped" || say "console unit not active"
   systemctl --user disable --now minder-proxy.service 2>/dev/null \
     && say "unit stopped" || say "unit not active"
+  rm -f "$HOME/.config/systemd/user/minder-doctor.timer"
+  rm -f "$HOME/.config/systemd/user/minder-doctor.service"
   rm -f "$HOME/.config/systemd/user/minder-sink.service"
   rm -f "$HOME/.config/systemd/user/minder-web.service"
   rm -f "$HOME/.config/systemd/user/minder-proxy.service"

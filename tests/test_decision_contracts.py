@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from decision import contracts as dcontracts
-from decision.types import (ChoiceQuestion, Contract, InvalidDistribution,
+from minder_decision import contracts as dcontracts
+from minder_decision.types import (ChoiceQuestion, InvalidDistribution,
                             DecisionResponse, NoulQuestion, contract_to_json,
                             make_contract, top_two_margin)
 

@@ -1,7 +1,7 @@
 """Operator write tests (8B). Writes go through the existing memory APIs
 only, require --yes (dry plan + exit 1 otherwise), and never touch
 SKILLS.md or skills/index.json."""
-from memory import (db as _db, lessons as memory_lessons, retrieval,
+from minder_memory import (db as _db, lessons as memory_lessons, retrieval,
                     skills, store)
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 

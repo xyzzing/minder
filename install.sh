@@ -3,6 +3,10 @@
 # Probes → CAP → fail-closed ladder → patched presets → merges (backup+verify)
 # → skill placement → systemd --user unit. Honors: --upstream URL, --port N,
 # --skip-dsh, --skip-zcode, --accept-l1-degraded, --no-start, --frontier-cmd CMD
+#
+# --generic: install the code, config and operator shims ONLY — no dsh/zcode
+# wiring, no systemd units. Any OpenAI-compatible harness then works by
+# pointing at the proxy you start yourself (default :8390); see the summary.
 set -uo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -17,6 +21,7 @@ ACCEPT_DEGRADED=0
 START_UNIT=1
 DO_DSH=1
 DO_ZCODE=1
+GENERIC=0
 FRONTIER_CMD=""
 EFFORT_MODE="off"
 
@@ -30,6 +35,7 @@ while [ $# -gt 0 ]; do
     --sink-port) SINK_PORT="$2"; shift 2 ;;
     --skip-dsh) DO_DSH=0; shift ;;
     --skip-zcode) DO_ZCODE=0; shift ;;
+    --generic) GENERIC=1; DO_DSH=0; DO_ZCODE=0; START_UNIT=0; shift ;;
     --accept-l1-degraded) ACCEPT_DEGRADED=1; shift ;;
     --no-start) START_UNIT=0; shift ;;
     --frontier-cmd) FRONTIER_CMD="$2"; shift 2 ;;
@@ -52,10 +58,12 @@ cp -f "$SRC/minder.py" "$SRC/adapter.py" "$SRC/proxy.py" "$SRC/hook.py" \
 cp -R "$SRC/presets" "$SHARE/"
 cp -R "$SRC/zcode" "$SHARE/"
 cp -R "$SRC/dsh" "$SHARE/"
-cp -R "$SRC/memory" "$SHARE/"
-cp -R "$SRC/decision" "$SHARE/"
+cp -R "$SRC/minder_memory" "$SHARE/"
+cp -R "$SRC/minder_decision" "$SHARE/"
+cp -R "$SRC/minder_core" "$SHARE/"
 cp -R "$SRC/minder_op" "$SHARE/"
 cp -R "$SRC/minder_web" "$SHARE/"
+cp -R "$SRC/minder_trace" "$SHARE/"
 cp -R "$SRC/skills" "$SHARE/"
 chmod +x "$SHARE/proxy.py" "$SHARE/hook.py" "$SHARE/frontier.py" \
          "$SHARE/probe_dialect.py" "$SHARE/sink.py" 2>/dev/null || true
@@ -288,10 +296,18 @@ if [ "$DO_DSH" = "1" ]; then
     DSH_PROFILE_DIR="$HOME/.dsh/profiles/web"
     [ -f "$DSH_PROFILE_DIR/cordis.patch.yml" ] || DSH_PROFILE_DIR=""
     if [ -n "$DSH_PROFILE_DIR" ]; then
+      # The operator's guard mode wins over the template default: an explicit
+      # MINDER_SUCCESS_GUARD env is passed through; without one dsh_install
+      # preserves whatever the live hooks.json already declares (reinstall
+      # must never downgrade block → advisory behind the operator's back).
+      GUARD_ARGS=""
+      [ -n "${MINDER_SUCCESS_GUARD:-}" ] && \
+        GUARD_ARGS="--success-guard $MINDER_SUCCESS_GUARD"
+      # shellcheck disable=SC2086
       python3 "$SRC/dsh/dsh_install.py" profile-apply \
         --dsh-home "$HOME/.dsh" --profile web \
         --share "$SHARE" --sink-url "http://127.0.0.1:$SINK_PORT" \
-        --hooks-json "$SHARE/dsh/hooks.json" \
+        --hooks-json "$SHARE/dsh/hooks.json" $GUARD_ARGS \
         || fail "dsh profile wiring failed (loader/patch/hooks.json)"
     else
       say "[7] dsh: no ~/.dsh/profiles/web/cordis.patch.yml yet — start dsh once, then re-run install.sh"
@@ -336,6 +352,9 @@ else
 fi
 
 # --- [8] systemd --user unit ---------------------------------------------------
+if [ "$GENERIC" = "1" ]; then
+  say "[8] generic mode — no systemd units written; start this component manually (see summary)"
+else
 # Unit files are ALWAYS written; --no-start only skips enable/start, so the
 # "unit written but not enabled" message below is actually true and the
 # operator can start it themselves.
@@ -378,7 +397,12 @@ else
   say "[8] systemd skipped — start manually: MINDER_UPSTREAM=$UPSTREAM MINDER_PORT=$PORT $SHARE/proxy.py &"
 fi
 
+fi
+
 # --- [8a] systemd --user unit: the sink (persistence sidecar) -----------------
+if [ "$GENERIC" = "1" ]; then
+  say "[8a] generic mode — no systemd units written; start this component manually (see summary)"
+else
 # Hooks run inside dsh's file sandbox and cannot write $STATE, so their
 # writes are delegated here over loopback. It also warms the laya models
 # once per session instead of once per tool call.
@@ -422,7 +446,12 @@ else
   say "[8a] systemd skipped — start manually: MINDER_STATE_DIR=$STATE $SHARE/sink.py --port $SINK_PORT &"
 fi
 
+fi
+
 # --- [8c] systemd --user unit: the operator console ---------------------------
+if [ "$GENERIC" = "1" ]; then
+  say "[8c] generic mode — no systemd units written; start this component manually (see summary)"
+else
 # The console kept being started by hand with nohup, which is why it "just
 # disappeared" (and why it once served stale code against new templates).
 # It is read-only and loopback-only; the unit only makes its lifetime
@@ -467,6 +496,51 @@ else
   say "[8c] systemd skipped — start manually: minder-web --port $WEB_PORT"
 fi
 
+fi
+
+# --- [8d] systemd --user timer: out-of-band health signal ---------------------
+if [ "$GENERIC" = "1" ]; then
+  say "[8d] generic mode — no systemd units written; start this component manually (see summary)"
+else
+# Every hook write is fail-open (Law #6), so a dead capture path is silent
+# by construction — the inline signal is only a manual `minder-op doctor`.
+# This timer runs doctor daily, out-of-band, and files the report under the
+# state dir (surfaced by the console/CLI). The service exits non-zero on an
+# unhealthy verdict, so a broken install shows in `systemctl --user --failed`.
+cat > "$UNIT_DIR/minder-doctor.service" <<EOF
+[Unit]
+Description=minder daily doctor health check (watchdog's watchdog)
+
+[Service]
+Type=oneshot
+Environment=MINDER_STATE_DIR=$STATE
+ExecStart=/bin/sh -c 'env -u LD_LIBRARY_PATH PYTHONPATH=$SHARE python3 -m minder_op doctor --no-probe > $STATE/doctor-last.txt; rc=\$?; cat $STATE/doctor-last.txt; exit \$rc'
+EOF
+cat > "$UNIT_DIR/minder-doctor.timer" <<EOF
+[Unit]
+Description=run minder doctor daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+if [ "$START_UNIT" != "1" ]; then
+  say "[8d] --no-start: doctor timer written, not enabled"
+elif command -v systemctl >/dev/null 2>&1 && [ -z "${MINDER_NO_SYSTEMD:-}" ]; then
+  systemctl --user daemon-reload || true
+  systemctl --user enable --now minder-doctor.timer || \
+    say "WARN: could not enable doctor timer — run: systemctl --user enable --now minder-doctor.timer"
+  say "[8d] doctor timer enabled (daily) — report: $STATE/doctor-last.txt; failures: systemctl --user --failed"
+else
+  say "[8d] systemd skipped — schedule manually: systemctl --user enable --now minder-doctor.timer"
+fi
+
+fi
+
 # --- [8b] operator shims (run minder-op / minder-web from anywhere) ------------
 mkdir -p "$HOME/.local/bin"
 printf '#!/usr/bin/env bash\nexec env -u LD_LIBRARY_PATH PYTHONPATH="%s" MINDER_NO_SYSTEMD=1 python3 -m minder_op "$@"\n' "$SHARE" \
@@ -482,6 +556,14 @@ chmod +x "$HOME/.local/bin/minder-op" "$HOME/.local/bin/minder-web" \
 say "[8b] operator shims: $HOME/.local/bin/{minder-op,minder-web,minder-sink}"
 
 # --- [9] summary ---------------------------------------------------------------
+# dsh/zcode summary lines are computed before the heredoc: the body expands
+# variables but must never contain shell control flow.
+if [ "$GENERIC" = "1" ]; then
+  HARNESS_SUMMARY="(generic mode — no harness wiring; point any OpenAI-compatible harness at the proxy)"
+else
+  HARNESS_SUMMARY="- dsh:       pick model 'qwen-exec' (or qwen-think) from the minder provider
+- zcode:     PostToolUse + SessionStart hooks active in new sessions"
+fi
 cat <<EOF
 
 [minder] INSTALL SUMMARY
@@ -491,8 +573,7 @@ cat <<EOF
 - proxy:     http://127.0.0.1:$PORT → $UPSTREAM
 - sink:      http://127.0.0.1:$SINK_PORT (hook persistence + warm models;
              required because dsh's file sandbox blocks hook writes)
-- dsh:       pick model 'qwen-exec' (or qwen-think) from the minder provider
-- zcode:     PostToolUse + SessionStart hooks active in new sessions
+${HARNESS_SUMMARY}
 - frontier:  ${FRONTIER_CMD:-not configured (L2 degrades honestly)}
 - operator:  minder-op status   (shims in ~/.local/bin; repo checkout also works via python3 -m minder_op)
 
@@ -502,4 +583,10 @@ Verify any time:
   tail -f $STATE/events.jsonl
 Uninstall: $SRC/uninstall.sh
 EOF
+if [ "$GENERIC" = "1" ]; then
+  say "generic mode — run the proxy yourself, then point any harness at it:"
+  say "  MINDER_UPSTREAM=$UPSTREAM MINDER_PORT=$PORT $SHARE/proxy.py &"
+  say "  harness base URL: http://127.0.0.1:$PORT/v1  (models: qwen-exec / qwen-think / qwen-auto)"
+  say "  optional: minder-web --port 8765 (needs requirements-web.txt)"
+fi
 say "done"

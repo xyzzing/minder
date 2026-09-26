@@ -41,7 +41,7 @@ python3 -m minder_op gaps close GAP_ID --reason "..." --yes
 python3 -m minder_op consults ls [--limit N]
 python3 -m minder_op consults show TRACE_ID
 python3 -m minder_op decisions ls [--limit N]
-python3 -m minder_op export-stats [--path memory/exports/training_candidates.jsonl]
+python3 -m minder_op export-stats [--path minder_memory/exports/training_candidates.jsonl]
 python3 -m minder_op weekly-summary [--days 7 | --since ISO] [--json]
 python3 -m minder_op benchmark list
 python3 -m minder_op benchmark validate --suite coding-core-v1
@@ -171,8 +171,8 @@ Trace review facts (post-run evaluation of completed dsh sessions):
 - Every finding cites `ds_seqs` (dsh's own event `seq`), so a finding
   navigates back to the exact event in the original session log.
 - Reuse, not reinvention: "the same failure" is
-  `memory/canonicalise.py`, "the same result" is
-  `memory/success_guard.py`. An offline finding and a live advisory can
+  `minder_memory/canonicalise.py`, "the same result" is
+  `minder_memory/success_guard.py`. An offline finding and a live advisory can
   therefore never disagree about what a repeat is.
 - A rubric is **JSON**, not YAML (stdlib only, no PyYAML). Keys:
   `rubric_id`, `applies_to` (informational), `required_tools`,

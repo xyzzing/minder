@@ -2,12 +2,12 @@
 canned distributions, invalid distributions rejected in tests."""
 import pytest
 
-from decision import contracts as dcontracts
-from decision.client import FakeClient, SystemOneClient  # noqa: F401
-from decision.client import get_decision_client
-from decision.providers.fake import FakeClient as DirectFake
-from decision.providers.null import NullClient
-from decision.types import DecisionResponse, InvalidDistribution
+from minder_decision import contracts as dcontracts
+from minder_decision.client import FakeClient, SystemOneClient  # noqa: F401
+from minder_decision.client import get_decision_client
+from minder_decision.providers.fake import FakeClient as DirectFake
+from minder_decision.providers.null import NullClient
+from minder_decision.types import DecisionResponse, InvalidDistribution
 
 STATE = '{"failure_key": "bash|keyerror|sid|a.py", "excerpt": "KeyError"}'
 

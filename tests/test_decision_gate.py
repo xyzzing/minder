@@ -1,10 +1,10 @@
 """Policy gate tests (Phase 5.5 slice D): closed menu, pinned thresholds,
 Warden L3 supremacy, frontier never from the model, duplicate-block, and
 separate storage of model recommendation vs policy decision."""
-from decision import contracts as dcontracts
-from decision import menu as dmenu
-from decision import policy_gate as dgate
-from decision.types import DecisionResponse
+from minder_decision import contracts as dcontracts
+from minder_decision import menu as dmenu
+from minder_decision import policy_gate as dgate
+from minder_decision.types import DecisionResponse
 
 MENU_IDS = dmenu.BASE_ACTIONS + ("frontier_consult", "human")
 

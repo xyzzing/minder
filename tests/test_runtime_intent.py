@@ -3,7 +3,7 @@ P6.3). adapter_preference is recorded then dropped; snapshot defaults are
 safe; minder never imports sinter."""
 import pathlib
 
-from memory import runtime_intent as ri
+from minder_memory import runtime_intent as ri
 
 
 def test_adapter_preference_recorded_then_dropped():

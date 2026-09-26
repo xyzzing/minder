@@ -2,12 +2,11 @@
 P6.1/P6.2). Flags default off (Phase 2-3 behaviour exactly); egress deny is
 deterministic; a classifier can never deny on its own; assist modes are
 digest-only and never change the Warden action."""
-import pytest
 
-from memory import (canonicalise as canon_mod, db as _db, egress, from_hook,
+from minder_memory import (canonicalise as canon_mod, egress, from_hook,
                     lessons as memory_lessons, policy as memory_policy,
                     store)
-from memory.classifier import Classification, ShadowClassifier
+from minder_memory.classifier import Classification, ShadowClassifier
 
 REPO = "/repo"
 CFG = {"frontier_providers": [

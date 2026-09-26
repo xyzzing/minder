@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from memory import from_hook, store
+from minder_memory import from_hook, store
 
 HOOK = str(Path(__file__).resolve().parent.parent / "hook.py")
 SUBPROC_TIMEOUT = int(os.environ.get("MINDER_TEST_TIMEOUT", "60"))
@@ -29,7 +29,7 @@ def test_hook_failure_writes_expected_failure_key(tmp_path, monkeypatch):
     ev2 = dict(FAIL_EVENT, tool_response=
                "FAILED tests/test_supplier.py::test_lookup - "
                "KeyError: 'supplier_id'")
-    from memory import canonicalise as canon
+    from minder_memory import canonicalise as canon
     ev = from_hook.to_event(ev2)
     assert canon.failure_key(ev, "/repo").split("|")[2] == \
         "tests/test_supplier.py::test_lookup"
@@ -42,7 +42,7 @@ def _key_of(dbp, event_id):
 
 def test_two_failures_same_key_increment_attempts(tmp_path):
     dbp = tmp_path / "m.sqlite"
-    from memory import canonicalise as canon
+    from minder_memory import canonicalise as canon
     for _ in range(2):
         out = from_hook.record(FAIL_EVENT, db_path=dbp)
     ev = from_hook.to_event(FAIL_EVENT)
@@ -54,7 +54,7 @@ def test_two_failures_same_key_increment_attempts(tmp_path):
 
 
 def _episodes(dbp):
-    from memory import db as mdb
+    from minder_memory import db as mdb
     conn = mdb.connect(dbp)
     try:
         return [dict(r) for r in conn.execute(

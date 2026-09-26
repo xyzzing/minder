@@ -15,7 +15,6 @@ Protected comparison rules under test (PRD Track C):
   fingerprint mismatch                        -> NON_COMPARABLE
 """
 import json
-import shutil
 from pathlib import Path
 
 import pytest

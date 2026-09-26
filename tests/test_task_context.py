@@ -6,7 +6,7 @@ import sqlite3
 
 import pytest
 
-from memory import db as _db, task_context
+from minder_memory import db as _db, task_context
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 

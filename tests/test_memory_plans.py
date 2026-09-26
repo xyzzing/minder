@@ -1,5 +1,5 @@
 """Temporary plan tests (spec P2.2)."""
-from memory import plans, skill_load, skills
+from minder_memory import plans, skill_load
 
 REPO = "/repo"
 
@@ -48,7 +48,7 @@ def test_directive_says_temporary_plan_not_lesson(tmp_path):
 
 
 def test_verified_episode_does_not_auto_convert_plan(tmp_path):
-    from memory import store
+    from minder_memory import store
     dbp = tmp_path / "m.sqlite"
     ep_id, _ = store.open_episode({"repo": REPO, "task_id": "t"},
                                   db_path=dbp)
@@ -59,7 +59,7 @@ def test_verified_episode_does_not_auto_convert_plan(tmp_path):
     plan = plans.open_plan_for(unmatched_event(), db_path=dbp)
     assert plan and plan["plan_id"] == plan_id
     assert plan["status"] == "open"
-    from memory import lessons
+    from minder_memory import lessons
     lesson, status = lessons.promote_lesson(
         ep_id, "instruction", verification={"tests_passed": True},
         db_path=dbp)
@@ -108,7 +108,7 @@ def test_mark_plan_lifecycle(tmp_path):
     assert plans.mark_plan(plan_id, "executed", db_path=dbp)
     assert plans.mark_plan(plan_id, "verified", db_path=dbp)
     assert plans.mark_plan(plan_id, "bogus-status", db_path=dbp) is False
-    conn = __import__("memory.db", fromlist=["connect"]).connect(dbp)
+    conn = __import__("minder_memory.db", fromlist=["connect"]).connect(dbp)
     row = conn.execute("SELECT status, closed_at FROM temp_plans WHERE"
                        " plan_id = ?", (plan_id,)).fetchone()
     conn.close()

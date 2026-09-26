@@ -5,9 +5,9 @@ contexts are never mutated by a router proposal, and every proposal
 leaves a trace separating declared from router-proposed provenance."""
 import os
 
-from memory import db as _db, task_context
-from decision import routing
-from decision.contracts import domain_route_contract
+from minder_memory import db as _db, task_context
+from minder_decision import routing
+from minder_decision.contracts import domain_route_contract
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 
@@ -30,7 +30,6 @@ def test_contract_shape_and_stable_hash():
     assert contract.contract_id == "domain-route"
     assert contract.version == "v1"
     # the LAST choice question is the gate-primary action: transition
-    from decision.types import ChoiceQuestion
     assert contract.questions[-1].id == "transition"
     assert contract.questions[-1].runtime_options is True
     assert contract.criteria_hash == domain_route_contract(
@@ -69,7 +68,7 @@ def test_rules_provider_without_declaration_abstains(tmp_path):
 def test_router_proposal_is_never_applied(tmp_path):
     """A confident fake 'switch' proposal is recorded as a shadow trace
     and mutates nothing: observe-only is a hard Phase 1 invariant."""
-    from decision.providers.fake import FakeClient
+    from minder_decision.providers.fake import FakeClient
     dbp = _mig(tmp_path)
     task_context.declare_task("coding", task_id="t1", db_path=dbp)
 
@@ -106,7 +105,7 @@ def test_router_proposal_is_never_applied(tmp_path):
 
 
 def test_low_confidence_proposal_restricted_to_clarify(tmp_path):
-    from decision.providers.fake import FakeClient
+    from minder_decision.providers.fake import FakeClient
     dbp = _mig(tmp_path)
 
     def mass(option, options):

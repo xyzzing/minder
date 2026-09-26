@@ -19,12 +19,20 @@ Ops (all validated, all confined to `STATE_DIR` + the memory DB):
   policy       {hook_event, warden_out}
                                 the whole memory policy pass, warm
 
-Boundary: 127.0.0.1 only, mirroring the console's loopback rule — this is
-not an auth boundary. `GET /healthz` and `GET /stats` are read-only.
+Boundary: 127.0.0.1 only, mirroring the console's loopback rule, PLUS a
+shared secret for the write path: on startup the sink ensures
+`STATE_DIR/sink.token` (0600, created if absent) and requires
+`Authorization: Bearer <token>` on POST /persist — any local process can
+dial loopback, and unauthenticated writes are memory poisoning (a forged
+"lesson" flows straight back into the agent's context). GET /healthz and
+GET /stats stay open (read-only; doctor and the console rely on them).
+If the token file is absent at startup the sink serves writes unauth-
+enticated — the documented operator escape hatch, never a half-state.
 """
 import argparse
 import json
 import os
+import secrets
 import sys
 import threading
 import time
@@ -38,6 +46,55 @@ DEFAULT_PORT = 8392
 JSONL_NAMES = ("events.jsonl", "consults.jsonl", "hook-trace.jsonl")
 MAX_ERRORS = 20
 MAX_BODY_BYTES = 1_000_000
+TOKEN_NAME = "sink.token"
+
+_AUTH = {"token": None}
+
+
+def _token_path():
+    return minder.STATE_DIR / TOKEN_NAME
+
+
+def ensure_token():
+    """Load (creating if absent, 0600) the sink's shared secret. Returns
+    "loaded", or None when no token is in force (creation failed, or the
+    operator runs without one) — in which case writes are served
+    unauthenticated rather than half-blocked."""
+    path = _token_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            os.chmod(path, 0o600)  # tolerate a pre-existing wider-perm file
+            _AUTH["token"] = path.read_text().strip() or None
+            return "loaded" if _AUTH["token"] else None
+        token = secrets.token_hex(32)
+        try:
+            fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                         0o600)
+            try:
+                os.write(fd, token.encode())
+            finally:
+                os.close(fd)
+        except FileExistsError:
+            # another sink instance created it first — use theirs
+            pass
+        _AUTH["token"] = path.read_text().strip() or None
+        return "loaded" if _AUTH["token"] else None
+    except Exception:
+        _AUTH["token"] = None
+        return None
+
+
+def _authorized(headers):
+    """Bearer check against the startup token. No token in force → open
+    (the escape hatch above); anything else must present the exact secret."""
+    token = _AUTH["token"]
+    if not token:
+        return True
+    parts = (headers.get("Authorization") or "").split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return secrets.compare_digest(parts[1], token)
+    return False
 
 _LOCK = threading.Lock()
 _STATS = {
@@ -84,7 +141,7 @@ def _op_write_state(payload):
 
 
 def _op_record(payload):
-    from memory import from_hook
+    from minder_memory import from_hook
     hook_event = payload.get("hook_event")
     if not isinstance(hook_event, dict):
         raise ValueError("hook_event must be an object")
@@ -99,7 +156,7 @@ def _op_record(payload):
 
 
 def _op_policy(payload):
-    from memory import policy
+    from minder_memory import policy
     hook_event = payload.get("hook_event")
     if not isinstance(hook_event, dict):
         raise ValueError("hook_event must be an object")
@@ -181,6 +238,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"ok": False, "error": "not found"})
 
     def do_POST(self):
+        if not _authorized(self.headers):
+            _bump("auth", ok=False, detail="401 at /persist")
+            return self._send(401, {"ok": False, "error": "unauthorized"})
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except (TypeError, ValueError):
@@ -221,7 +281,7 @@ def adopt_hook_flags():
     our own environment still wins. Returns what was adopted."""
     adopted = {}
     try:
-        from memory import sink as client
+        from minder_memory import sink as client
         declared = client.declared_flags()
     except Exception:
         return adopted
@@ -236,7 +296,7 @@ def adopt_hook_flags():
 
 def _effective_flags():
     try:
-        from memory import sink as client
+        from minder_memory import sink as client
         tracked = client.TRACKED_FLAGS
     except Exception:
         tracked = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
@@ -248,12 +308,12 @@ def _warm_report():
     """What the sidecar has already built (so the console can show it)."""
     out = {}
     try:
-        from decision import client as dclient
+        from minder_decision import client as dclient
         out["decision"] = dclient.warm_status()
     except Exception as e:
         out["decision"] = {"error": type(e).__name__}
     try:
-        from memory import classifier_laya
+        from minder_memory import classifier_laya
         out["classifier"] = classifier_laya.warm_status()
     except Exception as e:
         out["classifier"] = {"error": type(e).__name__}
@@ -268,12 +328,12 @@ def _warm_up():
     first hook would pay the build (and time out). Best-effort: a missing
     model is the same degraded state the hook already tolerates."""
     try:
-        from decision import client as dclient
+        from minder_decision import client as dclient
         dclient.get_decision_client()
     except Exception:
         pass
     try:
-        from memory import classifier_laya
+        from minder_memory import classifier_laya
         classifier_laya.try_laya_classifier()
     except Exception:
         pass
@@ -303,6 +363,7 @@ def main(argv=None):
     # Before warming anything: run under the flags the hooks declare, so the
     # policy pass answers exactly as it would have inside the hook.
     adopted = adopt_hook_flags()
+    token_state = ensure_token()
     if not args.no_warm:
         # Serve immediately; warm in the background so a slow model build
         # never blocks the first captured event.
@@ -311,6 +372,12 @@ def main(argv=None):
     httpd.daemon_threads = True
     print(f"minder sink on http://{args.host}:{args.port} "
           f"(state_dir={minder.STATE_DIR})", flush=True)
+    if token_state:
+        print(f"sink auth: Bearer token {token_state} at "
+              f"{_token_path()}", flush=True)
+    else:
+        print("sink auth: DISABLED (no sink.token) — any local process "
+              "may write", flush=True)
     if adopted:
         print("adopted hook flags: "
               + " ".join(f"{k}={v}" for k, v in sorted(adopted.items())),

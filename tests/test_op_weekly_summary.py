@@ -10,7 +10,7 @@ set to a poison value in the fixture and must never surface.
 import json
 from datetime import datetime, timezone
 
-from memory import db as _db
+from minder_memory import db as _db
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 from minder_op.summary import build_weekly_summary, render_text
 

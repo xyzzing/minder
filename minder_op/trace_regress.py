@@ -29,7 +29,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from trace import normalize
+from minder_trace import normalize
 from . import benchmark as bench
 
 # Evaluators whose findings describe a defective behaviour, not a
@@ -218,18 +218,18 @@ def build_case(run, finding, task_id):
         + '    look like an unrelated ImportError."""\n'
         + "    import os\n"
         + '    env = os.environ.get("MINDER_REPO_ROOT")\n'
-        + "    if env and (Path(env) / \"trace\" / \"evaluate.py\").is_file():\n"
+        + "    if env and (Path(env) / \"minder_trace\" / \"evaluate.py\").is_file():\n"
         + "        return Path(env)\n"
         + "    here = Path(__file__).resolve()\n"
         + "    for parent in here.parents:\n"
-        + '        if (parent / "trace" / "evaluate.py").is_file() and \\\n'
-        + '                (parent / "memory" / "canonicalise.py").is_file():\n'
+        + '        if (parent / "minder_trace" / "evaluate.py").is_file() and \\\n'
+        + '                (parent / "minder_memory" / "canonicalise.py").is_file():\n'
         + "            return parent\n"
         + '    raise RuntimeError(\n'
         + '        "cannot locate the minder checkout above " + str(here)\n'
         + '        + "; set MINDER_REPO_ROOT if the suite was copied")\n\n\n'
         + "sys.path.insert(0, str(_repo_root()))\n\n"
-        + "from trace import evaluate, normalize  # noqa: E402\n"
+        + "from minder_trace import evaluate, normalize  # noqa: E402\n"
         + "from task import CORRECTED, RECORDED, RULE_ID  # noqa: E402\n\n\n"
         + "def _rules(records):\n"
         + '    """Every rule_id an evaluator raises over these records."""\n'
@@ -292,7 +292,7 @@ def _manifest_entry(task_id, manifest, run, finding):
 
 def run(args, path):
     """CLI entry: `minder-op trace regress <session> --finding <id> --yes`."""
-    from memory import trace_reviews as reviews_mod
+    from minder_memory import trace_reviews as reviews_mod
 
     loaded, report = normalize.load_session(args.session)
     if report.get("status") == "not_found":

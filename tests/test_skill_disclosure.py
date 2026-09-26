@@ -1,7 +1,7 @@
 """Progressive skill disclosure tests (spec P2.1)."""
 import json
 
-import memory.skill_load as sl
+import minder_memory.skill_load as sl
 
 INDEX = {
     "name": "inspect-schema-boundary",

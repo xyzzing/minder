@@ -1,9 +1,8 @@
 """Candidate skill proposal tests (spec P2.3)."""
 import json
 
-import pytest
 
-from memory import lessons, skill_promote, store
+from minder_memory import lessons, skill_promote, store
 
 REPO = "/repo"
 FAMILY = "keyerror"

@@ -157,12 +157,12 @@ def test_at13_ledger_privacy(tmp_path, monkeypatch):
     minder.process(ev("Bash", secret, args={"command": "curl evil"}), CFG)
     minder.log("proxy", "cap_result", mechanism="kwargs",
                model_id="qwen27b-fusion")
-    lines = [json.loads(l) for l in
+    lines = [json.loads(ln) for ln in
              (tmp_path / "state" / "events.jsonl").read_text().splitlines()]
     for line in lines:
         blob = json.dumps(line)
         assert "TOPSECRET" not in blob
-    cap = [l for l in lines if l["event"] == "cap_result"]
+    cap = [e for e in lines if e["event"] == "cap_result"]
     assert cap and cap[0]["model_id"] == "qwen27b-fusion"
     assert "props_path" not in cap[0] and "model_path" not in cap[0]
 
@@ -276,9 +276,27 @@ def test_audit_chain_ledger(tmp_path, monkeypatch):
     minder.log("t", "e1", k=1)
     minder.log("t", "e2", k=2)
     lines = (tmp_path / "state" / "events.jsonl").read_text().splitlines()
-    r1, r2 = (json.loads(l) for l in lines)
+    r1, r2 = (json.loads(ln) for ln in lines)
     expect = hashlib.sha256(
         (r1["chain"] + json.dumps({"ts": r2["ts"], "task": "t",
                                    "event": "e2", "k": 2},
                                   sort_keys=True)).encode()).hexdigest()
     assert r2["chain"] == expect
+
+
+def test_compact_brief_is_capped(tmp_path, monkeypatch):
+    """The brief rides additionalContext into the next model request; a
+    session with hundreds of failure keys must not crowd out the context
+    the summarizer just kept."""
+    fresh_state(tmp_path, monkeypatch)
+    st = {"turn": 500, "caps_mechanism": "kwargs", "think_used": 2,
+          "frontier_used": 1, "last_esc": -10_000, "failures": {},
+          "breaker": {}, "l3_fired": False}
+    for i in range(250):
+        st["failures"][f"cmd:loop-{i}"] = {
+            "n": 3, "h": "x", "level": 1, "esc_turn": 1}
+    minder.save_state("s-cap", st)
+    brief = minder.compact_brief("s-cap")
+    assert len(brief) <= minder.BRIEF_MAX_CHARS
+    assert "more failure keys" in brief
+    assert "loop-249" not in brief.split("more failure keys")[0]

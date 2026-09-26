@@ -2,7 +2,7 @@
 runs after Warden + memory policy, writes a DecisionTrace, and changes
 NOTHING — digest and action are byte-identical to the unset run.
 Debounce limits it to one call per (session, failure_key) per 5s."""
-from memory import db as _db, from_hook, policy as memory_policy
+from minder_memory import db as _db, from_hook, policy as memory_policy
 
 HOOK_EVENT = {"session_id": "s-decision", "hook_event_name": "PostToolUse",
               "tool_name": "Edit",

@@ -1,16 +1,15 @@
 """Unit tests for the difficulty router (decision/difficulty.py) and the
-task-difficulty contract (decision/contracts.py). No laya, no network —
+task-difficulty contract (minder_decision/contracts.py). No laya, no network —
 FakeClient fixtures only.
 """
 import pytest
 
-from decision.contracts import (DIFFICULTY_LABELS, task_difficulty_contract)
-from decision.difficulty import (DEFAULT_BANDS, apply_band, band_for,
+from minder_decision.contracts import (DIFFICULTY_LABELS, task_difficulty_contract)
+from minder_decision.difficulty import (DEFAULT_BANDS, apply_band, band_for,
                                  resolve_difficulty, score_label)
-from decision.providers.fake import FakeClient
-from decision.types import (ChoiceQuestion, DecisionResponse,
-                            InvalidDistribution, ScoreQuestion,
-                            make_contract)
+from minder_decision.providers.fake import FakeClient
+from minder_decision.types import (DecisionResponse,
+                            InvalidDistribution)
 
 CFG = {"laya_min_confidence": 0.7}
 

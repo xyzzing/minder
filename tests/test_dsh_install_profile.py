@@ -156,8 +156,57 @@ def test_live_repo_hooks_template_is_usable(mod):
     text = mod.repo_hooks_template().read_text()
     assert "__MINDER_SHARE__" in text
     assert "__MINDER_SINK_URL__" in text
+    assert "__MINDER_SUCCESS_GUARD__" in text
     assert json.loads(text.replace("__MINDER_SHARE__", "/s")
-                          .replace("__MINDER_SINK_URL__", "http://x"))
+                          .replace("__MINDER_SINK_URL__", "http://x")
+                          .replace("__MINDER_SUCCESS_GUARD__", "advisory"))
+
+
+def test_reinstall_preserves_the_live_guard_mode(tmp_path, mod):
+    """The 2026-09-25 regression: live hooks.json ran
+    MINDER_SUCCESS_GUARD=block, the repo template pinned advisory — a
+    reinstall silently downgraded the loop stop. Reinstall must keep
+    the operator's mode unless one is passed explicitly."""
+    share = tmp_path / "share"
+    hooks = share / "dsh" / "hooks.json"
+    mod.write_hooks_json(hooks, share, "http://127.0.0.1:8392",
+                         success_guard="block")
+    mod.write_hooks_json(hooks, share, "http://127.0.0.1:8392")
+    assert "MINDER_SUCCESS_GUARD=block" in hooks.read_text()
+    # explicit still wins when given
+    mod.write_hooks_json(hooks, share, "http://127.0.0.1:8392",
+                         success_guard="advisory")
+    assert "MINDER_SUCCESS_GUARD=advisory" in hooks.read_text()
+
+
+def test_write_hooks_json_rejects_an_unknown_guard(tmp_path, mod):
+    """An unknown value reads as off in guard_mode() — never write one."""
+    hooks = tmp_path / "hooks.json"
+    with pytest.raises(SystemExit):
+        mod.write_hooks_json(hooks, tmp_path / "share", "http://x",
+                             success_guard="advisroy")
+    assert not hooks.exists()
+
+
+def test_check_fails_on_an_illegal_guard_value(tmp_path, mod):
+    profile = _profile(tmp_path)
+    share = tmp_path / "share"
+    hooks = share / "dsh" / "hooks.json"
+    hooks.parent.mkdir(parents=True)
+    cmd = (f"MINDER_ASSIST=decision_skill MINDER_DECISION=laya "
+           f"MINDER_SUCCESS_GUARD=advisroy "
+           f"MINDER_SINK_URL=http://127.0.0.1:8392 python3 {share}/hook.py "
+           "--pre-tool")
+    hooks.write_text(json.dumps({"hooks": {"PreToolUse": [
+        {"matcher": "", "hooks": [{"type": "command",
+                                   "command": cmd}]}]}}))
+    mod.ensure_bridge_loader(profile)
+    mod.ensure_patch_entry(profile, hooks)
+    ok, points = mod.check_profile(tmp_path / ".dsh", "web", share,
+                                   "http://127.0.0.1:8392", hooks)
+    assert ok is False
+    entry = next(p for p in points if p[0] == "hooks-json")
+    assert entry[1] == "fail" and "guard='advisroy'" in entry[2]
 
 
 def test_check_fails_on_a_hooks_json_without_pretool(tmp_path, mod):

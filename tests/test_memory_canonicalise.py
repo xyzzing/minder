@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from memory import canonicalise as canon
+from minder_memory import canonicalise as canon
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "events"
 REPO = "/home/operator/projects/minder"

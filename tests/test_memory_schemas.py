@@ -1,7 +1,7 @@
 """Memory v1 schema tests (docs/prd-memory-v1.md PR 0)."""
 import pytest
 
-from memory.schemas import (AgentToolEvent, Episode, FailureSignature,
+from minder_memory.schemas import (AgentToolEvent, Episode, FailureSignature,
                             Lesson)
 
 
@@ -58,3 +58,46 @@ def test_lesson_verified_roundtrip_fields():
                 status="verified", source_episode="ep1",
                 verification_json='{"tests_passed": true}')
     assert ls.status == "verified" and ls.valid_to is None
+
+
+def test_failed_migration_rolls_back_whole(tmp_path, monkeypatch):
+    """A migration that fails mid-file must not leave partial DDL with the
+    old version stamped (which bricked connect() forever — fail-open to
+    "no memory"). The transaction wraps the DDL and the version bump; once
+    the broken file is repaired, the next connect() migrates cleanly."""
+    from minder_memory import db as _db
+    mig = tmp_path / "migrations"
+    mig.mkdir()
+    (mig / "001_ok.sql").write_text(
+        "CREATE TABLE t1 (id INTEGER PRIMARY KEY);\n"
+        "CREATE TRIGGER t1_no_update BEFORE UPDATE ON t1\n"
+        "BEGIN\n  SELECT RAISE(ABORT, 'append-only');\nEND;\n")
+    (mig / "002_bad.sql").write_text(
+        "CREATE TABLE t2 (id INTEGER PRIMARY KEY);\n"
+        "CREATE TABLE t2 (\n")  # syntax error mid-file
+    monkeypatch.setattr(_db, "MIGRATIONS_DIR", mig)
+    dbp = tmp_path / "m.sqlite"
+    import sqlite3
+
+    import pytest
+    with pytest.raises(sqlite3.OperationalError):
+        _db.connect(dbp)
+    conn = sqlite3.connect(str(dbp))
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+    assert version == 1, "version must not advance past a failed migration"
+    assert "t1" in tables and "t2" not in tables, tables
+    # repair the file: the next connect() completes the migration
+    (mig / "002_bad.sql").write_text(
+        "CREATE TABLE t2 (id INTEGER PRIMARY KEY);\n")
+    conn = _db.connect(dbp)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert conn.execute(
+            "SELECT COUNT(*) FROM t2").fetchone()[0] == 0
+    finally:
+        conn.close()

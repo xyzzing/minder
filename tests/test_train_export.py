@@ -5,7 +5,7 @@ a redacted compact trajectory, and family support. No GGUF, no
 llama-server calls, no systemd units — ever."""
 import json
 
-from memory import (db as _db, frontier_traces, graph, lessons, store,
+from minder_memory import (db as _db, frontier_traces, graph, lessons, store,
                     train_export)
 
 REPO = "/repo"
@@ -67,7 +67,7 @@ def test_harmful_consult_episode_excluded(tmp_path):
     pairs = seed_family(dbp, 5)
     bad_ep, _bad_lesson = pairs[0]
     tid = frontier_traces.record_consult(
-        {"key": f"bash|keyerror|sym0|app/m.py", "attempts": 2,
+        {"key": "bash|keyerror|sym0|app/m.py", "attempts": 2,
          "episode_id": bad_ep, "prompt": "fix", "response": "advice"},
         db_path=dbp)
     frontier_traces.classify_consult(tid, "fail", accepted=["bad advice"],
@@ -133,7 +133,7 @@ def test_environment_family_and_superseded_excluded(tmp_path):
 
 
 def test_decision_trace_id_linked_when_present(tmp_path):
-    from decision import trace as dtrace
+    from minder_decision import trace as dtrace
     dbp = tmp_path / "m.sqlite"
     pairs = seed_family(dbp, 5)
     linked_ep, _ = pairs[0]
@@ -193,5 +193,5 @@ def test_no_gguf_no_llama_calls_no_systemd(tmp_path):
             imported.update(a.name.split(".")[0] for a in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[0])
-    assert imported <= {"hashlib", "json", "datetime", "pathlib", "memory",
-                        "canonicalise", "decision"}
+    assert imported <= {"hashlib", "json", "datetime", "pathlib",
+                        "minder_memory", "canonicalise", "minder_decision"}

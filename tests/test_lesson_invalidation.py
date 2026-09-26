@@ -1,6 +1,6 @@
 """Lesson invalidation / supersession / contradiction tests (spec P3.3,
 P3.5)."""
-from memory import invalidation, lessons, retrieval, store
+from minder_memory import invalidation, lessons, retrieval, store
 
 REPO = "/repo"
 KEY = "bash|keyerror|supplier_id|app/supplier.py"
@@ -69,7 +69,7 @@ def test_change_invalidates_scoped_lessons(tmp_path):
     assert n == 1
     assert retrieval.retrieve_lessons(REPO, KEY, db_path=dbp) == []
     # commit node marked changed for the P3.3 commit filter
-    node = __import__("memory.graph", fromlist=["get_node"]).get_node(
+    node = __import__("minder_memory.graph", fromlist=["get_node"]).get_node(
         "commit:def5678", db_path=dbp)
     assert node["properties"]["changed"] is True
 
@@ -95,7 +95,7 @@ def test_contradiction_serves_one_authoritative_lesson(tmp_path):
     got = retrieval.retrieve_lessons(REPO, KEY, db_path=dbp)
     assert [g["lesson_id"] for g in got] == [new["lesson_id"]]
     # history stays queryable in the graph
-    hist = __import__("memory.graph", fromlist=["neighbors"]).neighbors(
+    hist = __import__("minder_memory.graph", fromlist=["neighbors"]).neighbors(
         new["lesson_id"], "CONTRADICTS", db_path=dbp, include_invalid=True)
     assert hist and hist[0]["id"] == old["lesson_id"]
     # identical instructions are NOT a contradiction

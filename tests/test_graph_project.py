@@ -1,6 +1,6 @@
 """Graph projection tests (spec P3.2): verified promotions project
 File/Test/Commit edges when known; unknown entities are skipped."""
-from memory import graph, lessons, store
+from minder_memory import graph, lessons, store
 
 REPO = "/repo"
 KEY = "bash|keyerror|supplier_id|app/supplier.py"

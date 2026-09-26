@@ -3,12 +3,11 @@ existing index (<= 3 + none), none/low-noul never load a body, at most
 one body loaded. Hook unchanged — this is a library test."""
 import json
 
-from decision import replay as dreplay
-from decision import skill_select as dskill
-from decision.providers.fake import FakeClient
-from decision.providers.null import NullClient
+from minder_decision import skill_select as dskill
+from minder_decision.providers.fake import FakeClient
+from minder_decision.providers.null import NullClient
 
-FIXTURES = "decision/evals/skill_select/fixtures.json"
+FIXTURES = "minder_decision/evals/skill_select/fixtures.json"
 
 
 def _load():
@@ -63,7 +62,7 @@ def test_null_client_never_selects():
 def test_out_of_shortlist_choice_and_missing_body_refuse():
     shortlist = ("inspect-schema-boundary",)
     contract = dskill.skill_select_response_contract(shortlist)
-    from decision.types import DecisionResponse
+    from minder_decision.types import DecisionResponse
     resp = DecisionResponse(
         contract_id=contract.contract_id, contract_version=contract.version,
         choice_probs={"best_skill": {"none": 0.0,

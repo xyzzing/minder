@@ -1,0 +1,16 @@
+# minder: stdlib-only core. Keep the lint surface gentle but real: the
+# default rule set (E4/E7/E9 + F) catches genuine defects — unused
+# imports/variables, undefined names, f-string errors, bare excepts —
+# without styling churn. The repo's declared fail-open law uses
+# `except Exception`, which stays allowed; E722 bans the bare form.
+line-length = 90
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# Test idioms, kept out of production only:
+# E402 — conftest/test bootstrap inserts sys.path before imports
+# E731 — lambda factories passed to monkeypatch
+# F841 — calls captured into a name for documentation; the call matters
+"tests/**" = ["E402", "E731", "F841"]

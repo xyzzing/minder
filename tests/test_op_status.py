@@ -1,12 +1,11 @@
 """Operator status tests (8A): missing DB exits 2; a migrated empty DB
 reports zeros with exit 0; the status screen carries schema version,
 counts, and the env-owned flags."""
-from memory import db as _db
+from minder_memory import db as _db
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 
 def _latest_schema():
-    import pathlib as _p
     versions = [int(f.name.split("_", 1)[0]) for f in
                 _db.MIGRATIONS_DIR.glob("*.sql")
                 if f.name[0].isdigit()]

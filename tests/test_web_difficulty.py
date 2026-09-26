@@ -1,7 +1,6 @@
 """Difficulty router page (8E): reads the proxy's events.jsonl ledger
 (read-only), newest first; empty/missing ledger is safe; shadow vs
 routed rows render with their band fields."""
-import webseed
 from webseed import TS, client_for, new_db, seed_difficulty_ledger
 
 SHADOW = {"event": "difficulty_shadow", "ts": TS, "label": "routine",

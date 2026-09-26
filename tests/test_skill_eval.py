@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from memory import skill_eval
+from minder_memory import skill_eval
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "skills" / "eval"
 

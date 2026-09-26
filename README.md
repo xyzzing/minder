@@ -8,6 +8,12 @@ boundary: **measure → instruct → escalate → audit**. Everything it decides
 lands in an append-only ledger, so "what did the watchdog do last night?"
 is a one-command question.
 
+It is harness-agnostic by design
+([ADR-0004](docs/adr/0004-harness-agnostic-sidecar-proxy.md)): the proxy
+speaks plain OpenAI chat-completions, so any harness or client that can
+point at a base URL works — dsh and zcode get first-class hook
+integrations, everything else just points at `http://127.0.0.1:8390/v1`.
+
 Around that core minder has grown a full governance plane:
 
 | Layer | What it does |
@@ -29,8 +35,9 @@ shadow-evaluated until they beat a pinned baseline — never authoritative.
 - Python 3.10+ — the core is **stdlib only**, no pip dependencies
 - Optional web console: `pip install --user -r requirements-web.txt`
 - Optional local classifier/routing model: [laya](https://huggingface.co/convaiinnovations/laya) (see below)
-- Full governed runtime additionally needs: a local `llama.cpp llama-server`
-  upstream, Linux + `systemd --user`, and a zcode or dsh harness
+- A governed runtime additionally needs a local `llama.cpp llama-server`
+  upstream. The systemd/dsh/zcode **integration tier** needs Linux;
+  the generic proxy path (below) works anywhere Python runs.
 
 ## Quick start — operator tools (no model required)
 
@@ -67,6 +74,24 @@ Exit codes: `0` ok, `1` usage/not-found, `2` DB missing or corrupt. All data
 lives under `~/.local/state/minder/` — nothing leaves the machine.
 
 ## Full governed runtime (local model)
+
+### Any OpenAI-compatible harness (`--generic`, no Linux required)
+
+```bash
+git clone https://github.com/xyzzing/minder && cd minder
+./install.sh --generic --upstream http://127.0.0.1:8080
+MINDER_UPSTREAM=http://127.0.0.1:8080 ~/.local/share/minder/proxy.py &
+# then point your harness at http://127.0.0.1:8390/v1
+# models: qwen-exec | qwen-think | qwen-auto (auto = escalation-managed)
+```
+
+`--generic` stages the code, probes your server's real capabilities
+(fail-closed ladder, same as below), writes the config and the operator
+shims — and touches nothing else: no dsh/zcode wiring, no systemd. The
+proxy upgrades reasoning budgets when it sees minder's escalation markers
+in recent context, so loop-governance works through the base URL alone.
+
+### dsh + zcode (Linux + `systemd --user`, first-class hooks)
 
 ```bash
 ./install.sh --upstream http://127.0.0.1:8080 [--skip-dsh] [--skip-zcode] [--no-start]
@@ -105,6 +130,23 @@ mismatch → NON_COMPARABLE. `routing-core-v1` replays 40 adversarial
 domain-routing cases through any provider
 (`minder-op routes replay --provider rules|laya|null`) using the same
 comparator.
+
+## minder_core — use the pieces without the runtime
+
+Two parts of minder are deliberately dependency-free (Python stdlib only,
+zero minder imports) and importable from `minder_core`:
+
+- **`minder_core.comparator`** — the protected-metric benchmark
+  comparator behind `minder-op benchmark compare`: safety regressions
+  fail at any sample size, completion drops are bounded, sample-size and
+  fingerprint guards can never be argued into a PASS.
+- **`minder_core.identity`** — canonical failure keys, action
+  fingerprints, secret redaction, and result signatures: the exact
+  functions minder's evidence ledger and loop guard are keyed by.
+
+```python
+from minder_core import compare_reports, failure_key, result_signature
+```
 
 ## Privacy and safety posture
 
@@ -145,7 +187,14 @@ mechanics and the ten monitored metrics are in
 
 ```bash
 python3 -m pytest -q        # no network, no model required
+ruff check .                # config: ruff.toml (CI enforces it)
 ```
+
+Packaging: `pip wheel . --no-deps` builds a wheel of the operator plane +
+`minder_core` (entry points `minder-op` / `minder-web`, version synced to
+`MINDER_VERSION` in minder.py). The hook transports, proxy and sink stay
+staged by `install.sh` — they are wired to a real llama-server and a
+specific harness, which a wheel cannot do honestly.
 
 Optional: install the laya local routing model
 (`pip install --user torch --index-url

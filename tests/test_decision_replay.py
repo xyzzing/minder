@@ -2,10 +2,10 @@
 on every fixture; NullClient may be wrong on accuracy but must never
 select an action omitted from the menu (frontier_consult above all)."""
 
-from decision import replay as dreplay
-from decision.providers.null import NullClient
+from minder_decision import replay as dreplay
+from minder_decision.providers.null import NullClient
 
-FIXTURE_DIR = "decision/evals/failure_triage"
+FIXTURE_DIR = "minder_decision/evals/failure_triage"
 
 
 def test_at_least_ten_fixtures_exist():
