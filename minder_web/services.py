@@ -78,8 +78,14 @@ def overview(db_path, window_hours=24):
         capture = _decorate_capture(report["evidence"]["capture"])
         verdicts = report.get("focus") or []
         since = report.get("since")
-    except Exception:
-        pass  # a broken scan must not 500 the landing page
+    except Exception as e:
+        # the landing page must not 500, but a broken scan must be named
+        try:
+            import minder
+            minder.log("web", "overview_scorecard_failed",
+                       error=f"{type(e).__name__}: {e}")
+        except Exception:
+            pass
     # Capture breaks are the one failure that invalidates every other page,
     # so they come first in the operator focus list.
     focus = list((summary or {}).get("focus", []))
