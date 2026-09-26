@@ -45,3 +45,4 @@ CLAUDE.md
 # python build artifacts
 *.egg-info/
 .audit/
+.coverage
