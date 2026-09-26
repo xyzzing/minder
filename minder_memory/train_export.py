@@ -242,9 +242,7 @@ def _assign_splits(candidates):
 def _persist(candidates, db_path):
     if not candidates:
         return
-    conn = _db.connect(db_path)
-    try:
-        conn.execute("BEGIN IMMEDIATE")
+    with _db.transaction(db_path) as conn:
         for cand in candidates:
             conn.execute(
                 "INSERT OR REPLACE INTO training_candidates (candidate_id,"
@@ -253,12 +251,6 @@ def _persist(candidates, db_path):
                 (cand["candidate_id"], cand["episode_id"], cand["lesson_id"],
                  cand["failure_family"], cand["trajectory_json"],
                  cand["split"], cand["created_at"]))
-        conn.execute("COMMIT")
-    except Exception:
-        conn.execute("ROLLBACK")
-        raise
-    finally:
-        conn.close()
 
 
 def default_out_dir():

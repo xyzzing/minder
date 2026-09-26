@@ -53,10 +53,8 @@ def create_temp_plan(event, gap_type, steps=None, db_path=None,
     """Persist a plan for this failure. Returns plan_id or None (fail-open)."""
     try:
         steps = [str(s) for s in (steps or default_steps(gap_type))][:8]
-        conn = _db.connect(db_path)
-        try:
-            plan_id = f"plan_{uuid.uuid4().hex[:12]}"
-            conn.execute("BEGIN IMMEDIATE")
+        plan_id = f"plan_{uuid.uuid4().hex[:12]}"
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO temp_plans (plan_id, episode_id, repo,"
                 " failure_key, gap_type, steps_json, status, created_at,"
@@ -64,13 +62,7 @@ def create_temp_plan(event, gap_type, steps=None, db_path=None,
                 (plan_id, episode_id or event.get("episode_id"),
                  event.get("repo"), event.get("failure_key"),
                  gap_type or "unknown", json.dumps(steps), _now()))
-            conn.execute("COMMIT")
-            return plan_id
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
+        return plan_id
     except Exception:
         return None
 
@@ -80,21 +72,13 @@ def mark_plan(plan_id, status, db_path=None):
     if status not in PLAN_STATUSES:
         return False
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "UPDATE temp_plans SET status = ?,"
                 " closed_at = CASE WHEN ? IN ('verified', 'abandoned')"
                 " THEN ? ELSE closed_at END WHERE plan_id = ?",
                 (status, status, _now(), plan_id))
-            conn.execute("COMMIT")
-            return True
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
+        return True
     except Exception:
         return False
 

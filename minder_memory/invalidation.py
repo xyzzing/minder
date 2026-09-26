@@ -17,18 +17,10 @@ def supersede_lesson(old_id, new_id, db_path=None):
     """new supersedes old: old gets valid_to + invalidated, plus a
     SUPERSEDES edge (new -> old) so history stays queryable."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "UPDATE lessons SET valid_to = ?, status = 'invalidated'"
                 " WHERE lesson_id = ?", (_now(), old_id))
-            conn.execute("COMMIT")
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
         graph.upsert_node("Lesson", old_id, {}, db_path=db_path)
         graph.upsert_node("Lesson", new_id, {}, db_path=db_path)
         graph.link(new_id, "SUPERSEDES", old_id, db_path=db_path)
@@ -50,14 +42,15 @@ def invalidate_lessons_for_change(change_event, db_path=None):
         reason = str(change_event.get("reason") or "change")
         if not repo or not paths:
             return 0
-        conn = _db.connect(db_path)
         invalidated = 0
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             now = _now()
             for path in paths:
                 file_id = f"file:{path}"
                 keys = []
+                # neighbors reads on its own plain connection (WAL
+                # allows it alongside this write lock) — a nested
+                # BEGIN IMMEDIATE here would busy-time out
                 for edge in graph.neighbors(file_id, "AFFECTS", "in",
                                             db_path=db_path):
                     node_id = edge["id"]
@@ -74,12 +67,6 @@ def invalidate_lessons_for_change(change_event, db_path=None):
                             " status = 'invalidated' WHERE lesson_id = ?",
                             (now, row["lesson_id"]))
                         invalidated += 1
-            conn.execute("COMMIT")
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
         # mark the commit node changed (graph side, best-effort)
         if commit:
             graph.upsert_node("Commit", f"commit:{commit}",
@@ -116,17 +103,9 @@ def mark_contradiction(lesson_a, lesson_b, reason="divergent_verified_"
             return False  # identical instructions are not a contradiction
         older, newer = (a, b) if (a["valid_from"] or "") <= \
             (b["valid_from"] or "") else (b, a)
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute("UPDATE lessons SET status = 'needs_revalidation'"
                          " WHERE lesson_id = ?", (older["lesson_id"],))
-            conn.execute("COMMIT")
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
         graph.upsert_node("Lesson", newer["lesson_id"], {}, db_path=db_path)
         graph.upsert_node("Lesson", older["lesson_id"], {}, db_path=db_path)
         graph.link(newer["lesson_id"], "CONTRADICTS", older["lesson_id"],

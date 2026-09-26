@@ -33,9 +33,7 @@ def upsert_node(node_type, node_id, properties=None, db_path=None):
         raise ValueError(f"unknown node type: {node_type!r} "
                          f"(vocabulary {NODE_TYPES_V1})")
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO nodes (id, type, properties_json, created_at)"
                 " VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET"
@@ -43,13 +41,7 @@ def upsert_node(node_type, node_id, properties=None, db_path=None):
                 " properties_json = excluded.properties_json",
                 (node_id, node_type,
                  json.dumps(properties or {}), _now()))
-            conn.execute("COMMIT")
-            return node_id
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
+        return node_id
     except Exception:
         return None
 
@@ -79,33 +71,20 @@ def link(from_id, edge_type, to_id, properties=None, valid_from=None,
         raise ValueError(f"unknown edge type: {edge_type!r} "
                          f"(vocabulary {EDGE_TYPES_V1})")
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            cur = conn.execute(
+        with _db.transaction(db_path) as conn:
+            conn.execute(
                 "INSERT INTO edges (id, from_id, edge_type, to_id,"
                 " properties_json, created_at, valid_from, valid_to)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, NULL)"
                 " ON CONFLICT(from_id, edge_type, to_id) DO NOTHING",
                 (f"edge_{uuid.uuid4().hex[:12]}", from_id, edge_type, to_id,
                  json.dumps(properties or {}), _now(), valid_from or _now()))
-            if cur.rowcount == 0:  # already linked — return the existing id
-                row = conn.execute(
-                    "SELECT id FROM edges WHERE from_id = ? AND"
-                    " edge_type = ? AND to_id = ?",
-                    (from_id, edge_type, to_id)).fetchone()
-                conn.execute("COMMIT")
-                return row["id"] if row else None
-            conn.execute("COMMIT")
+            # DO NOTHING may have skipped the insert (already linked) —
+            # the re-SELECT returns the existing edge id either way
             row = conn.execute(
                 "SELECT id FROM edges WHERE from_id = ? AND edge_type = ?"
                 " AND to_id = ?", (from_id, edge_type, to_id)).fetchone()
             return row["id"] if row else None
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
     except Exception:
         return None
 
@@ -113,21 +92,13 @@ def link(from_id, edge_type, to_id, properties=None, valid_from=None,
 def invalidate_edge(edge_id, reason, valid_to=None, db_path=None):
     """Mark an edge non-authoritative; the row remains for history."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "UPDATE edges SET valid_to = ?,"
                 " properties_json = json_set(properties_json, '$.reason', ?)"
                 " WHERE id = ?",
                 (valid_to or _now(), str(reason), edge_id))
-            conn.execute("COMMIT")
-            return True
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
+        return True
     except Exception:
         return False
 

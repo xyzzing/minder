@@ -62,13 +62,15 @@ def propose_skill_from_lessons(repo, failure_family, name=None,
         conn = _db.connect(db_path)
         try:
             lessons = _source_lessons(conn, repo, failure_family)
-            if len(lessons) < MIN_DISTINCT_LESSONS:
-                return None
-            instructions, anti_pattern = _distill(lessons)
-            if not instructions:
-                return None
-            candidate_id = f"cand_{uuid.uuid4().hex[:12]}"
-            conn.execute("BEGIN IMMEDIATE")
+        finally:
+            conn.close()
+        if len(lessons) < MIN_DISTINCT_LESSONS:
+            return None
+        instructions, anti_pattern = _distill(lessons)
+        if not instructions:
+            return None
+        candidate_id = f"cand_{uuid.uuid4().hex[:12]}"
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO skill_candidates (candidate_id, name, repo,"
                 " failure_family, source_lesson_ids, episode_count,"
@@ -83,13 +85,7 @@ def propose_skill_from_lessons(repo, failure_family, name=None,
                  json.dumps({"basis": "verified_lessons",
                              "lesson_ids": len(lessons)}),
                  _now()))
-            conn.execute("COMMIT")
-            return get_candidate(candidate_id, db_path)
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
+        return get_candidate(candidate_id, db_path)
     except Exception:
         return None
 
@@ -137,17 +133,9 @@ def accept_skill_candidate(candidate_id, actor="operator", apply=False,
         candidate = get_candidate(candidate_id, db_path)
         if not candidate:
             return None
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute("UPDATE skill_candidates SET status = 'accepted'"
                          " WHERE candidate_id = ?", (candidate_id,))
-            conn.execute("COMMIT")
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
         candidate["status"] = "accepted"
         candidate["applied"] = False
         if apply and actor == "operator":

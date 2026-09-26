@@ -87,9 +87,7 @@ def check_skill_gap(event, db_path=None, index_path=None, attempts=None):
 
 def _record(event, fkey, gap_type, db_path=None):
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO skill_gaps (gap_id, ts, repo, failure_key,"
                 " gap_type, sample_error, status) VALUES (?, ?, ?, ?, ?, ?,"
@@ -97,13 +95,7 @@ def _record(event, fkey, gap_type, db_path=None):
                 (f"gap_{uuid.uuid4().hex[:12]}", _now(),
                  event.get("repo"), fkey, gap_type,
                  canon.redact(str(event.get("error_excerpt", ""))[:300])))
-            conn.execute("COMMIT")
-            return True
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
+        return True
     except Exception:
         return False
 
