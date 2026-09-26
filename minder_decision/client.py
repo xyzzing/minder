@@ -33,7 +33,7 @@ class SystemOneClient:
 # hook process builds it once and exits; the sink sidecar — which lives
 # for the whole session — builds it once *total*, which is what removes
 # the ~3.4 s per-tool-call model construction from the hot path.
-_CLIENTS = {}
+_CLIENTS: dict = {}
 
 
 def warm_status():

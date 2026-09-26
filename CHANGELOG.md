@@ -3,7 +3,30 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
-## Unreleased — laya confidence calibration (measured) + declaration guard
+## 0.8.1 — 2026-09-27
+
+- **Console landing page answers "what to improve first."** Scorecard
+  verdicts now lead `/` (single 24h window, `?window_hours=`), derived
+  from one scorecard build shared with the capture strip — the landing
+  page can no longer read calm (1h "n/a") while the 24h picture is
+  broken. The header chip reports recording staleness from the events
+  ledger instead of an always-ok schema badge; windows render as human
+  dates ("past week, Sep 19 to Sep 26"); em-dashes swept from all
+  visible console copy.
+- **Audit rollout (2026-09-26 audit, `.audit/AUDIT.md`):** decision
+  type annotations corrected (F1/F2); dead parameters `state_key` /
+  `event_or_text` removed (F3/F4); the three diagnostically-critical
+  fail-open sites now log via `minder.log` (F16); the frontier command
+  runs as a direct argv (`shlex.split`, no shell) with the trust
+  boundary documented (F5); 33 hand-rolled SQLite transaction sites
+  collapsed onto `minder_memory.db.transaction()` with characterization
+  tests pinning empty-txn early returns, rollback, and read-your-own-
+  writes first (F8). mypy is now zero across all six packages and
+  CI-enforced (pinned) next to ruff; CLAUDE.md carries an architecture
+  map and conventions.
+
+### Previously unreleased since 0.8
+
 
 - **Laya's confidence is now derived from its distribution, not its
   self-report.** Measured on routing-core-v1 (40 cases, laya 0.3.6 CPU):
@@ -32,7 +55,7 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
   value (idempotent `profile-apply --success-guard block`; reinstall
   preserves it).
 
-## Unreleased — ecosystem pass (namespaces, minder_core, --generic, wheel)
+### ecosystem pass (namespaces, minder_core, --generic, wheel)
 
 The panel's strategic recommendations, landed: adoptable packaging, a
 dependency-free extractable core, and a first-class path for harnesses
@@ -69,7 +92,7 @@ installs with an ImportError.
   info reviewed; none found), so CONTRIBUTING's design-convention links
   resolve for cloners.
 
-## Unreleased — QA panel hardening (session-id joins, reinstall guard, sink auth)
+### QA panel hardening (session-id joins, reinstall guard, sink auth)
 
 Findings from an external-perspective architecture/QA review; every fix
 landed with a regression test.
@@ -125,7 +148,7 @@ landed with a regression test.
   `$STATE/doctor-last.txt`, and exits non-zero on an unhealthy verdict so
   a silent watchdog shows in `systemctl --user --failed`.
 
-## Unreleased — trace review + a loop stop that actually stops
+### trace review + a loop stop that actually stops
 
 Post-run evaluation of completed dsh sessions, and the fix for the live
 DBS incident that the advisory-only success guard never actually
@@ -182,7 +205,7 @@ interrupted. Design: `docs/trace-review/prd-trace-review.md`.
   judged on call counts, duration and per-session tokens. Rubrics are JSON
   (stdlib only); unknown rubric keys are refused rather than guessed.
 
-## Unreleased — dsh capture + console sessions
+### dsh capture + console sessions
 
 Fixes the silent loss of every dsh session: hooks fired (50
 `hook/invoked` records in one session), exited 0, and persisted nothing,

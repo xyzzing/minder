@@ -21,6 +21,18 @@ jobs:
       - name: Lint (ruff, config in ruff.toml)
         run: ruff check .
 
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install mypy
+        run: pip install "mypy==2.3.1"  # pinned: new checks land between minors
+      - name: Types (minder_core/memory/decision/trace/op/web)
+        run: mypy minder_core minder_memory minder_decision minder_trace minder_op minder_web --ignore-missing-imports
+
   tests:
     runs-on: ubuntu-latest
     strategy:

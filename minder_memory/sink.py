@@ -30,8 +30,8 @@ TOKEN_NAME = "sink.token"
 # silently changes meaning depending on which process executes it.
 TRACKED_FLAGS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
                  "MINDER_SUCCESS_GUARD", "MINDER_HOOK_TRACE")
-_DECLARED = {"key": None, "url": None, "flags": None}
-_TOKEN = {"key": None, "headers": {}}
+_DECLARED: dict = {"key": None, "url": None, "flags": None}
+_TOKEN: dict = {"key": None, "headers": {}}
 
 
 def _auth_headers():

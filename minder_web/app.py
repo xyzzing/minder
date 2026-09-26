@@ -95,7 +95,7 @@ def episode(request: Request, episode_id: str):
 
 
 @app.get("/lessons")
-def lessons(request: Request, status: str = None,
+def lessons(request: Request, status: str | None = None,
             limit: int = services.DEFAULT_LIMIT):
     return render(request, "lessons",
                   services.lessons_page(_db_path(), status, limit))
@@ -143,15 +143,16 @@ def difficulty(request: Request, limit: int = services.DEFAULT_LIMIT):
 
 @app.get("/events")
 def events(request: Request, limit: int = services.DEFAULT_LIMIT,
-           event_type: str = None, tool: str = None,
-           failure_key: str = None, session: str = None):
+           event_type: str | None = None, tool: str | None = None,
+           failure_key: str | None = None, session: str | None = None):
     return render(request, "events",
                   services.events_page(_db_path(), limit, event_type, tool,
                                        failure_key, session))
 
 
 @app.get("/sessions")
-def sessions(request: Request, q: str = None, sort: str = None,
+def sessions(request: Request, q: str | None = None,
+             sort: str | None = None,
              limit: int = services.DEFAULT_LIMIT):
     return render(request, "sessions",
                   services.sessions_page(_db_path(), q, sort, limit))

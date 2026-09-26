@@ -42,7 +42,7 @@ DEFAULT_THRESHOLD = 2
 # Phase 5.5-G shadow debounce: at most one decision call per
 # (session_id, failure_key) per 5s. Process-local by design.
 DECISION_DEBOUNCE_SECONDS = 5.0
-_DECISION_DEBOUNCE = {}
+_DECISION_DEBOUNCE: dict = {}
 
 
 def evaluate(event, warden_out=None, cfg=None, db_path=None,

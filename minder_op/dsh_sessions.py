@@ -27,8 +27,8 @@ import time
 from pathlib import Path
 
 DEFAULT_CACHE_SECS = 5
-_CACHE = {}
-_EMPTY = {"rows": [], "counts": {}}
+_CACHE: dict = {}
+_EMPTY: dict = {"rows": [], "counts": {}}
 
 
 def dsh_home():
