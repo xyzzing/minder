@@ -158,3 +158,27 @@ def test_live_repo_hooks_template_is_usable(mod):
     assert "__MINDER_SINK_URL__" in text
     assert json.loads(text.replace("__MINDER_SHARE__", "/s")
                           .replace("__MINDER_SINK_URL__", "http://x"))
+
+
+def test_check_fails_on_a_hooks_json_without_pretool(tmp_path, mod):
+    """The live state on 2026-09-25: SessionStart + PostToolUse only.
+    Without PreToolUse, MINDER_SUCCESS_GUARD=block can never pre-empt."""
+    profile = _profile(tmp_path)
+    share = tmp_path / "share"
+    hooks = share / "dsh" / "hooks.json"
+    hooks.parent.mkdir(parents=True)
+    cmd = (f"MINDER_DECISION= MINDER_ASSIST= "
+           f"MINDER_SINK_URL=http://127.0.0.1:8392 python3 {share}/hook.py")
+    hooks.write_text(json.dumps({"hooks": {
+        "SessionStart": [{"matcher": "", "hooks": [
+            {"type": "command", "command": cmd}]}],
+        "PostToolUse": [{"matcher": "", "hooks": [
+            {"type": "command", "command": cmd}]}],
+    }}))
+    mod.ensure_bridge_loader(profile)
+    mod.ensure_patch_entry(profile, hooks)
+    ok, points = mod.check_profile(tmp_path / ".dsh", "web", share,
+                                   "http://127.0.0.1:8392", hooks)
+    assert ok is False
+    entry = next(p for p in points if p[0] == "hooks-json")
+    assert entry[1] == "fail" and "pretool=False" in entry[2]

@@ -518,20 +518,29 @@ def check_profile(dsh_home, profile, share, sink_url, hooks_json=None):
     else:
         text = hooks_json.read_text()
         try:
-            json.loads(text)
-            parsed = "parses"
+            obj = json.loads(text)
         except ValueError as exc:
+            obj = None
             parsed = f"INVALID JSON: {exc}"
+        else:
+            parsed = "parses"
         has_share = str(share) in text
         has_sink = str(sink_url) in text
         flags = all(f in text for f in ("MINDER_DECISION=",
                                         "MINDER_SINK_URL=",
                                         "MINDER_ASSIST="))
-        status = "ok" if (has_share and has_sink and flags
+        # The success-loop stop needs a pre-execution hook point: without
+        # PreToolUse, MINDER_SUCCESS_GUARD=block can only ever advise after
+        # the fact, and nothing else would say so.
+        hook_points = set((obj.get("hooks") or {}).keys()) \
+            if isinstance(obj, dict) else set()
+        has_pretool = "PreToolUse" in hook_points
+        status = "ok" if (has_share and has_sink and flags and has_pretool
                           and parsed == "parses") else "fail"
         points.append(("hooks-json", status,
                        f"{hooks_json} ({parsed}; share={has_share} "
-                       f"sink={has_sink} flags={flags})"))
+                       f"sink={has_sink} flags={flags} "
+                       f"pretool={has_pretool})"))
     ok = all(status == "ok" for _p, status, _d in points)
     return ok, points
 
