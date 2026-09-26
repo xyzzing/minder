@@ -102,8 +102,13 @@ def record(hook_ev, db_path=None, cfg=None):
                 out["skill_gap"] = True
             if gap_result.get("skill"):
                 out["skill_match"] = gap_result["skill"]
-        except Exception:
-            pass
+        except Exception as e:
+            try:
+                minder.log(ev.get("session_id") or minder.session_key(ev),
+                           "skill_gap_check_failed",
+                           error=f"{type(e).__name__}: {e}")
+            except Exception:
+                pass
         return out
     except Exception as e:
         out["status"] = f"degraded:{type(e).__name__}"
@@ -147,8 +152,13 @@ def _observe_success(ev, out, db_path):
         out["success_advisory"] = result.get("advisory")
         _LAST_SUCCESS_ADVISORY = result.get("advisory")
         _LAST_SUCCESS_DIRECTIVE = result.get("directive")
-    except Exception:
-        pass
+    except Exception as e:
+        try:
+            minder.log(ev.get("session_id") or minder.session_key(ev),
+                       "success_guard_failed",
+                       error=f"{type(e).__name__}: {e}")
+        except Exception:
+            pass
 
 
 def success_advisory():

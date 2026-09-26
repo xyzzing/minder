@@ -18,6 +18,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import minder
 from . import db as _db
 from .canonicalise import redact
 
@@ -99,8 +100,14 @@ class ShadowClassifier(EventClassifier):
             out = Classification(model_version="degraded")
         try:
             self._log(compact, out, policy_action, event_id)
-        except Exception:
-            pass
+        except Exception as e:
+            # shadow telemetry is best-effort, but a silent gap in the
+            # classifier_shadow ledger must at least be named in events
+            try:
+                minder.log("classifier", "shadow_log_failed",
+                           error=f"{type(e).__name__}: {e}")
+            except Exception:
+                pass
         return out
 
     def _log(self, compact, out, policy_action, event_id):
