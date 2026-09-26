@@ -18,6 +18,14 @@ EXIT_OK = 0
 EXIT_USAGE = 1
 EXIT_DB = 2
 
+
+def trace_reviews_mod():
+    """Lazy import: the memory plane is optional for the operator CLI (the
+    watchdog never depends on it), so a module-level import here would make
+    every `minder-op` command depend on it."""
+    from memory import trace_reviews
+    return trace_reviews
+
 # Kept visible where an operator will look: deferred out of 8A–8C by the
 # spec (docs/operator-cli.md carries the sketches).
 DEFERRED = ("deferred (8D/8E+): controlled local benchmark runner, web "
@@ -26,7 +34,8 @@ DEFERRED = ("deferred (8D/8E+): controlled local benchmark runner, web "
             "retention/prune, skill-risk denylist, 003-vs-"
             "frontier_evals label sync")
 
-FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION")
+FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
+             "MINDER_SUCCESS_GUARD")
 
 
 class OpParser(argparse.ArgumentParser):
@@ -209,6 +218,50 @@ def build_parser():
     sl_sub = sl.add_subparsers(dest="subcommand", required=True)
     sl_ls = sl_sub.add_parser("ls")
     sl_ls.add_argument("--limit", type=int, default=25)
+
+    tr = sub.add_parser("trace", help="offline review of completed dsh "
+                        "sessions (read-only on dsh)")
+    tr_sub = tr.add_subparsers(dest="subcommand", required=True)
+    tr_ls = tr_sub.add_parser("ls", help="list dsh sessions and whether "
+                              "each has been reviewed")
+    tr_ls.add_argument("--limit", type=int, default=25)
+    tr_ls.add_argument("--json", action="store_true")
+    tr_rev = tr_sub.add_parser("review", help="read, evaluate and print "
+                               "one session's trace")
+    tr_rev.add_argument("session", help="session id, id suffix, or project "
+                        "slug (omit to pick the newest)")
+    tr_rev.add_argument("--rubric", help="JSON rubric: declarative required/"
+                         "forbidden tools plus evaluator thresholds")
+    tr_rev.add_argument("--json", action="store_true")
+    tr_rev.add_argument("--no-store", action="store_true",
+                        help="never write, even if MINDER_TRACE_REVIEW=on")
+    tr_show = tr_sub.add_parser("show", help="render a stored review")
+    tr_show.add_argument("review_id")
+    tr_show.add_argument("--json", action="store_true")
+    tr_fb = tr_sub.add_parser("feedback", help="append structured human "
+                              "feedback to a review (needs --yes)")
+    tr_fb.add_argument("review_id")
+    tr_fb.add_argument("--level", required=True,
+                       choices=list(trace_reviews_mod().LEVELS))
+    tr_fb.add_argument("--category", required=True,
+                       choices=list(trace_reviews_mod().CATEGORIES))
+    tr_fb.add_argument("--target", dest="target_ref",
+                       help="ds_seq, claim id, or finding id being judged")
+    tr_fb.add_argument("--finding", help="finding_id this feedback judges")
+    tr_fb.add_argument("--verdict", choices=["confirm", "reject"])
+    tr_fb.add_argument("--comment")
+    tr_fb.add_argument("--reviewer")
+    tr_fb.add_argument("--json", action="store_true")
+    tr_fb.add_argument("--yes", action="store_true")
+    tr_reg = tr_sub.add_parser("regress", help="turn a confirmed failure "
+                               "finding into a benchmark regression case")
+    tr_reg.add_argument("session", help="session id, id suffix, or project "
+                         "slug")
+    tr_reg.add_argument("--finding", required=True, help="finding_id")
+    tr_reg.add_argument("--suite", default="coding-core-v1")
+    tr_reg.add_argument("--task-id")
+    tr_reg.add_argument("--json", action="store_true")
+    tr_reg.add_argument("--yes", action="store_true")
 
     ep = sub.add_parser("episodes", help="episode records")
     ep_sub = ep.add_subparsers(dest="subcommand", required=True)
@@ -401,6 +454,14 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_resume_expire(args, path)
     if command == "success-loops" and sub == "ls":
         return _cmd_success_loops_ls(args, path)
+    if command == "trace" and sub in ("ls", "review", "show", "feedback",
+                                      "regress"):
+        from minder_op import trace as trace_cli
+        return {
+            "ls": trace_cli.cmd_ls, "review": trace_cli.cmd_review,
+            "show": trace_cli.cmd_show, "feedback": trace_cli.cmd_feedback,
+            "regress": trace_cli.cmd_regress,
+        }[sub](args, path)
     if command == "episodes" and sub == "ls":
         return _cmd_episodes_ls(args, path)
     if command == "episodes" and sub == "show":
@@ -1181,7 +1242,15 @@ def _cmd_success_loops_ls(args, path):
                ("fingerprint", "fingerprint"), ("exit", "exit"),
                ("excerpt", "excerpt")])
     print()
-    print("advisory-only: the guard tells the model, it never blocks")
+    mode = success_guard.guard_mode()
+    if mode == "block":
+        print("mode=block: a repeat of an action that already looped is "
+              "stopped (PreToolUse exit 2) and the model gets the directive")
+    elif mode == "advisory":
+        print("mode=advisory: the guard tells the model, it never blocks")
+    else:
+        print("mode=off: MINDER_SUCCESS_GUARD is not set, nothing is "
+              "recorded; set it to advisory or block to enable")
     return EXIT_OK
 
 
@@ -1447,7 +1516,8 @@ def main(argv=None):
         return EXIT_USAGE
     path = _resolve_db(args)
     needs_db = args.command not in ("flags", "export-stats", "benchmark",
-                                    "doctor", "capture", "scorecard")
+                                    "doctor", "capture", "scorecard",
+                                    "trace")
     if needs_db:
         code = _guard_db(path)
         if code != EXIT_OK:

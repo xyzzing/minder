@@ -14,7 +14,8 @@ from minder_op import queries
 from minder_op.queries import DBError, UNCLASSIFIED
 from minder_op.summary import build_weekly_summary
 
-FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION")
+FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
+             "MINDER_SUCCESS_GUARD")
 NOT_AVAILABLE = "not available"
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
@@ -379,3 +380,96 @@ def benchmarks_page():
     suites = bench.list_suites()
     baselines = bench.list_baselines()
     return {"suites": suites or NOT_AVAILABLE, "baselines": baselines}
+
+
+# --- trace review (read-only) -------------------------------------------
+#
+# The console mirrors the CLI's read surface only. Regression conversion
+# and feedback stay in `minder-op`: they are writes, and this console has
+# no write endpoint by design (GET-only, loopback-only).
+
+SEVERITY_ORDER = ("blocker", "high", "medium", "low", "info")
+
+
+def _review_row(review):
+    summary = review.get("summary") or {}
+    return {
+        "review_id": review.get("review_id"),
+        "session_id": review.get("session_id"),
+        "run_id": review.get("run_id"),
+        "ts": (review.get("ts") or "")[:19],
+        "status": review.get("status"),
+        "evaluator_version": review.get("evaluator_version"),
+        "rubric_id": review.get("rubric_id") or "—",
+        "findings": summary.get("findings"),
+        "highest_severity": summary.get("highest_severity") or "—",
+        "tool_calls": summary.get("tool_calls"),
+        "failures": summary.get("failures"),
+        "tokens_total": summary.get("tokens_total"),
+    }
+
+
+def traces_page(db_path, limit=DEFAULT_LIMIT):
+    """Stored trace reviews, newest first. A missing DB or an unmigrated
+    schema reads as an empty list, never a 500."""
+    from memory import trace_reviews
+    rows = trace_reviews.list_reviews(limit=_bounded_limit(limit),
+                                      db_path=db_path)
+    stats = trace_reviews.acceptance_stats(db_path=db_path)
+    return {
+        "rows": [_review_row(r) for r in rows],
+        "counts": {"reviews": len(rows),
+                   "confirmed": stats.get("confirmed"),
+                   "rejected": stats.get("rejected"),
+                   "acceptance_rate": stats.get("acceptance_rate")},
+        "severity_order": SEVERITY_ORDER,
+    }
+
+
+def _finding_row(finding, verdicts):
+    evidence = finding.get("evidence") or {}
+    seqs = evidence.get("ds_seqs") or []
+    return {
+        "finding_id": finding.get("finding_id"),
+        "severity": finding.get("severity"),
+        "evaluator": finding.get("evaluator"),
+        "rule_id": finding.get("rule_id"),
+        "events": ", ".join(str(s) for s in seqs[:6]) or "—",
+        "event_count": len(seqs),
+        "message": fmt.safe(finding.get("message"), 300),
+        "suggested_fix": fmt.safe(finding.get("suggested_fix"), 300),
+        "excerpts": [fmt.safe(e, 160) for e in
+                     (evidence.get("excerpts") or [])],
+        "reviewed": verdicts.get(finding.get("finding_id"), ""),
+    }
+
+
+def trace_detail(db_path, review_id):
+    """One review with its findings, verdicts and feedback. None when the
+    review does not exist (the route turns that into a 404)."""
+    from memory import trace_reviews
+    review = trace_reviews.get_review(review_id, db_path=db_path)
+    if review is None:
+        return None
+    verdicts = trace_reviews.finding_verdicts(review_id, db_path=db_path)
+    feedback = trace_reviews.list_feedback(review_id, limit=100,
+                                          db_path=db_path)
+    order = {name: index for index, name in enumerate(SEVERITY_ORDER)}
+    findings = sorted(review.get("findings") or [], key=lambda f: (
+        order.get(f.get("severity"), 99),
+        (f.get("evidence") or {}).get("ds_seqs") or [0]))
+    return {
+        "review": _review_row(review),
+        "summary": review.get("summary") or {},
+        "findings": [_finding_row(f, verdicts) for f in findings],
+        "feedback": [{"ts": (item.get("ts") or "")[:19],
+                      "level": item.get("level"),
+                      "category": item.get("category"),
+                      "target": item.get("target_ref") or "—",
+                      "verdict": item.get("finding_verdict") or "—",
+                      "reviewer": item.get("reviewer") or "—",
+                      "comment": fmt.safe(item.get("comment"), 200)}
+                     for item in feedback],
+        "redaction_status": review.get("redaction_status"),
+        "severity_order": SEVERITY_ORDER,
+    }

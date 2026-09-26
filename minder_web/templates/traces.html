@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>traces <small>(stored trace reviews — post-run, deterministic)</small></h1>
+<p class="note">
+  {{ counts.reviews }} stored review(s) shown.
+  Reviewer-confirmed findings: {{ counts.confirmed or 0 }} ·
+  rejected: {{ counts.rejected or 0 }}{% if counts.acceptance_rate is not none %}
+  · acceptance {{ (counts.acceptance_rate * 100) | round(1) }}%{% endif %}.
+  A review is what one evaluator version said about one completed dsh
+  session; findings are candidates until a reviewer confirms them.
+</p>
+
+<table>
+  <thead><tr>
+    <th>reviewed</th><th>session</th><th>severity</th><th>findings</th>
+    <th>tools</th><th>failures</th><th>tokens</th><th>rubric</th>
+    <th>evaluator</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r.ts }}</td>
+      <td><a href="/traces/{{ r.review_id }}"><code>{{ r.session_id }}</code></a>
+        {% if r.status != 'ok' %}<span class="badge badge-candidate">{{ r.status }}</span>{% endif %}
+        <div class="excerpt">{{ r.review_id }} · {{ r.run_id }}</div>
+      </td>
+      <td>
+        {% if r.highest_severity in ('blocker', 'high') %}
+          <span class="badge badge-candidate">{{ r.highest_severity }}</span>
+        {% elif r.highest_severity == 'none' %}
+          <span class="badge badge-verified">clean</span>
+        {% else %}<span class="badge">{{ r.highest_severity }}</span>{% endif %}
+      </td>
+      <td>{{ r.findings if r.findings is not none else '—' }}</td>
+      <td>{{ r.tool_calls if r.tool_calls is not none else '—' }}</td>
+      <td>{{ r.failures if r.failures is not none else '—' }}</td>
+      <td>{{ '{:,}'.format(r.tokens_total) if r.tokens_total else '—' }}</td>
+      <td>{{ r.rubric_id }}</td>
+      <td class="excerpt">{{ r.evaluator_version }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="na">no stored reviews yet — run
+      <code>minder-op trace review &lt;session&gt;</code> with
+      <code>MINDER_TRACE_REVIEW=on</code>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">
+  This console is read-only. Confirming findings, recording feedback and
+  converting a confirmed failure into a regression case are writes and
+  live in the CLI:
+  <code>minder-op trace feedback … --yes</code> /
+  <code>minder-op trace regress … --yes</code>.
+</p>
+{% endblock %}

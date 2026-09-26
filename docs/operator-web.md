@@ -78,6 +78,8 @@ curl -sS http://127.0.0.1:8765/healthz
 | `/consults`, `/consults/{id}` | frontier consult labels (`frontier_evals`, never the legacy 003 integer); hashes only, no raw prompt/response text |
 | `/decisions` | shadow decision traces: model recommendation vs policy decision |
 | `/benchmarks` | suite manifests + pinned baselines; verdicts come from `minder-op benchmark compare` |
+| `/traces` | stored trace reviews: session, highest severity, finding counts, rubric and evaluator version |
+| `/traces/{review_id}` | one review: findings (severity, rule, cited dsh event `seq`s, redacted excerpts, suggested fix), the summary counts, and the human feedback with its confirm/reject verdicts |
 | `/healthz` | JSON `{status, schema_version}` |
 
 Missing stores or optional tables render "not available", never a
@@ -86,6 +88,14 @@ the template engine. The overview uses the same
 `minder_op.summary.build_weekly_summary()` object as the CLI
 `weekly-summary`; it reports observed workflow evidence only — no
 productivity claims.
+
+`/traces` and `/traces/{id}` are the console's view of
+`minder-op trace`; they mirror the CLI's *read* surface only. Confirming
+a finding, recording feedback and converting a confirmed failure into a
+regression case are writes, and the console has no write endpoint — a
+reviewer in a browser can never change what the agent does next. When no
+review has been stored yet the page says so and names the command that
+creates one (`MINDER_TRACE_REVIEW=on` + `minder-op trace review`).
 
 ## Sessions, capture and identity
 

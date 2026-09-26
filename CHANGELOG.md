@@ -3,6 +3,63 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## Unreleased — trace review + a loop stop that actually stops
+
+Post-run evaluation of completed dsh sessions, and the fix for the live
+DBS incident that the advisory-only success guard never actually
+interrupted. Design: `docs/trace-review/prd-trace-review.md`.
+
+- **Success-loop guard now stops** (`MINDER_SUCCESS_GUARD=off|advisory|
+  block`, default off = byte-inert). The old advisory was written to
+  stderr on a *successful* exit — the bridge only keeps that as a
+  bounded, log-only `stderrSummary`, so it never reached the model (0
+  occurrences in 40 real traces, 703/703 PostToolUse results `pass`).
+  `advisory` now rides exit-0 stdout as
+  `hookSpecificOutput.additionalContext`, the channel the bridge injects
+  into the next request. `block` returns a structured recovery directive
+  as the block reason, and a new **PreToolUse** hook stops the *next*
+  identical call before it runs (it only needs the requested action; the
+  ledger already knows which actions looped). An unrecognised flag value
+  reads as `off`, so a typo can never start blocking tool calls.
+- **Bug fix** — `from_hook._observe_success` read `tool_response` off
+  the *canonical* event, where `to_event()` has already moved that text
+  to `error_excerpt`. Every production success therefore signed the empty
+  string: the counter still fired on exact repeats, but it could no
+  longer tell two different results from one action apart. The existing
+  unit test passed because it fed the pre-canonical shape.
+- **Trace review** (`minder-op trace ls|review|show|feedback|regress`,
+  web `/traces`) — reads dsh's own session logs through the existing
+  read-only `minder_op.dsh_sessions` reader. Eight deterministic
+  evaluators (no model, no network, no clock; same trace → byte-identical
+  findings) over failures, successful-but-useless loops, edits without a
+  read, edits without a test, redundant calls, declared workflow rules and
+  stretches with no new artifact. Reuses `canonicalise` ("the same
+  failure") and `success_guard` ("the same result"), so an offline finding
+  and a live advisory can never disagree. Every finding cites dsh event
+  `seq`s. No quality *scores*: counts and severities only, because a
+  0-to-1 number would imply a calibration this layer does not have.
+- **Evidence chain is enforced, not documented** — structured feedback
+  (closed 12-category taxonomy at run/event/claim level) is append-only,
+  and `trace regress` refuses a finding that is not failure-shaped and one
+  no human has confirmed. It emits a content-only benchmark case in the
+  existing suite shape, gates the manifest write on `validate_manifest`,
+  and rolls back byte-for-byte on any error. The generated case passes as
+  written and fails if the rule it encodes is weakened.
+- **Migration 014** — `trace_reviews` and `trace_feedback`, both
+  append-only with update/delete triggers. Reviews keep the summary and
+  the findings, not the normalized events, so the live event table stays
+  untouched and a re-review is always possible from the original log.
+- **Flag law** — `MINDER_TRACE_REVIEW` (default off) gates review
+  persistence; `--no-store` overrides it off. With the flag off, `trace
+  review` writes nothing, not even the DB file. `MINDER_SUCCESS_GUARD`
+  is now registered in `minder-op flags`; both new flags are tracked by
+  the console and the sink's divergence check.
+- **Honest limits, stated in the product** — per-run cost is not
+  attributable (dsh's usage ledger is per-day/per-model), so
+  `estimated_cost` is explicitly `null` with a note and efficiency is
+  judged on call counts, duration and per-session tokens. Rubrics are JSON
+  (stdlib only); unknown rubric keys are refused rather than guessed.
+
 ## Unreleased — dsh capture + console sessions
 
 Fixes the silent loss of every dsh session: hooks fired (50

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>trace review <small>{{ review.review_id }}</small></h1>
+<p class="note">
+  session <code>{{ review.session_id }}</code> · run {{ review.run_id }} ·
+  reviewed {{ review.ts }} · status {{ review.status }} ·
+  evaluator {{ review.evaluator_version }} ·
+  rubric {{ review.rubric_id }} · payloads {{ redaction_status }}
+</p>
+
+<h2>findings <small>({{ findings | length }})</small></h2>
+<table>
+  <thead><tr>
+    <th>severity</th><th>evaluator</th><th>rule</th><th>events</th>
+    <th>reviewed</th><th>message</th>
+  </tr></thead>
+  <tbody>
+  {% for f in findings %}
+    <tr>
+      <td>
+        {% if f.severity in ('blocker', 'high') %}
+          <span class="badge badge-candidate">{{ f.severity }}</span>
+        {% else %}<span class="badge">{{ f.severity }}</span>{% endif %}
+      </td>
+      <td>{{ f.evaluator }}</td>
+      <td class="excerpt">{{ f.rule_id }}</td>
+      <td class="excerpt">{{ f.events }}
+        {% if f.event_count > 6 %}<span class="badge">+{{ f.event_count - 6 }}</span>{% endif %}
+      </td>
+      <td>
+        {% if f.reviewed == 'confirm' %}<span class="badge badge-verified">confirmed</span>
+        {% elif f.reviewed == 'reject' %}<span class="badge badge-candidate">rejected</span>
+        {% else %}<span class="badge">unreviewed</span>{% endif %}
+      </td>
+      <td>
+        {{ f.message }}
+        <div class="excerpt">suggested: {{ f.suggested_fix }}</div>
+        {% for e in f.excerpts %}<div class="excerpt"><code>{{ e }}</code></div>{% endfor %}
+        <div class="excerpt"><code>{{ f.finding_id }}</code></div>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="na">no findings — this trace is clean under
+      the active evaluators.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>summary</h2>
+<table>
+  <tbody>
+    <tr><th>findings</th><td>{{ summary.findings }}</td></tr>
+    <tr><th>highest severity</th><td>{{ summary.highest_severity }}</td></tr>
+    <tr><th>by severity</th><td class="excerpt">{{ summary.by_severity }}</td></tr>
+    <tr><th>by evaluator</th><td class="excerpt">{{ summary.by_evaluator }}</td></tr>
+    <tr><th>tool calls</th><td>{{ summary.tool_calls }}</td></tr>
+    <tr><th>failures</th><td>{{ summary.failures }}</td></tr>
+    <tr><th>turns</th><td>{{ summary.turns }}</td></tr>
+    <tr><th>cited events</th><td>{{ summary.evidence_links }}</td></tr>
+  </tbody>
+</table>
+
+<h2>human feedback <small>({{ feedback | length }})</small></h2>
+<table>
+  <thead><tr>
+    <th>when</th><th>level</th><th>category</th><th>target</th>
+    <th>verdict</th><th>reviewer</th><th>comment</th>
+  </tr></thead>
+  <tbody>
+  {% for f in feedback %}
+    <tr>
+      <td>{{ f.ts }}</td><td>{{ f.level }}</td><td>{{ f.category }}</td>
+      <td class="excerpt">{{ f.target }}</td>
+      <td>
+        {% if f.verdict == 'confirm' %}<span class="badge badge-verified">confirm</span>
+        {% elif f.verdict == 'reject' %}<span class="badge badge-candidate">reject</span>
+        {% else %}<span class="badge">—</span>{% endif %}
+      </td>
+      <td>{{ f.reviewer }}</td><td class="excerpt">{{ f.comment }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="na">no feedback yet — a finding nobody has
+      judged is a hypothesis, and cannot become a regression case.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

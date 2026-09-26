@@ -153,6 +153,20 @@ def benchmarks(request: Request):
                   services.benchmarks_page())
 
 
+@app.get("/traces")
+def traces(request: Request, limit: int = services.DEFAULT_LIMIT):
+    return render(request, "traces",
+                  services.traces_page(_db_path(), limit))
+
+
+@app.get("/traces/{review_id}")
+def trace(request: Request, review_id: str):
+    detail = services.trace_detail(_db_path(), review_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return render(request, "trace", detail)
+
+
 @app.get("/healthz")
 def healthz():
     return JSONResponse(services.health(_db_path()))

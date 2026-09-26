@@ -48,6 +48,15 @@ python3 -m minder_op benchmark validate --suite coding-core-v1
 python3 -m minder_op benchmark run --suite coding-core-v1 --dry-run
 python3 -m minder_op benchmark compare BASELINE.json CANDIDATE.json [--json]
 python3 -m minder_op benchmark baseline create REPORT.json [--out PATH] --yes
+python3 -m minder_op success-loops ls [--limit N]
+python3 -m minder_op trace ls [--limit N] [--json]
+python3 -m minder_op trace review SESSION [--rubric RUBRIC.json] [--json] [--no-store]
+python3 -m minder_op trace show REVIEW_ID [--json]
+python3 -m minder_op trace feedback REVIEW_ID --level run|event|claim \
+  --category CATEGORY [--target REF] [--finding ID --verdict confirm|reject] \
+  [--comment "..."] [--reviewer NAME] --yes
+python3 -m minder_op trace regress SESSION --finding FINDING_ID \
+  [--suite coding-core-v1] [--task-id ID] --yes
 ```
 
 `--db PATH` points at another memory sqlite (tests, second installs).
@@ -142,15 +151,77 @@ t3_keyerror_default --overlay benchmarks/coding-core-v1/tasks/
 keyerror_default/solution --execute
 --i-understand-this-runs-local-agent-tasks`.
 
+Trace review facts (post-run evaluation of completed dsh sessions):
+
+- `trace` reads dsh's own session logs (`~/.dsh/sessions/<project>/
+  <session>/session.v3.jsonl.zstd`) through `minder_op.dsh_sessions`
+  — the same read-only reader `/sessions` uses. Nothing under the dsh
+  home is ever written, and the trace is read as a snapshot.
+- **Default is read-only.** Persistence needs `MINDER_TRACE_REVIEW=on`;
+  `--no-store` forces it off for one run. With the flag off, `trace
+  review` writes nothing at all — not even the DB file.
+- Evaluators are deterministic (no model, no network, no clock): the same
+  trace produces byte-identical findings. Severity is a statement about
+  evidence, not a score — there are deliberately no 0-to-1 quality
+  numbers, because that would imply a calibration this layer lacks.
+  Rules: `dup-unchanged-retry`, `success-loop-same-result`,
+  `edit-without-read`, `edit-without-test`, `repeated-identical-command`
+  / `tool-call-budget`, `required-tool-missing` / `forbidden-tool-used`,
+  `minder-not-wired` / `minder-intervened`, `no-new-artifact`.
+- Every finding cites `ds_seqs` (dsh's own event `seq`), so a finding
+  navigates back to the exact event in the original session log.
+- Reuse, not reinvention: "the same failure" is
+  `memory/canonicalise.py`, "the same result" is
+  `memory/success_guard.py`. An offline finding and a live advisory can
+  therefore never disagree about what a repeat is.
+- A rubric is **JSON**, not YAML (stdlib only, no PyYAML). Keys:
+  `rubric_id`, `applies_to` (informational), `required_tools`,
+  `forbidden_tools`, `config`. Unknown keys are refused rather than
+  ignored: evaluating against the wrong standard is worse than not
+  evaluating. Without a rubric the workflow evaluator is silent — a rule
+  that was never declared cannot be violated.
+- `trace feedback` is the confirmation gate. It takes a closed
+  taxonomy (`correct`, `partly_correct`, `incorrect_conclusion`,
+  `unsupported_claim`, `evidence_quality`, `tool_selection`,
+  `tool_parameter`, `tool_result_ignored`, `inefficient`,
+  `policy_violation`, `safety_privacy`, `incomplete`) at run, event or
+  claim level, and may carry `--finding ID --verdict confirm|reject`.
+  Both or neither: a verdict names a finding. Feedback rows are
+  append-only, so a changed mind is newer evidence, not an edit.
+- `trace regress` enforces the evidence chain
+  `trace -> finding -> reviewer confirmation -> regression case`. It
+  refuses a finding that is not failure-shaped (a call-volume judgement
+  is not a test) and refuses one no human has confirmed, because
+  promoting an unconfirmed finding would make an evaluator's false
+  positive the standard. It then emits a `benchmarks/<suite>/tasks/
+  <id>/` case in the existing content-only shape and gates the manifest
+  write on `validate_manifest`; on any validation error the staged
+  directory is removed and the manifest restored byte-for-byte. The
+  generated case passes as written *and* fails if the rule it encodes is
+  weakened, so it is a regression test rather than a snapshot.
+- Order of operations when a suite is already invalid: `trace regress`
+  reports the suite's own pre-existing errors and refuses, rather than
+  blaming the new case (fixture paths resolve relative to the suite
+  directory, so a checkout missing sibling directories reads as invalid).
+- `success-loops ls` prints the guard's delivery mode. With
+  `MINDER_SUCCESS_GUARD=block`, a repeat of an action that already
+  looped is stopped *before* it runs by the PreToolUse hook, with a
+  structured directive as the reason; `advisory` attaches the same
+  evidence as non-blocking context, and `off` (default) records nothing.
+- Per-run cost is **not** available: dsh's usage ledger is
+  per-day/per-model. `execution.estimated_cost` is therefore explicitly
+  `null` with a `cost_note`, and efficiency is judged on call counts,
+  wall-clock duration and per-session tokens — never an invented cost.
+
 Facts worth remembering:
 
-- Consult labels come from `frontier_evals` (migration 007). The
-`frontier_traces.helpfulness` INTEGER column (003) is legacy and is
+- Consult labels come from `frontier_evals` (migration 007). The`frontier_traces.helpfulness` INTEGER column (003) is legacy and is
 never displayed as a label.
 - The default `lessons ls` view is verified-only, mirroring retrieval.
 Frontier-distilled **candidates** are inert until promoted and appear
 only with `--status candidate`.
-- All flags (`MINDER_ASSIST`, `MINDER_CLASSIFIER`, `MINDER_DECISION`)
+- All flags (`MINDER_ASSIST`, `MINDER_CLASSIFIER`, `MINDER_DECISION`,
+`MINDER_SUCCESS_GUARD`, `MINDER_TRACE_REVIEW`)
 are environment/systemd owned. Change them there and restart the hook;
 the CLI cannot persist flags. `MINDER_DECISION` shadow debounce is
 DB-backed (session + failure_key, 5s window) — visible in
