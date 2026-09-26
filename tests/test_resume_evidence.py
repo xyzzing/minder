@@ -244,7 +244,7 @@ def test_classifier_label_cannot_create_correction(tmp_path):
         "confidence": 0.95,
     }}
     routing.assess_route(db_path=dbp, record=True, provider=FakeClient(
-        fixtures, key_fn=lambda s: "s"), state_key="s")
+        fixtures, key_fn=lambda s: "s"))
     assert _rows(dbp, "SELECT * FROM career_assertions") == []
     assert _rows(dbp, "SELECT * FROM human_input_events WHERE"
                  " kind = 'factual_correction'") == []

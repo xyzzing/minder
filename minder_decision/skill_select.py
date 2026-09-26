@@ -22,7 +22,7 @@ def build_skill_shortlist(event, index_path=None):
     """<= LIMIT live skill ids from the deterministic index matcher."""
     try:
         from minder_memory.skill_load import list_skill_metadata
-        advertised = list_skill_metadata(event, index_path=index_path)
+        advertised = list_skill_metadata(index_path=index_path)
         names = [str(entry.get("name")) for entry in advertised
                  if entry.get("name")][:LIMIT]
         return tuple(names)

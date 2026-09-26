@@ -31,7 +31,7 @@ def _event_text(event):
     return str(excerpt)
 
 
-def list_skill_metadata(event_or_text=None, index_path=None):
+def list_skill_metadata(index_path=None):
     """Every index entry as compact metadata — never body text."""
     out = []
     for entry in _load_index(index_path):

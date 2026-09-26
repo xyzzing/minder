@@ -81,7 +81,7 @@ def _mass(option, options):
 def assess_route(*, declared_domain=None, task_id="default",
                  session_id=None, subject_changed=False,
                  current_domain=None, provider=None,
-                 state_key=None, record=True, db_path=None):
+                 record=True, db_path=None):
     """One observe-only routing assessment. Returns
     {"policy_transition", "candidate_domain", "intent_kind",
     "abstained", "validation", "decision", "trace_id"}. Never raises."""

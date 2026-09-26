@@ -94,8 +94,7 @@ def test_router_proposal_is_never_applied(tmp_path):
     }}
     provider = FakeClient(fixtures, key_fn=lambda s: "state1")
     result = routing.assess_route(
-        task_id="t1", db_path=dbp, record=True, provider=provider,
-        state_key="state1")
+        task_id="t1", db_path=dbp, record=True, provider=provider)
     assert result["policy_transition"] == "uncertain"  # never applied
     assert result["validation"] == "restricted"
     assert result["abstained"] is True
@@ -127,8 +126,7 @@ def test_low_confidence_proposal_restricted_to_clarify(tmp_path):
     }}
     result = routing.assess_route(
         db_path=dbp, record=True,
-        provider=FakeClient(fixtures, key_fn=lambda s: "s"),
-        state_key="s")
+        provider=FakeClient(fixtures, key_fn=lambda s: "s"))
     assert result["decision"].policy_decision == "human"  # ask, don't act
     assert result["validation"] == "restricted"
 
