@@ -102,9 +102,7 @@ def observe(session_id, tool, action_fingerprint, exit_code, output, *,
         if now_dt.tzinfo is None:
             now_dt = now_dt.replace(tzinfo=timezone.utc)
         window_start = (now_dt - timedelta(minutes=window_min)).isoformat()
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             count = conn.execute(
                 "SELECT COUNT(*) AS n FROM success_observations"
                 " WHERE session_id = ? AND action_fingerprint = ? AND"
@@ -120,9 +118,6 @@ def observe(session_id, tool, action_fingerprint, exit_code, output, *,
                 (_uid("so"), now_dt.isoformat(), session_id, tool,
                  action_fingerprint, signature, exit_code, excerpt,
                  1 if advisory else 0))
-            conn.execute("COMMIT")
-        finally:
-            conn.close()
         note = None
         directive = None
         if advisory:

@@ -61,9 +61,7 @@ def declare_task(domain, *, task_id="default", actor="operator",
             return None, f"rejected:unknown_domain:{domain}"
         if origin not in ORIGINS:
             return None, f"rejected:unknown_origin:{origin}"
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             open_row = conn.execute(
                 "SELECT * FROM task_contexts WHERE task_id = ? AND"
                 " closed_at IS NULL ORDER BY opened_at DESC LIMIT 1",
@@ -94,13 +92,10 @@ def declare_task(domain, *, task_id="default", actor="operator",
                     " 'declared', 'approved', ?)",
                     (_uid("tr"), now, open_row["context_id"], context_id,
                      actor, note))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM task_contexts WHERE context_id = ?",
                 (context_id,)).fetchone()
             return dict(row), ("switched" if open_row else "opened")
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001 — fail open, caller decides
         return None, f"error:{type(exc).__name__}"
 
@@ -109,9 +104,7 @@ def close_task(*, task_id="default", reason="closed", actor="operator",
                db_path=None):
     """Pin the open context for a task. Returns (row|None, status)."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             open_row = conn.execute(
                 "SELECT * FROM task_contexts WHERE task_id = ? AND"
                 " closed_at IS NULL ORDER BY opened_at DESC LIMIT 1",
@@ -122,13 +115,10 @@ def close_task(*, task_id="default", reason="closed", actor="operator",
                 "UPDATE task_contexts SET closed_at = ?, close_reason = ?"
                 " WHERE context_id = ?",
                 (_now(), reason, open_row["context_id"]))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM task_contexts WHERE context_id = ?",
                 (open_row["context_id"],)).fetchone()
             return dict(row), "closed"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"
 
@@ -166,9 +156,7 @@ def record_human_input(kind, *, actor, authority="user", decision=None,
         if authority not in HUMAN_AUTHORITIES:
             return None, f"rejected:unknown_authority:{authority}"
         import json
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             event_id = _uid("hin")
             conn.execute(
                 "INSERT INTO human_input_events (event_id, ts, actor,"
@@ -179,12 +167,9 @@ def record_human_input(kind, *, actor, authority="user", decision=None,
                  answer_summary,
                  json.dumps(affects) if affects else None,
                  decision, method, note))
-            conn.execute("COMMIT")
             row = conn.execute(
                 "SELECT * FROM human_input_events WHERE event_id = ?",
                 (event_id,)).fetchone()
             return dict(row), "ok"
-        finally:
-            conn.close()
     except Exception as exc:  # noqa: BLE001
         return None, f"error:{type(exc).__name__}"

@@ -31,10 +31,8 @@ def record(payload, answer, providers=None, redaction_profile=None,
            episode_id=None, db_path=None):
     """Store one trace for a completed consult. Returns trace_id or None."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            trace_id = f"tr_{uuid.uuid4().hex[:12]}"
-            conn.execute("BEGIN IMMEDIATE")
+        trace_id = f"tr_{uuid.uuid4().hex[:12]}"
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO frontier_traces (trace_id, ts, episode_id,"
                 " failure_key, local_attempts, redaction_profile,"
@@ -47,10 +45,7 @@ def record(payload, answer, providers=None, redaction_profile=None,
                  ",".join(p.get("name", "?") for p in (providers or [])),
                  sha(payload.get("prompt") or payload.get("error")),
                  sha(answer)))
-            conn.execute("COMMIT")
-            return trace_id
-        finally:
-            conn.close()
+        return trace_id
     except Exception:
         return None
 
@@ -59,20 +54,12 @@ def set_verification(trace_id, helpfulness=None, verification_status=None,
                      db_path=None):
     """Join a later verification event to a trace. Best-effort."""
     try:
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "UPDATE frontier_traces SET helpfulness = ?,"
                 " verification_status = ? WHERE trace_id = ?",
                 (helpfulness, verification_status, trace_id))
-            conn.execute("COMMIT")
-            return True
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        finally:
-            conn.close()
+        return True
     except Exception:
         return False
 
@@ -122,10 +109,8 @@ def record_consult(payload, db_path=None):
                 clean = redact_for_profile(str(action), profile)
                 if clean:
                     distilled_clean.append(clean)
-        conn = _db.connect(db_path)
-        try:
-            trace_id = f"tr_{uuid.uuid4().hex[:12]}"
-            conn.execute("BEGIN IMMEDIATE")
+        trace_id = f"tr_{uuid.uuid4().hex[:12]}"
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO frontier_traces (trace_id, ts, episode_id,"
                 " failure_key, local_attempts, redaction_profile,"
@@ -147,10 +132,7 @@ def record_consult(payload, db_path=None):
                     " ON CONFLICT(trace_id) DO NOTHING",
                     (trace_id, payload.get("trigger"),
                      json.dumps(distilled_clean) if distilled_clean else None))
-            conn.execute("COMMIT")
-            return trace_id
-        finally:
-            conn.close()
+        return trace_id
     except Exception:
         return None
 
@@ -186,9 +168,7 @@ def classify_consult(trace_id, verification_status, accepted=None,
                          if (accepted and store_text) else None)
         rejected_json = (json.dumps([redact_for_profile(a) for a in rejected])
                          if (rejected and store_text) else None)
-        conn = _db.connect(db_path)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
+        with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO frontier_evals (trace_id, helpfulness,"
                 " verification_status, accepted_actions_json,"
@@ -202,10 +182,7 @@ def classify_consult(trace_id, verification_status, accepted=None,
                 " classified_at=excluded.classified_at",
                 (trace_id, helpfulness, status, accepted_json,
                  rejected_json, _now()))
-            conn.execute("COMMIT")
-            return helpfulness
-        finally:
-            conn.close()
+        return helpfulness
     except Exception:
         return "inconclusive"
 
