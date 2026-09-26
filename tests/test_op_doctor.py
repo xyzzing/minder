@@ -95,6 +95,17 @@ def test_doctor_valid_flag_ok(tmp_path, monkeypatch, capsys):
     assert "decision_skill" in out
 
 
+def test_doctor_accepts_block_guard_mode(tmp_path, monkeypatch, capsys):
+    """'block' is a real enabling value (the PreToolUse pre-emption), so a
+    correctly armed install must not report as a flag typo."""
+    dbp = _mig(tmp_path)
+    monkeypatch.setenv("MINDER_SUCCESS_GUARD", "block")
+    assert main(["--db", str(dbp), "doctor",
+                 "--no-probe"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "MINDER_SUCCESS_GUARD=block" in out
+
+
 def test_doctor_warns_when_wiring_missing(tmp_path, monkeypatch, capsys):
     dbp = _mig(tmp_path)
     monkeypatch.setenv("MINDER_SHARE", str(tmp_path / "absent-share"))
