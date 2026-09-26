@@ -34,8 +34,9 @@ DOMAIN_SET = ROUTE_DOMAIN_SET
 # Pinned routing thresholds (PRD: no threshold assumed before
 # measurement — these gate Phase 1's deterministic providers only; any
 # classifier calibration lands in Phase 2 with routing-core-v1 evidence).
-ROUTE_THRESHOLDS = {transition: (0.70, "ask_human_clarify")
-                    for transition in TRANSITION_SET}
+ROUTE_THRESHOLDS: dict[str, tuple[float, str | None]] = {
+    transition: (0.70, "ask_human_clarify")
+    for transition in TRANSITION_SET}
 ROUTE_THRESHOLDS["human"] = (0.00, None)
 
 

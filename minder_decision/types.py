@@ -28,7 +28,7 @@ class ChoiceQuestion:
     id: str
     options: tuple
     runtime_options: bool = False
-    criteria: dict = None
+    criteria: dict | None = None
 
 
 @dataclass(frozen=True)
