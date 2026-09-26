@@ -1,4 +1,4 @@
-"""Improvement scorecard — the metrics that drive work, in one object.
+"""Improvement scorecard - the metrics that drive work, in one object.
 
 Six groups, every number from a source that already exists on the box
 (no new collection):
@@ -211,36 +211,36 @@ def _focus(report):
     out = []
     cap = report["scores"]["capture"]
     if not cap["sink_configured"]:
-        out.append("capture: MINDER_SINK_URL is unset — confined dsh hooks "
+        out.append("capture: MINDER_SINK_URL is unset - confined dsh hooks "
                    "cannot persist; run install.sh to wire the sink")
     elif not cap["sink_reachable"]:
-        out.append("capture: the sink is unreachable — start "
+        out.append("capture: the sink is unreachable - start "
                    "minder-sink.service")
     if cap["coverage_ratio"] is not None \
             and cap["coverage_ratio"] < cap["min_ratio"]:
         out.append(f"capture: coverage {cap['coverage_ratio']:.0%} "
-                   f"({cap['persisted']}/{cap['invocations']} hooks) — "
+                   f"({cap['persisted']}/{cap['invocations']} hooks) - "
                    "investigate before trusting any other page")
     cost = report["scores"]["cost"]
     if cost["hook_p50_ms"] and cost["hook_p50_ms"] > 1000:
         out.append(f"cost: hook p50 {cost['hook_p50_ms']:.0f} ms per tool "
-                   "call — check the sink warm tier")
+                   "call - check the sink warm tier")
     failures = report["scores"]["failures"]
     if failures.get("top_failure_keys"):
         key, n = failures["top_failure_keys"][0]
         out.append(f"failures: '{key}' failed {n}x in "
-                   f"{report['window_hours']}h — inspect for a loop")
+                   f"{report['window_hours']}h - inspect for a loop")
     learning = report["scores"]["learning"]
     if learning.get("skill_gaps_open"):
         out.append(f"learning: {learning['skill_gaps_open']} open skill "
-                   "gap(s) — write or close a skill")
+                   "gap(s) - write or close a skill")
     if learning.get("lessons_candidate"):
         out.append(f"learning: {learning['lessons_candidate']} candidate "
                    "lesson(s) awaiting promotion")
     context = report["scores"]["context"]
     if context.get("sessions_over_80pct"):
         out.append(f"context: {context['sessions_over_80pct']} session(s) "
-                   "above 80% pressure — expect compaction loss")
+                   "above 80% pressure - expect compaction loss")
     hygiene = report["scores"]["hygiene"]
     if hygiene.get("without_projection"):
         out.append(f"hygiene: {hygiene['without_projection']} session(s) "
@@ -253,7 +253,7 @@ def _fmt_ms(value):
 
 
 def render_text(report):
-    lines = ["minder scorecard — last "
+    lines = ["minder scorecard - last "
              + f"{report['window_hours']}h "
              + f"(since {report['since']})", ""]
     cap = report["scores"]["capture"]
@@ -305,5 +305,5 @@ def render_text(report):
     else:
         lines.append("  nothing flagged.")
     lines.append("")
-    lines.append("observed workflow evidence only — no productivity claims.")
+    lines.append("observed workflow evidence only - no productivity claims.")
     return "\n".join(lines)

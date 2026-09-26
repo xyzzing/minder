@@ -2,18 +2,22 @@
 {% block content %}
 <h1>overview</h1>
 {% if not db_ok %}
-<p class="na">memory database not available — start the console with
+<p class="na">memory database not available - start the console with
 <code>--db</code> pointing at a minder memory sqlite.</p>
 {% endif %}
 
-<h2>health</h2>
-<table class="kv">
-  <tr><th>status</th><td>{{ health.status }}</td></tr>
-  <tr><th>schema version</th><td>{{ health.schema_version if health.schema_version is not none else 'not available' }}</td></tr>
-</table>
+<h2>what to improve first <small>(past {{ window_hours }}h, from
+observed evidence on this machine)</small></h2>
+{% if verdicts %}
+<ul class="focus">
+  {% for verdict in verdicts %}<li>{{ verdict }}</li>{% endfor %}
+</ul>
+{% else %}
+<p class="ok">nothing flagged in the last {{ window_hours }}h.</p>
+{% endif %}
 
 {% if capture %}
-<h2>capture <small>(is the watchdog recording? — the first thing to check)</small></h2>
+<h2>capture <small>(is the watchdog recording? - the first thing to check)</small></h2>
 <div class="strip">
   <span class="stat"><b>
     {% if capture.coverage.ratio is none %}n/a{% else %}{{ '%.0f%%' % (capture.coverage.ratio * 100) }}{% endif %}
@@ -31,19 +35,9 @@
 {% endif %}
 {% endif %}
 
-<h2>current flags <small>(environment/systemd owned — display only)</small></h2>
-<table>
-  <thead><tr><th>flag</th><th>value</th></tr></thead>
-  <tbody>
-  {% for flag in flags %}
-    <tr><td>{{ flag.name }}</td><td>{{ flag.value }}</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-
 {% if summary %}
 <h2>weekly workflow summary
-  <small>{{ summary.window.since }} → {{ summary.window.until }}</small></h2>
+  <small>past week, {{ summary.window.since | human_date }} to {{ summary.window.until | human_date }}</small></h2>
 <table class="kv">
   <tr><th>episodes opened</th><td>{{ summary.episodes.opened_in_window }}</td></tr>
   <tr><th>episodes open now</th><td>{{ summary.episodes.open_now }}</td></tr>
@@ -77,4 +71,20 @@
 <h2>weekly workflow summary</h2>
 <p class="na">not available.</p>
 {% endif %}
+
+<h2>current flags <small>(environment/systemd owned - display only)</small></h2>
+<table>
+  <thead><tr><th>flag</th><th>value</th></tr></thead>
+  <tbody>
+  {% for flag in flags %}
+    <tr><td>{{ flag.name }}</td><td>{{ flag.value }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>health</h2>
+<table class="kv">
+  <tr><th>status</th><td>{{ health.status }}</td></tr>
+  <tr><th>schema version</th><td>{{ health.schema_version if health.schema_version is not none else 'not available' }}</td></tr>
+</table>
 {% endblock %}

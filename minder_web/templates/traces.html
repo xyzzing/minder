@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>traces <small>(stored trace reviews — post-run, deterministic)</small></h1>
+<h1>traces <small>(stored trace reviews - post-run, deterministic)</small></h1>
 <p class="note">
   {{ counts.reviews }} stored review(s) shown.
   Reviewer-confirmed findings: {{ counts.confirmed or 0 }} ·
@@ -31,15 +31,15 @@
           <span class="badge badge-verified">clean</span>
         {% else %}<span class="badge">{{ r.highest_severity }}</span>{% endif %}
       </td>
-      <td>{{ r.findings if r.findings is not none else '—' }}</td>
-      <td>{{ r.tool_calls if r.tool_calls is not none else '—' }}</td>
-      <td>{{ r.failures if r.failures is not none else '—' }}</td>
-      <td>{{ '{:,}'.format(r.tokens_total) if r.tokens_total else '—' }}</td>
+      <td>{{ r.findings if r.findings is not none else '-' }}</td>
+      <td>{{ r.tool_calls if r.tool_calls is not none else '-' }}</td>
+      <td>{{ r.failures if r.failures is not none else '-' }}</td>
+      <td>{{ '{:,}'.format(r.tokens_total) if r.tokens_total else '-' }}</td>
       <td>{{ r.rubric_id }}</td>
       <td class="excerpt">{{ r.evaluator_version }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="9" class="na">no stored reviews yet — run
+    <tr><td colspan="9" class="na">no stored reviews yet - run
       <code>minder-op trace review &lt;session&gt;</code> with
       <code>MINDER_TRACE_REVIEW=on</code>.</td></tr>
   {% endfor %}

@@ -2,8 +2,8 @@
 {% block content %}
 <h1>scorecard <small>(what to improve next, from observed evidence)</small></h1>
 <p class="note">
-  last {{ scores and window_hours }}h (since {{ since }}). Every number is
-  read from data already on this machine — the console adds no collection.
+  last {{ window_hours }}h (since {{ since | human_date }}). Every number is
+  read from data already on this machine - the console adds no collection.
   "n/a" means the source is empty or unavailable, never zero.
 </p>
 

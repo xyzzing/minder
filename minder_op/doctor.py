@@ -1,4 +1,4 @@
-"""minder-op doctor — one read-only health report (operator usability).
+"""minder-op doctor - one read-only health report (operator usability).
 
 Answers "is my install healthy, and why not" in a single screen:
 memory DB, schema currency, flag values (typo detection against the
@@ -27,7 +27,7 @@ FLAG_VOCAB = {
     "MINDER_ASSIST": ("off", "retrieve", "block_duplicate_skill",
                       "shadow_suggest", "decision_skill"),
     "MINDER_CLASSIFIER": ("shadow",),
-    # "laya" is the production value (the real model) — omitting it made a
+    # "laya" is the production value (the real model) - omitting it made a
     # correct install report as a typo.
     "MINDER_DECISION": ("shadow", "fake", "laya"),
     # Both values enable the guard; "off" (or anything else) records
@@ -79,13 +79,13 @@ def _probe_proxy(port):
             data = json.loads(r.read() or b"{}")
         aliases = data.get("data") or []
         return True, f"{len(aliases)} models/aliases answering on :{port}"
-    except Exception as exc:  # noqa: BLE001 — refusal is a finding
+    except Exception as exc:  # noqa: BLE001 - refusal is a finding
         return False, f"not running on :{port} ({exc})"
 
 
 def run_checks(db_path, probe=True, now=None):
     """Returns {"healthy": bool, "checks": [{id, status, detail}], ...}.
-    Never raises on a missing/corrupt store — that's a `fail` finding,
+    Never raises on a missing/corrupt store - that's a `fail` finding,
     not a crash."""
     now = time.time() if now is None else now
     checks = []
@@ -109,7 +109,7 @@ def run_checks(db_path, probe=True, now=None):
         latest = _latest_schema()
         if version < latest:
             add("schema", "warn",
-                f"schema v{version}, latest v{latest} — restart the "
+                f"schema v{version}, latest v{latest} - restart the "
                 "hook (or run any minder runtime command) to migrate")
         else:
             add("schema", "ok", f"schema v{version} (latest v{latest})")
@@ -127,7 +127,7 @@ def run_checks(db_path, probe=True, now=None):
         if bad:
             var, value, vocab = bad
             add("flags", "fail",
-                f"{var}={value!r} is not one of {vocab} — fix the env "
+                f"{var}={value!r} is not one of {vocab} - fix the env "
                 "or systemd unit")
         else:
             add("flags", "ok",
@@ -148,13 +148,13 @@ def run_checks(db_path, probe=True, now=None):
                     f"last event {_age_text(age)} ago")
             else:
                 add("events", "warn",
-                    f"last event {_age_text(age)} ago — hook silent "
+                    f"last event {_age_text(age)} ago - hook silent "
                     "for over a week; is the wiring alive?")
 
     # The values the *hook command* declares (hooks.json is the source of
     # truth for dsh installs, and each hook spawn reads it fresh).
     # The 2026-09-25 live incident: this file carried the feature flags
-    # while the operator believed env did — validate it with the same
+    # while the operator believed env did - validate it with the same
     # vocabulary instead of trusting names only.
     try:
         from minder_memory import sink as sink_flags
@@ -168,7 +168,7 @@ def run_checks(db_path, probe=True, now=None):
                            f"{FLAG_VOCAB[var]}"
                            for var, value in sorted(declared_bad.items()))
         add("hook-flags", "fail",
-            f"hooks.json declares {detail} — an unknown value reads as "
+            f"hooks.json declares {detail} - an unknown value reads as "
             "off, so the feature is inert despite looking wired")
     elif declared:
         tracked = ", ".join(f"{var}={declared[var]}"
@@ -196,10 +196,10 @@ def run_checks(db_path, probe=True, now=None):
     elif share_ok:
         add("wiring", "warn",
             f"share installed ({share}) but {zcode_cfg} does not "
-            "reference it — zcode hooks not installed?")
+            "reference it - zcode hooks not installed?")
     else:
         add("wiring", "warn",
-            f"hook share not found at {share} — run install.sh if "
+            f"hook share not found at {share} - run install.sh if "
             "this machine should have the live hook")
 
     if probe:
@@ -227,7 +227,7 @@ def run_checks(db_path, probe=True, now=None):
     if not sink_url:
         add("capture", "warn",
             "no sink configured (neither MINDER_SINK_URL nor the hook "
-            "command in hooks.json) — dsh hooks run inside the file sandbox "
+            "command in hooks.json) - dsh hooks run inside the file sandbox "
             "and cannot write the state dir; their records are dropped "
             "silently. Run install.sh.")
     elif not probe:
@@ -244,7 +244,7 @@ def run_checks(db_path, probe=True, now=None):
         if not stats:
             add("capture", "fail",
                 f"sink declared at {sink_url} ({sink_source}) but "
-                "unreachable — hook writes are being dropped. Start it: "
+                "unreachable - hook writes are being dropped. Start it: "
                 "systemctl --user start minder-sink.service")
         elif sink_source == "hooks.json" and ok_ops == 0:
             # Declared and alive, but the running dsh host loaded its hook
@@ -252,7 +252,7 @@ def run_checks(db_path, probe=True, now=None):
             # miss, so it is called out instead of reporting a bare "ok".
             add("capture", "warn",
                 f"sink reachable at {sink_url} but no hook has ever called "
-                "it — the dsh host reads hooks.json once at startup; "
+                "it - the dsh host reads hooks.json once at startup; "
                 "restart the dsh web host to load it.")
         else:
             add("capture", "ok",
@@ -267,7 +267,7 @@ def run_checks(db_path, probe=True, now=None):
             add("coverage", "fail",
                 f"hook coverage {cov['ratio']:.0%} in the last hour "
                 f"({cov['persisted']} persisted / {cov['invocations']} "
-                "invocations) — hooks fire but nothing is recorded")
+                "invocations) - hooks fire but nothing is recorded")
         elif cov["invocations"]:
             add("coverage", "ok",
                 f"hook coverage {cov['ratio']:.0%} "
@@ -296,7 +296,7 @@ def run_checks(db_path, probe=True, now=None):
     baselines = bench.list_baselines()
     if not baselines:
         add("baseline", "info",
-            "no baseline pinned — `minder-op benchmark baseline "
+            "no baseline pinned - `minder-op benchmark baseline "
             "create --yes` enables compare verdicts")
     else:
         add("baseline", "ok",
@@ -311,7 +311,7 @@ def run_checks(db_path, probe=True, now=None):
 
 
 def share_path_referenced(config_path, share_str):
-    """True when the hooks config anywhere contains the share path —
+    """True when the hooks config anywhere contains the share path -
     exactly what install.sh patches in (__MINDER_SHARE__)."""
     text = Path(config_path).read_text()
     return share_str in text

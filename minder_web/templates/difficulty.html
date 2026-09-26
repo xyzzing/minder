@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>difficulty router <small>(laya decision layer — proxy ledger)</small></h1>
+<h1>difficulty router <small>(laya decision layer - proxy ledger)</small></h1>
 {% if by_label %}
   <p class="note">
     {% for label, n in by_label | dictsort %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}
@@ -20,17 +20,17 @@
           {% else %}
             <span class="badge badge-verified">routed</span>
           {% endif %}</td>
-      <td><span class="badge">{{ r.label or '—' }}</span></td>
-      <td>{{ '%.2f' | format(r.score) if r.score is not none else '—' }}</td>
-      <td>{{ '%.2f' | format(r.confidence) if r.confidence is not none else '—' }}</td>
-      <td>{{ r.band or '—' }}</td>
-      <td>{{ r.effort or '—' }}</td>
-      <td>{{ r.budget if r.budget is not none else '—' }}</td>
-      <td>{{ r.max_tokens if r.max_tokens is not none else '—' }}</td>
-      <td>{{ r.guardrail or '—' }}</td>
+      <td><span class="badge">{{ r.label or '-' }}</span></td>
+      <td>{{ '%.2f' | format(r.score) if r.score is not none else '-' }}</td>
+      <td>{{ '%.2f' | format(r.confidence) if r.confidence is not none else '-' }}</td>
+      <td>{{ r.band or '-' }}</td>
+      <td>{{ r.effort or '-' }}</td>
+      <td>{{ r.budget if r.budget is not none else '-' }}</td>
+      <td>{{ r.max_tokens if r.max_tokens is not none else '-' }}</td>
+      <td>{{ r.guardrail or '-' }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="10" class="na">no difficulty events yet — the router
+    <tr><td colspan="10" class="na">no difficulty events yet - the router
         logs here once it runs (shadow mode observes without changing
         the request).</td></tr>
   {% endfor %}

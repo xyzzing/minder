@@ -1,9 +1,9 @@
-"""Capture health — "is the watchdog actually recording anything?".
+"""Capture health - "is the watchdog actually recording anything?".
 
 The failure this exists for (2026-09-25): DSH runs command hooks inside a
 file sandbox that makes the minder state directory read-only. Every hook
 write is fail-open, so the hooks fired 172 times in one session, exited 0,
-and persisted nothing at all — for three days — while every page of the
+and persisted nothing at all - for three days - while every page of the
 console looked "ok". Nothing in the system compared *hook invocations*
 with *persisted records*, which is the one number that catches it.
 
@@ -30,7 +30,7 @@ SCAN_MAX_BYTES = 8 * 1024 * 1024
 
 def _state_dir():
     """Resolved per call (env overridable) so tests and systemd units can
-    point the same report at a different store — mirrors how the console
+    point the same report at a different store - mirrors how the console
     resolves the difficulty ledger."""
     env = os.environ.get("MINDER_STATE_DIR")
     if env:
@@ -160,7 +160,7 @@ def _live_hook_invocations(dsh_root, since, scan_limit=SCAN_LIMIT,
                            now=None):
     """PostToolUse hook invocations recorded in dsh's own session logs
     within the window. This is the ground truth the watchdog must keep up
-    with — and the number that was invisible while capture was broken."""
+    with - and the number that was invisible while capture was broken."""
     now = now if now is not None else _now()
     candidates = []
     for entry in dsh_sessions.session_dirs(dsh_root):
@@ -285,7 +285,7 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
     if not report["sink"]["configured"]:
         report["warnings"].append(
             "no sink configured (neither MINDER_SINK_URL nor the hook "
-            "command in hooks.json): confined hooks cannot persist — this "
+            "command in hooks.json): confined hooks cannot persist - this "
             "is how three days of capture was lost silently. Run "
             "install.sh.")
     elif not report["sink"]["reachable"]:
@@ -311,7 +311,7 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
             f"the sink at {report['sink']['url']} is up but {loaded} "
             f"({cov['persisted']} persisted / {cov['invocations']} hook "
             "invocations). The dsh web host reads hooks.json once at "
-            "startup — restart it to load the hook command; if it has "
+            "startup - restart it to load the hook command; if it has "
             "already restarted, check the MINDER_SINK_URL in hooks.json "
             "and `systemctl --user status minder-sink`.")
     for store in report["stores"]:
@@ -319,8 +319,8 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
             report["warnings"].append(
                 f"{store['name']} has not been written for "
                 f"{_age_text(store['age_s'])}.")
-    # The policy pass runs in the sink, so the flags it was started with —
-    # not the ones in the hook command — decide what the pass does. A
+    # The policy pass runs in the sink, so the flags it was started with -
+    # not the ones in the hook command - decide what the pass does. A
     # divergence is silent by construction unless it is called out here.
     # Compare ONLY the tracked policy flags: hooks.json also carries the
     # sink URL, which is deliberately absent from the sink's own view of
@@ -339,7 +339,7 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
                                for var, (a, b) in sorted(drift.items()))
             report["warnings"].append(
                 "the sink and the hooks disagree about the policy flags "
-                f"({detail}) — the memory policy pass runs inside the sink, "
+                f"({detail}) - the memory policy pass runs inside the sink, "
                 "so the hook's value is inert. Restart "
                 "minder-sink.service to adopt hooks.json.")
     if cov["invocations"] > 0 and cov["ratio"] is not None \
@@ -347,18 +347,18 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
         report["warnings"].append(
             f"capture coverage {cov['ratio']:.0%} in the last "
             f"{window_hours}h ({cov['persisted']} persisted / "
-            f"{cov['invocations']} hook invocations) — below the "
+            f"{cov['invocations']} hook invocations) - below the "
             f"{MIN_COVERAGE:.0%} floor.")
     if cov["invocations"] == 0 and not cov["scanned"]:
         report["warnings"].append(
-            "no dsh session activity in the window — nothing to measure.")
+            "no dsh session activity in the window - nothing to measure.")
     high_p50 = [s for s in cov["sessions"]
                 if (s.get("hook_p50_ms") or 0) > 1000]
     if high_p50:
         worst = max(high_p50, key=lambda s: s["hook_p50_ms"])
         report["warnings"].append(
             f"hook p50 {worst['hook_p50_ms']:.0f} ms in "
-            f"{worst['session_id'][:24]} — every tool call pays this; "
+            f"{worst['session_id'][:24]} - every tool call pays this; "
             "check the sink warm tier is running.")
     report["ok"] = not report["warnings"]
     return report
@@ -393,7 +393,7 @@ def _sink_report(state):
     """Is the hook's write path configured, and actually being used?
 
     "Configured" means the *hook command* declares it (hooks.json) or the
-    observer's env sets it — not merely the observer's env, which is how a
+    observer's env sets it - not merely the observer's env, which is how a
     fully wired install reported "sink not configured"."""
     out = {"configured": False, "url": None, "source": None,
            "declared": None, "reachable": False, "stats": None}

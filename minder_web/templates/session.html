@@ -12,25 +12,25 @@
 <p class="warn">
   <strong>capture gap:</strong> this session has {{ hook_invocations }} hook
   invocations but nothing persisted ({{ event_count }} events).
-  See <a href="/capture">capture</a> — the hook fired and its writes were
+  See <a href="/capture">capture</a> - the hook fired and its writes were
   dropped.
 </p>
 {% endif %}
 
 <h2>work</h2>
 <table class="kv">
-  <tr><th>goal</th><td>{{ goal or '—' }}</td></tr>
+  <tr><th>goal</th><td>{{ goal or '-' }}</td></tr>
   <tr><th>last activity</th><td>{{ age }}</td></tr>
   <tr><th>sandbox</th><td>{{ sandbox_mode or 'unknown' }}
     ({{ permissions.preset or '?' }} preset, approval {{ permissions.approval or '?' }})</td></tr>
-  <tr><th>turns / steps</th><td>{{ turns if turns is not none else '—' }} /
-    {{ steps if steps is not none else '—' }}</td></tr>
+  <tr><th>turns / steps</th><td>{{ turns if turns is not none else '-' }} /
+    {{ steps if steps is not none else '-' }}</td></tr>
   <tr><th>tool calls</th><td>{{ stats.tool_calls }}</td></tr>
   <tr><th>tool failures seen in log</th><td>{{ stats.tool_failures }}</td></tr>
-  <tr><th>llm / tool time</th><td>{{ llm_ms or '—' }} ms /
-    {{ tool_ms or '—' }} ms</td></tr>
-  <tr><th>context pressure</th><td>{% if context_pressure_pct is not none %}{{ context_pressure_pct }}%{% else %}—{% endif %}</td></tr>
-  <tr><th>tokens (total)</th><td>{{ '{:,}'.format(tokens_total) if tokens_total else '—' }}</td></tr>
+  <tr><th>llm / tool time</th><td>{{ llm_ms or '-' }} ms /
+    {{ tool_ms or '-' }} ms</td></tr>
+  <tr><th>context pressure</th><td>{% if context_pressure_pct is not none %}{{ context_pressure_pct }}%{% else %}-{% endif %}</td></tr>
+  <tr><th>tokens (total)</th><td>{{ '{:,}'.format(tokens_total) if tokens_total else '-' }}</td></tr>
 </table>
 
 <h2>hook cost <small>(every tool call pays this)</small></h2>
@@ -39,14 +39,14 @@
     {{ stats.hook_results }}</td></tr>
   <tr><th>non-zero exits</th><td>{{ stats.hook_failures }}</td></tr>
   <tr><th>duration p50 / p90 / max</th>
-      <td>{{ hook.p50_ms or '—' }} / {{ hook.p90_ms or '—' }} / {{ hook.max_ms or '—' }} ms
+      <td>{{ hook.p50_ms or '-' }} / {{ hook.p90_ms or '-' }} / {{ hook.max_ms or '-' }} ms
       (n={{ hook.n }})</td></tr>
   <tr><th>points</th><td>
     {% for point, n in hook_points %}<span class="badge">{{ point }}: {{ n }}</span> {% endfor %}
-    {% if not hook_points %}—{% endif %}</td></tr>
+    {% if not hook_points %}-{% endif %}</td></tr>
 </table>
 {% if not log_stats_available %}
-<p class="note">session log counters unavailable — no readable
+<p class="note">session log counters unavailable - no readable
 <code>session.vN.jsonl.zstd</code> for this session (zstd reader missing or
 the log is absent).</p>
 {% endif %}
@@ -92,7 +92,7 @@ the log is absent).</p>
 {% if todos %}
 <h2>todos at last projection</h2>
 <ul>
-  {% for todo in todos %}<li>{{ todo.status }} — {{ todo.content }}</li>{% endfor %}
+  {% for todo in todos %}<li>{{ todo.status }} - {{ todo.content }}</li>{% endfor %}
 </ul>
 {% endif %}
 {% endblock %}

@@ -56,21 +56,34 @@ def _try(fn, *args, default=None, **kwargs):
         return default
 
 
-def overview(db_path):
-    """Overview page model: health, env flags, the shared weekly
-    summary object, the capture verdict, and the operator focus list
-    (same object as the CLI's weekly-summary)."""
+def overview(db_path, window_hours=24):
+    """Overview page model: the scorecard's improvement verdicts lead
+    (capture breaks invalidate every other page), then the capture
+    strip, the shared weekly summary object, and the operator focus
+    list (same object as the CLI's weekly-summary). The capture strip
+    and the verdicts come from ONE scorecard build so a single window
+    (default 24h, ?window_hours=) is shown consistently."""
+    from minder_op import scorecard
     summary = _try(build_weekly_summary, db_path, default=None)
     try:
         queries.status(db_path)  # raises DBError when unreadable
         db_ok = True
     except DBError:
         db_ok = False
-    capture = capture_page(db_path)
+    verdicts = []
+    capture = None
+    since = None
+    try:
+        report = scorecard.build(db_path, window_hours=window_hours)
+        capture = _decorate_capture(report["evidence"]["capture"])
+        verdicts = report.get("focus") or []
+        since = report.get("since")
+    except Exception:
+        pass  # a broken scan must not 500 the landing page
     # Capture breaks are the one failure that invalidates every other page,
     # so they come first in the operator focus list.
     focus = list((summary or {}).get("focus", []))
-    if not capture["ok"]:
+    if capture is not None and not capture["ok"]:
         focus = capture["warnings"][:2] + focus
     return {
         "db_ok": db_ok,
@@ -79,6 +92,9 @@ def overview(db_path):
                    or "(unset)"} for var in FLAG_VARS],
         "summary": summary,
         "capture": capture,
+        "verdicts": verdicts,
+        "since": since,
+        "window_hours": window_hours,
         "focus": focus[:3],
     }
 
@@ -287,10 +303,41 @@ def _age_text(age_s):
     return f"{int(age // 86400)}d ago"
 
 
-def capture_page(db_path, dsh_root=None):
-    """Capture health: is the watchdog actually persisting anything?"""
+def _human_date(iso):
+    """'2026-09-19T16:13:07+00:00' -> 'Sep 19' (blank when unparseable)."""
+    if not iso:
+        return ""
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        return f"{dt.strftime('%b')} {dt.day}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def recording(db_path):
+    """Header-chip text: is evidence still being written? One cheap
+    MAX(ts) query per page render — no dsh scan. The schema version and
+    db health stay available via the title attribute and /healthz."""
+    last = _try(queries.last_event_ts, db_path, default=None)
+    if not last:
+        return "recording: unknown"
+    try:
+        from datetime import datetime, timezone
+        parsed = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - parsed).total_seconds()
+    except (TypeError, ValueError):
+        return "recording: unknown"
+    if age > 86400:
+        return f"recording: stale {_age_text(age)}"
+    return "recording: ok"
+
+
+def _decorate_capture(report):
+    """capture.build post-processing shared by / and /capture."""
     from minder_op import capture
-    report = capture.build(db_path, dsh_root=dsh_root)
     for store in report["stores"]:
         store["age"] = capture.age_text(store.get("age_s"))
     for session in report["coverage"].get("sessions") or []:
@@ -298,13 +345,18 @@ def capture_page(db_path, dsh_root=None):
     return report
 
 
+def capture_page(db_path, dsh_root=None, window_hours=1):
+    """Capture health: is the watchdog actually persisting anything?"""
+    from minder_op import capture
+    return _decorate_capture(capture.build(db_path, dsh_root=dsh_root,
+                                           window_hours=window_hours))
+
+
 def scorecard_page(db_path, window_hours=24, dsh_root=None):
     """The improvement scorecard as a page model."""
     from minder_op import scorecard
-    report = scorecard.build(db_path, dsh_root=dsh_root,
-                             window_hours=window_hours)
-    report["focus"] = scorecard._focus(report)
-    return report
+    return scorecard.build(db_path, dsh_root=dsh_root,
+                           window_hours=window_hours)
 
 
 def events_page(db_path, limit=DEFAULT_LIMIT, event_type=None, tool=None,

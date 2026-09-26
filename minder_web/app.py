@@ -22,6 +22,7 @@ from minder_web import services
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_PACKAGE_DIR / "templates"))
+templates.env.filters["human_date"] = services._human_date
 
 app = FastAPI(title="minder operator console", docs_url=None,
               redoc_url=None, openapi_url=None)
@@ -68,13 +69,15 @@ def _db_path():
 def render(request, template, context):
     context["request"] = request
     context["health"] = services.health(_db_path())
+    context["recording"] = services.recording(_db_path())
     return templates.TemplateResponse(request, template + ".html",
                                       context)
 
 
 @app.get("/")
-def overview(request: Request):
-    return render(request, "overview", services.overview(_db_path()))
+def overview(request: Request, window_hours: int = 24):
+    return render(request, "overview",
+                  services.overview(_db_path(), window_hours))
 
 
 @app.get("/episodes")

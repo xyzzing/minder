@@ -4,7 +4,7 @@
 {% if stale_days %}
 <p class="warn">
   <strong>stale data:</strong> the newest observed event is {{ stale_days }} day(s) old.
-  That is a capture problem, not an empty queue — check
+  That is a capture problem, not an empty queue - check
   <a href="/capture">capture</a> before drawing conclusions from this page.
 </p>
 {% endif %}
@@ -38,8 +38,8 @@
   {% for r in rows %}
     <tr><td>{{ r.ts }}</td><td>{{ r.event_type }}</td>
         <td>{{ r.tool }}</td><td class="excerpt">{{ r.failure_key }}</td>
-        <td>{% if r.session_id %}<a href="/sessions/{{ r.session_id }}"><code>{{ r.session_id }}</code></a>{% else %}—{% endif %}</td>
-        <td>{% if r.episode_id %}<a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a>{% else %}—{% endif %}</td></tr>
+        <td>{% if r.session_id %}<a href="/sessions/{{ r.session_id }}"><code>{{ r.session_id }}</code></a>{% else %}-{% endif %}</td>
+        <td>{% if r.episode_id %}<a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a>{% else %}-{% endif %}</td></tr>
   {% else %}
     <tr><td colspan="6" class="na">no observed events for this filter{% if not stale_days %} (nothing has failed in the stored window){% endif %}.</td></tr>
   {% endfor %}

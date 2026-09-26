@@ -25,15 +25,14 @@
       <a href="/benchmarks">benchmarks</a>
       <a href="/traces">traces</a>
     </nav>
-    <span class="health">schema v{{ health.schema_version if health.schema_version is not none else '?' }}
-      · {{ health.status }}</span>
+    <span class="health" title="schema v{{ health.schema_version if health.schema_version is not none else '?' }} · {{ health.status }}">{{ recording }}</span>
   </header>
   <main>
     {% block content %}{% endblock %}
   </main>
   <footer>
     localhost · read-only · observed workflow evidence only, no
-    productivity claims — the console is not a policy engine.
+    productivity claims - the console is not a policy engine.
   </footer>
 </body>
 </html>

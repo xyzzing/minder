@@ -4,7 +4,7 @@
 <p class="note">
   {{ counts.sessions }} session(s) · {{ counts.with_projection }} with a projection cache ·
   {{ counts.archived }} archived · showing {{ rows | length }} ({{ sort }} first).
-  Session ids are dsh's own (<code>~/.dsh/sessions/</code>) — the same id the
+  Session ids are dsh's own (<code>~/.dsh/sessions/</code>) - the same id the
   hook records and <code>episodes.task_id</code> carries.
 </p>
 
@@ -36,10 +36,10 @@
         {% if not r.has_projection %}<span class="badge badge-candidate">no projection</span>{% endif %}
       </td>
       <td>{{ r.age }}<div class="excerpt">{{ r.format or '?' }} · {{ (r.log_bytes / 1024) | round(0) | int }} KiB</div></td>
-      <td>{{ r.turns if r.turns is not none else '—' }}</td>
-      <td>{{ r.steps if r.steps is not none else '—' }}</td>
-      <td>{{ '{:,}'.format(r.tokens_total) if r.tokens_total else '—' }}</td>
-      <td>{% if r.context_pressure_pct is not none %}{{ r.context_pressure_pct }}%{% else %}—{% endif %}</td>
+      <td>{{ r.turns if r.turns is not none else '-' }}</td>
+      <td>{{ r.steps if r.steps is not none else '-' }}</td>
+      <td>{{ '{:,}'.format(r.tokens_total) if r.tokens_total else '-' }}</td>
+      <td>{% if r.context_pressure_pct is not none %}{{ r.context_pressure_pct }}%{% else %}-{% endif %}</td>
       <td>
         {% if r.sandbox_mode == 'danger-full-access' %}
           <span class="badge badge-verified">{{ r.sandbox_mode }}</span>
@@ -54,7 +54,7 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="9" class="na">no sessions found — is <code>~/.dsh/sessions/</code> populated?</td></tr>
+    <tr><td colspan="9" class="na">no sessions found - is <code>~/.dsh/sessions/</code> populated?</td></tr>
   {% endfor %}
   </tbody>
 </table>

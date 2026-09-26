@@ -40,7 +40,7 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="na">no findings — this trace is clean under
+    <tr><td colspan="6" class="na">no findings - this trace is clean under
       the active evaluators.</td></tr>
   {% endfor %}
   </tbody>
@@ -74,12 +74,12 @@
       <td>
         {% if f.verdict == 'confirm' %}<span class="badge badge-verified">confirm</span>
         {% elif f.verdict == 'reject' %}<span class="badge badge-candidate">reject</span>
-        {% else %}<span class="badge">—</span>{% endif %}
+        {% else %}<span class="badge">-</span>{% endif %}
       </td>
       <td>{{ f.reviewer }}</td><td class="excerpt">{{ f.comment }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="7" class="na">no feedback yet — a finding nobody has
+    <tr><td colspan="7" class="na">no feedback yet - a finding nobody has
       judged is a hypothesis, and cannot become a regression case.</td></tr>
   {% endfor %}
   </tbody>

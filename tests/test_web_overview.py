@@ -20,6 +20,30 @@ def test_overview_renders_shared_summary(tmp_path, monkeypatch):
     assert SECRET not in text
 
 
+def test_overview_verdicts_lead_the_page(tmp_path, monkeypatch):
+    """The landing page answers 'what to improve first' before any
+    data table: the verdict section renders, ahead of the weekly
+    summary, and the header chip reports recording status."""
+    dbp = new_db(tmp_path)
+    webseed.add_gap(dbp)
+    client = webseed.client_for(dbp, monkeypatch)
+    text = client.get("/").text
+    assert "what to improve first" in text
+    assert text.index("what to improve first") < \
+        text.index("weekly workflow summary")
+    # every page carries the recording chip (fresh seeded events)
+    assert "recording:" in text
+
+
+def test_overview_window_param_reaches_capture_strip(tmp_path,
+                                                     monkeypatch):
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    text = client.get("/?window_hours=48").text
+    assert "past 48h" in text
+    assert "48h" in text  # verdict section label carries the window
+
+
 def test_overview_shows_env_flags_display_only(tmp_path, monkeypatch):
     dbp = new_db(tmp_path)
     monkeypatch.setenv("MINDER_ASSIST", "retrieve")
