@@ -324,8 +324,14 @@ if [ "$DO_DSH" = "1" ]; then
       [ -f "$HOME/.dsh/profiles/web/$f" ] && \
         cp -f "$HOME/.dsh/profiles/web/$f" "$HOME/.dsh/profiles/web/$f.minder-$TS.bak"
     done
-    if dsh plugin --profile web add @deepseek-ai/dsh-hooks-claude-code@0.1.5-rc.2 2>&1 | tail -2; then
-      say "[7] plugin installed (bridge version-matched to core — update both together)"
+    # Bridge version MUST match the dsh core (a 0.1.5 bridge under a
+    # 0.1.7 host killed every hook at 'bash.run is not a function',
+    # fail-open, for two days before diagnosis). Derive from the
+    # installed core; never hardcode.
+    BRIDGE_VERSION="$(dsh --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^ ]*' | head -1)"
+    BRIDGE_VERSION="${BRIDGE_VERSION:-0.1.7-rc.2}"
+    if dsh plugin --profile web add "@deepseek-ai/dsh-hooks-claude-code@${BRIDGE_VERSION}" 2>&1 | tail -2; then
+      say "[7] plugin installed (bridge ${BRIDGE_VERSION}, version-matched to core — update both together)"
       say "    if web boot now fails on a third-party plugin: restore the .minder-*.bak"
       say "    package.json/pnpm-lock.yaml in ~/.dsh/profiles/web/ and re-run pnpm install,"
       say "    or disable the offending entry by id in cordis.patch.yml"
