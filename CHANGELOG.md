@@ -3,6 +3,30 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## Unreleased — console plain-language tier (wave 4) + 0.8.1 recheck fixes
+
+- **The console nav answers three questions.** Destinations regroup as
+  "how am I doing?" (overview, scorecard), "what happened?" (sessions,
+  events, episodes), "what has it learned?" (lessons, gaps, skills),
+  with operator-only surfaces (capture, consults, decisions, difficulty,
+  benchmarks, traces) behind a no-JS `<details>` advanced drawer. All
+  fourteen destinations remain one click; the GET-only surface is
+  unchanged.
+- **Plain-language glosses** on the landing page (coverage = tool calls
+  saved; sink = save path ready; repeat failure keys = the same error
+  coming back; frontier helpfulness = did the outside model help?) and
+  a sessions legend explaining tokens/context/capture. Token counts
+  render in human units ("2.06M") with the exact number on hover. A
+  day/week window toggle rides the verdict heading (labels via
+  `_window_text`).
+- **Recheck of the 0.8.1 waves found two small gaps, both fixed:**
+  `db.connect()` leaked its connection when a migration failed
+  (pre-dated `transaction()`; every caller exposed — found by the
+  local-model adversarial pass), and six `"—"` empty-value placeholders
+  in `services.py` page models had escaped the wave-3 visible-copy
+  sweep. COMMIT/ROLLBACK-failure and abandoned-generator paths were
+  assessed same-or-safer than the old hand-rolled sites and left as-is.
+
 ## 0.8.1 — 2026-09-27
 
 - **Console landing page answers "what to improve first."** Scorecard
