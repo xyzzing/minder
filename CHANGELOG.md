@@ -3,6 +3,24 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## 0.8.2 — 2026-09-28
+
+- **Verification integrity (PRD v0.9 step 9A).** The verified can no
+  longer write the verifier: three reproduced tamper overlays (rewrite
+  the test file, add a skip-all conftest, `os._exit(0)` before tests)
+  scored `verified` 1.0 on v0.8.1 and now score `tampered` /
+  `underverified`. Runner gains pristine collection ids, junit
+  run-level evidence with mtime checks, protected paths (I-1), and
+  holdout tests staged where the overlay cannot reach; statuses gain
+  `tampered` and `underverified`; a manifest `expected_tests` mismatch
+  refuses as a manifest error. `minder_core.integrity` is the
+  extractable stdlib module. `coding-core-v1`'s keyerror task gains a
+  holdout + expected count; mutation smoke gains the integrity target.
+- **domain-core-v1** (owner patch): deterministic non-coding eval suite
+  - finance/trade/sustainability/governance/extraction graded by code
+  oracles with abstention probes, metamorphic twins, and a grader
+  mutation self-check. Reports use the v1 benchmark envelope.
+
 ## Unreleased — gap-trap quality framework
 
 - **Instruction files + gates installed (gap-trap setup).** AGENTS.md
