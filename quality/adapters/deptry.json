@@ -1,0 +1,27 @@
+{
+  "probe_argv": [
+    "deptry",
+    "--version"
+  ],
+  "pin": "0.*",
+  "argv": [
+    "deptry",
+    "{workspace}",
+    "--json-output",
+    "deptry.json"
+  ],
+  "parser": "json_path",
+  "pointer": "dependencies",
+  "fields": {
+    "rule": "$.kind",
+    "path": "$.module",
+    "message": "$.message"
+  },
+  "note": "deptry writes its report to a file; adapter kept advisory until 9E wires the file read",
+  "id": "deptry",
+  "languages": [
+    "python"
+  ],
+  "timeout_s": 60,
+  "blocking": {}
+}

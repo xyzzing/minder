@@ -344,6 +344,20 @@ def build_parser():
     bm_run.add_argument("--suite", required=True)
     bm_run.add_argument("--dry-run", action="store_true",
                         help="print the execution plan; run nothing")
+    q = sub.add_parser("quality", help=(
+        "clean-completion quality: baseline-relative junk metrics + "
+        "declarative external analyzers (PRD v0.9 9D)"))
+    q_sub = q.add_subparsers(dest="quality_command", required=True)
+    q_assess = q_sub.add_parser("assess", help=(
+        "measure PRE_DIR -> POST_DIR: diff metrics + analyzer findings, "
+        "only-new-junk counts (I-2)"))
+    q_assess.add_argument("pre")
+    q_assess.add_argument("post")
+    q_assess.add_argument("--allowed", action="append", default=[],
+                          help="scope contract path pattern (repeatable)")
+    q_assess.add_argument("--json", action="store_true")
+    q_sub.add_parser("adapters", help=(
+        "list declarative adapters: found/missing, version, pin match"))
     bm_run.add_argument("--task", help="one task (default: all runnable)")
     bm_run.add_argument("--overlay",
                         help="directory copied over the workspace "
@@ -495,6 +509,8 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_weekly_summary(args, path)
     if command == "benchmark":
         return _cmd_benchmark(args)
+    if command == "quality":
+        return _cmd_quality(args)
     return EXIT_USAGE
 
 
@@ -1259,6 +1275,62 @@ def _cmd_success_loops_ls(args, path):
 # --- 8C: benchmark foundation (manifests/reports/comparator; no run) -----
 
 
+
+
+def _cmd_quality(args):
+    """quality assess / quality adapters ls (PRD v0.9 9D, 6.8)."""
+    from minder_quality import adapters as adapters_mod
+    from minder_core import diffmetrics
+
+    if getattr(args, "quality_command", "") == "adapters":
+        for adapter in adapters_mod.load().values():
+            _version, status = adapters_mod.probe(adapter)
+            print(f"{adapter['id']:12s} {status:28s} "
+                  f"pin={adapter.get('pin', '*')}")
+        return 0
+
+    record = diffmetrics.measure(args.pre, args.post,
+                                 allowed_paths=args.allowed or None)
+    pre_files = diffmetrics._py_files(args.pre)
+    post_files = diffmetrics._py_files(args.post)
+    touched_set = set(record["diff"]["scope_violations"])
+    for rel in set(pre_files) | set(post_files):
+        pre_text = pre_files[rel].read_text(errors="replace") \
+            if rel in pre_files else ""
+        post_text = post_files[rel].read_text(errors="replace") \
+            if rel in post_files else ""
+        if pre_text != post_text:
+            touched_set.add(rel)
+    adapter_findings, statuses = adapters_mod.assess_touched(
+        args.pre, args.post, sorted(touched_set))
+    record["new_findings"] += adapter_findings
+    record["counts"]["blocking"] += sum(
+        1 for f in adapter_findings if f["severity"] == "blocking")
+    record["counts"]["advisory"] += sum(
+        1 for f in adapter_findings if f["severity"] == "advisory")
+    record["analyzers"].update(statuses)
+
+    if getattr(args, "json", False):
+        print(json.dumps(record, indent=2))
+        return 0
+    diff = record["diff"]
+    print(f"quality: {args.pre} -> {args.post}")
+    print(f"  files +{diff['files_added']}/-{diff['files_deleted']} "
+          f"touched {diff['files_touched']}, lines +{diff['lines_added']}"
+          f"/-{diff['lines_removed']} (net {diff['net_lines']})")
+    if diff["scope_violations"]:
+        print(f"  scope violations: {', '.join(diff['scope_violations'])}")
+    for finding in record["new_findings"]:
+        print(f"  [{finding['severity']}] {finding['rule']} "
+              f"{finding['path']}:{finding['line']} "
+              f"({finding['source']})")
+    for name, status in sorted(record["analyzers"].items()):
+        print(f"  analyzer {name}: {status}")
+    print(f"  blocking {record['counts']['blocking']}, "
+          f"advisory {record['counts']['advisory']}")
+    return 0
+
+
 def _cmd_benchmark(args):
     from minder_op import benchmark as bench
     try:
@@ -1517,7 +1589,7 @@ def main(argv=None):
         parser.print_usage(sys.stderr)
         return EXIT_USAGE
     path = _resolve_db(args)
-    needs_db = args.command not in ("flags", "export-stats", "benchmark",
+    needs_db = args.command not in ("flags", "export-stats", "benchmark", "quality",
                                     "doctor", "capture", "scorecard",
                                     "trace")
     if needs_db:

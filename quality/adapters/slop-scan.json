@@ -1,0 +1,27 @@
+{
+  "probe_argv": [
+    "slop-scan",
+    "--version"
+  ],
+  "pin": "*",
+  "argv": [
+    "slop-scan",
+    "{paths}",
+    "--json"
+  ],
+  "parser": "json_path",
+  "pointer": "findings",
+  "fields": {
+    "rule": "$.rule",
+    "path": "$.path",
+    "message": "$.message"
+  },
+  "id": "slop-scan",
+  "languages": [
+    "python",
+    "js",
+    "ts"
+  ],
+  "timeout_s": 60,
+  "blocking": {}
+}

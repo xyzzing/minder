@@ -1,0 +1,22 @@
+{
+  "probe_argv": [
+    "vulture",
+    "--version"
+  ],
+  "pin": "2.*",
+  "argv": [
+    "vulture",
+    "{paths}",
+    "--min-confidence",
+    "80"
+  ],
+  "parser": "line_regex",
+  "pattern": "^(?P<path>[^:]+):(?P<line>\\d+): (?P<message>.+)$",
+  "rule_from": "message_prefix",
+  "id": "vulture",
+  "languages": [
+    "python"
+  ],
+  "timeout_s": 60,
+  "blocking": {}
+}

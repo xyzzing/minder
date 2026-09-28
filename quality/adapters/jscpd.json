@@ -1,0 +1,30 @@
+{
+  "probe_argv": [
+    "jscpd",
+    "--version"
+  ],
+  "pin": "3.*",
+  "argv": [
+    "jscpd",
+    "{paths}",
+    "--reporters",
+    "json",
+    "--output",
+    "{workspace}/.minder/jscpd"
+  ],
+  "parser": "json_path",
+  "pointer": "duplicates",
+  "fields": {
+    "rule": "$.name",
+    "path": "$.firstFile.name",
+    "message": "$.name"
+  },
+  "id": "jscpd",
+  "languages": [
+    "python",
+    "js",
+    "ts"
+  ],
+  "timeout_s": 60,
+  "blocking": {}
+}

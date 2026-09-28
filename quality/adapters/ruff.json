@@ -1,0 +1,30 @@
+{
+  "probe_argv": [
+    "ruff",
+    "--version"
+  ],
+  "pin": "0.*",
+  "argv": [
+    "ruff",
+    "check",
+    "--output-format",
+    "json",
+    "{paths}"
+  ],
+  "parser": "json_path",
+  "pointer": "",
+  "fields": {
+    "rule": "$.code",
+    "path": "$.filename",
+    "message": "$.message"
+  },
+  "findings_exit_codes": [
+    1
+  ],
+  "id": "ruff",
+  "languages": [
+    "python"
+  ],
+  "timeout_s": 60,
+  "blocking": {}
+}
