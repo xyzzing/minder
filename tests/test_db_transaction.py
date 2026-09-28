@@ -4,6 +4,8 @@ commit-on-normal-exit (including an early `return` inside the body, which
 commits an empty transaction — identical observable behavior to the old
 close-discards-open-txn shape), rollback + re-raise on error, reads seeing
 their own uncommitted writes, and the always-closed connection."""
+import pathlib
+
 import pytest
 
 from minder_memory import db as _db
@@ -79,3 +81,21 @@ def test_caller_rejected_path_unchanged(tmp_path):
     assert wording is None
     assert status == "rejected:unknown_assertion"
     assert _count(dbp, "career_assertions") == 0
+
+
+def test_connect_closes_connection_when_migration_fails(tmp_path,
+                                                        monkeypatch):
+    """A broken migration must raise out of connect() without leaking
+    the handle (recheck finding: pre-dated the transaction() CM)."""
+    bad = tmp_path / "migs"
+    bad.mkdir()
+    (bad / "999_broken.sql").write_text("CREATE TABLE broken(")
+    dbp = tmp_path / "m.sqlite"
+    monkeypatch.setattr(_db, "MIGRATIONS_DIR", bad)
+    with pytest.raises(Exception):
+        _db.connect(dbp)
+    # and the store is not left wedged: a clean-dir connect still works
+    monkeypatch.setattr(_db, "MIGRATIONS_DIR",
+                        pathlib.Path(_db.__file__).parent / "migrations")
+    with _db.transaction(dbp) as conn:
+        conn.execute("SELECT 1")

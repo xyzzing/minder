@@ -30,7 +30,11 @@ def connect(path=None):
     conn = sqlite3.connect(str(path), timeout=5.0, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    migrate(conn)
+    try:
+        migrate(conn)
+    except Exception:
+        conn.close()  # a failed migration must not leak the handle
+        raise
     return conn
 
 
