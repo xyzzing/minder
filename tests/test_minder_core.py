@@ -9,7 +9,8 @@ import minder_core
 
 CORE_DIR = Path(minder_core.__file__).resolve().parent
 
-_ALLOWED = {"hashlib", "json", "re", "datetime", "pathlib"}
+_ALLOWED = {"hashlib", "json", "re", "datetime",
+           "pathlib", "fnmatch", "xml"}
 
 
 def _imports_of(path):

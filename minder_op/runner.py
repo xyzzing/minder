@@ -29,6 +29,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from minder_core import integrity
 from minder_op.benchmark import BenchmarkError, manifest_fingerprint
 from minder_memory.canonicalise import redact
 
@@ -124,44 +125,146 @@ def _entry_dir(workspace, task, entry_files):
     return workspace
 
 
+def _hardened_argv(work_dir, entry_files, junit_path=None, extra=None):
+    """The pytest argv every run uses: no cache provider, junit evidence
+    into the runner-owned path, conftest loading only when the task's
+    fixtures actually declare a conftest.py (an overlay-added conftest
+    is a tamper vector, not configuration)."""
+    cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+    if junit_path is not None:
+        cmd.append(f"--junit-xml={junit_path}")
+    cmd.extend(extra or [])
+    cmd.extend(entry_files)
+    return cmd
+
+
+def _collect_ids(work_dir, env, timeout):
+    """Pristine-tree test ids via --collect-only -q (PRD 6.1 step 1)."""
+    cmd = [sys.executable, "-m", "pytest", "--collect-only", "-q",
+           "-p", "no:cacheprovider"]
+    proc = subprocess.run(cmd, cwd=str(work_dir), env=env,
+                          capture_output=True, text=True, timeout=timeout)
+    return [line.strip() for line in (proc.stdout or "").splitlines()
+            if "::" in line]
+
+
+def _run_pytest(cmd, work_dir, env, timeout):
+    """Run pytest in its own process group; kill the group on timeout."""
+    started = time.monotonic()
+    wall_start = time.time()
+    proc = subprocess.Popen(
+        cmd, cwd=str(work_dir), env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        start_new_session=True)
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+        return proc.returncode, (out or ""), started, wall_start
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+        out, _ = proc.communicate()
+        return None, (out or ""), started, wall_start
+
+
 def execute_task(suite_dir, task, overlay=None, timeout=DEFAULT_TIMEOUT,
                  keep_workspace=False):
-    """Run one task's pytest verification in a fresh sandbox.
-
-    Returns (run_entry, workspace_path_or_None). run_entry matches the
-    8C report `runs` schema; status is verified | failed | timeout.
-    """
+    """Run one task's pytest verification in a fresh sandbox, with
+    verification integrity (PRD v0.9 9A): pristine collection, protected
+    paths (I-1), junit run evidence, and holdout tests the overlay
+    cannot pre-place. Status is verified | failed | timeout | tampered |
+    underverified; the run entry carries the full verdict."""
     entry_spec = task.get("runner") or {}
     workspace = _stage_workspace(suite_dir, task)
     try:
         entry_files = entry_spec.get("entry") or []
         work_dir = _entry_dir(workspace, task, entry_files)
+        env = _child_env(workspace)
+        # 6.1 step 1: pristine tree hash + expected test ids. PYTEST_* env
+        # cannot reach the child (allowlist), so collection is trusted.
+        pre_files = integrity.tree_files(work_dir)
+        expected_ids = _collect_ids(work_dir, env, timeout)
+        expected_tests = task.get("runner", {}).get("expected_tests")
+        if expected_tests is not None and \
+                len(expected_ids) != expected_tests:
+            raise RunnerError(
+                f"manifest expected_tests={expected_tests} but the "
+                f"pristine fixtures collect {len(expected_ids)} tests "
+                "(the manifest is wrong, not the run)")
+        junit_dir = workspace / ".minder"
+        junit_dir.mkdir()
+        junit_path = junit_dir / "junit.xml"
+
+        # 6.1 step 2-3: apply the overlay, hash, protected diff (I-1).
         if overlay:
-            # a candidate fix is expressed relative to the task's
-            # working directory, so it overlays there
             _copy_tree(Path(overlay), work_dir)
-        cmd = [sys.executable, "-m", "pytest", "-q", *entry_files]
-        started = time.monotonic()
-        proc = subprocess.Popen(
-            cmd, cwd=str(work_dir),
-            env=_child_env(workspace),
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-            start_new_session=True)
-        try:
-            out, _ = proc.communicate(timeout=timeout)
-            status = "verified" if proc.returncode == 0 else "failed"
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                proc.kill()
-            out, _ = proc.communicate()
-            status = "timeout"
-        duration_ms = round((time.monotonic() - started) * 1000)
-        entry = {"task_id": task.get("task_id"), "status": status,
-                 "exit_code": proc.returncode,
-                 "duration_ms": duration_ms,
-                 "output_tail": redact((out or "")[-OUTPUT_TAIL:])}
+        post_files = integrity.tree_files(work_dir)
+        protected = task.get("protected")  # None -> module default
+
+        # 6.1 step 5: visible run with junit evidence. --noconftest only
+        # when the FIXTURES declare no conftest (overlay conftest is
+        # evidence, not configuration).
+        fixtures = task.get("fixtures") or []
+        extra = [] if any(str(f).endswith("conftest.py")
+                          for f in fixtures) else ["--noconftest"]
+        rc, out, started, wall = _run_pytest(
+            _hardened_argv(work_dir, entry_files, junit_path, extra),
+            work_dir, env, timeout)
+        junit = integrity.parse_junit(junit_path, started=wall)
+
+        # 6.1 step 4+6: holdout staged AFTER the overlay and the visible
+        # run, into a fresh directory the overlay cannot address, with
+        # the task module importable via PYTHONPATH only.
+        holdout_status = "absent"
+        holdout_files = task.get("holdout") or []
+        if holdout_files:
+            holdout_dir = junit_dir / "holdout"
+            holdout_dir.mkdir()
+            for rel in holdout_files:
+                src = (suite_dir / rel).resolve()
+                if not src.is_file():
+                    raise RunnerError(f"holdout disappeared: {rel}")
+                shutil.copyfile(src, holdout_dir / Path(rel).name)
+            hold_env = dict(env, PYTHONPATH=str(work_dir))
+            h_junit = holdout_dir / "junit.xml"
+            h_rc, _h_out, h_started, _ = _run_pytest(
+                _hardened_argv(holdout_dir,
+                               [Path(rel).name for rel in holdout_files],
+                               h_junit, ["--noconftest"]),
+                holdout_dir, hold_env, timeout)
+            h_junit_parsed = integrity.parse_junit(h_junit,
+                                                   started=h_started)
+            if h_rc is None:
+                holdout_status = "fail"
+            elif h_junit_parsed and h_junit_parsed[0]["failed"] == 0 \
+                    and h_junit_parsed[0]["errors"] == 0 \
+                    and h_junit_parsed[0]["collected"] > 0:
+                holdout_status = "pass"
+            else:
+                holdout_status = "fail"
+
+        # 6.1 step 7: the verdict.
+        if rc is None:
+            verdict = {"status": "timeout", "tamper_reasons": [],
+                       "tests": {"collected": 0, "passed": 0, "failed": 0,
+                                 "skipped": 0, "errors": 0},
+                       "holdout": {"status": holdout_status}}
+        else:
+            counts, junit_ids = junit if junit else (None, None)
+            verdict = integrity.assess(
+                pre_files, post_files, protected, junit_counts=counts,
+                junit_ids=junit_ids, expected_ids=expected_ids or None,
+                expected_tests=expected_tests,
+                allow_skips=task.get("runner", {}).get("allow_skips", 0),
+                holdout_status=holdout_status,
+                run_status="verified" if rc == 0 else "failed")  # noqa: E501
+        entry = {"task_id": task.get("task_id"),
+                 "status": verdict["status"],
+                 "exit_code": rc if rc is not None else -1,
+                 "duration_ms": round((time.monotonic() - started) * 1000),
+                 "integrity": verdict,
+                 "output_tail": redact(out[-OUTPUT_TAIL:])}
         return entry, (workspace if keep_workspace else None)
     finally:
         if not keep_workspace:

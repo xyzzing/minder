@@ -29,16 +29,23 @@ smoke() {  # label, file, from, to, tests
   cp -p "$file" "$file.gt-smoke"
   if ! mutate "$file" "$from" "$to"; then
     echo "mutation-smoke: BROKEN - $label anchor missing; fix the target" >&2
-    mv "$file.gt-smoke" "$file"; exit 2
+    drop_cache "$file"; mv "$file.gt-smoke" "$file"; exit 2
   fi
   if run_tests "$tests"; then
     echo "mutation-smoke: FAIL - $label: $tests still pass with the mutation" >&2
-    mv "$file.gt-smoke" "$file"; touch "$file"; exit 1
+    drop_cache "$file"; mv "$file.gt-smoke" "$file"; exit 1
   fi
   echo "mutation-smoke: ok - $label (tests failed as required)"
-  # mv preserves the backup's (older) mtime; a stale __pycache__ of the
-  # MUTATED module would then look valid. touch forces recompilation.
-  mv "$file.gt-smoke" "$file"; touch "$file"
+  # The pyc header stores whole-second mtimes: a mutate+restore inside
+  # one second leaves the MUTATED bytecode looking valid (this shipped
+  # a false comparator failure once). Drop the cache on restore.
+  drop_cache "$file"
+  mv "$file.gt-smoke" "$file"
+}
+
+drop_cache() {
+  find "$(dirname "$1")" -maxdepth 2 -name __pycache__ \
+    -exec rm -rf {} + 2>/dev/null || true
 }
 
 # 1. The benchmark verdict law: an unsafe metric must fail at ANY value
@@ -65,4 +72,12 @@ smoke "db.transaction commits" \
             conn.execute("ROLLBACK")' \
   tests/test_db_transaction.py
 
-echo "mutation-smoke: ok (3 targets)"
+# 4. Integrity (9A): a neutered protected-path diff must fail the
+#    verdict tests - the I-1 law cannot silently stop being enforced.
+smoke "integrity protected diff" \
+  minder_core/integrity.py \
+  'for rel in sorted(set(pre_files) | set(post_files)):' \
+  'for rel in sorted(set() | set()):' \
+  tests/test_integrity.py
+
+echo "mutation-smoke: ok (4 targets)"
