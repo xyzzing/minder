@@ -39,7 +39,7 @@ from minder_core.comparator import (  # noqa: F401  (re-export surface)
 )
 
 SUPPORTED_MANIFEST_VERSION = 1
-SUPPORTED_REPORT_VERSION = 1
+SUPPORTED_REPORT_VERSIONS = (1, 2)
 
 # Closed vocabulary of prohibited capabilities. The 8D runner will
 # enforce these mechanically; manifests must declare them per task.
@@ -235,7 +235,7 @@ def validate_report(report):
     errors = []
     if not isinstance(report, dict):
         return ["report is not a JSON object"]
-    if report.get("report_version") != SUPPORTED_REPORT_VERSION:
+    if report.get("report_version") not in SUPPORTED_REPORT_VERSIONS:
         errors.append(f"unsupported report_version: "
                       f"{report.get('report_version')!r}")
     if not isinstance(report.get("suite_id"), str) or \
@@ -277,6 +277,37 @@ def validate_report(report):
             or not 0.0 <= float(rate) <= 1.0:
         errors.append(f"metrics.verified_completion_rate must be a "
                       f"number in [0, 1], got {rate!r}")
+    if report.get("report_version") == 2:
+        # Quality tier keys are STRICT for v2 (PRD v0.9 5.6): a v2
+        # report that quietly omits the quality tier would read as a
+        # clean run rather than an unmeasured one (I-3).
+        for key in ("clean_completion_rate",):
+            rate = metrics.get(key)
+            if not isinstance(rate, (int, float)) \
+                    or isinstance(rate, bool) \
+                    or not 0.0 <= float(rate) <= 1.0:
+                errors.append(f"metrics.{key} must be a number in "
+                              f"[0, 1], got {rate!r}")
+        for key in ("verification_tampering", "underverified_runs",
+                    "holdout_failures", "quality_measured_runs"):
+            value = metrics.get(key)
+            if not _is_int(value) or value < 0:
+                errors.append(f"metrics.{key} must be an integer >= 0, "
+                              f"got {value!r}")
+        for key in ("mean_net_lines_per_verified",
+                    "blocking_findings_per_verified",
+                    "advisory_findings_per_verified"):
+            value = metrics.get(key)
+            if not isinstance(value, (int, float)) \
+                    or isinstance(value, bool) or value < 0:
+                errors.append(f"metrics.{key} must be a number >= 0, "
+                              f"got {value!r}")
+        afp = report.get("analyzer_set_fingerprint")
+        if not isinstance(afp, str) or not (
+                _FP_RE.fullmatch(afp.removeprefix("sha256:"))
+                if afp.startswith("sha256:") else False):
+            errors.append("analyzer_set_fingerprint must be "
+                          "sha256:<64 hex>")
     return errors
 
 

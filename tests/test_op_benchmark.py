@@ -167,7 +167,14 @@ def test_run_is_dry_run_only(tmp_root, capsys):
 
 
 @pytest.mark.parametrize("mutate,fragment", [
-    (lambda r: r.__setitem__("report_version", 2), "report_version"),
+    # 2 is legal since v0.9's quality tier (PRD 9C); 3 is not
+    (lambda r: r.__setitem__("report_version", 3), "report_version"),
+    # a v2 report that omits the quality tier is unmeasured, not clean
+    (lambda r: r.update({"report_version": 2}), "clean_completion_rate"),
+    (lambda r: r.update({
+        "report_version": 2,
+        "metrics": dict(r["metrics"], clean_completion_rate=0.9)}),
+     "quality_measured_runs"),
     (lambda r: r["metrics"].pop("comparable_runs"), "comparable_runs"),
     (lambda r: r["metrics"].__setitem__("verified_completion_rate", 1.5),
      "verified_completion_rate"),
