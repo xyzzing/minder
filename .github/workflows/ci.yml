@@ -44,6 +44,8 @@ jobs:
       MINDER_TEST_TIMEOUT: "120"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the instruction gate verifies cited commit hashes
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -76,3 +78,41 @@ jobs:
           pip install pytest laya -r requirements-web.txt
       - name: Replay routing-core-v1 through the real model
         run: python -m pytest tests/test_routing_replay.py tests/test_classifier_laya.py -m laya -q
+
+  proven-red:
+    # P2: each PR's changed unit tests must FAIL on the pre-change code.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: pip install pytest -r requirements-web.txt
+      - run: scripts/proven-red.sh "origin/${{ github.base_ref }}" HEAD
+
+  pr-acceptance:
+    # P1: the PR body quotes the issue's acceptance lines; feat PRs name a spec.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: scripts/pr-body-check.sh
+
+  mutation-smoke:
+    # The one check that proves existing tests can fail.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: pip install pytest -r requirements-web.txt
+      - run: scripts/mutation-smoke.sh
