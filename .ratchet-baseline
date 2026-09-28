@@ -2,6 +2,6 @@
 # scripts/ratchet.sh --update; raising needs a reason in the commit
 # message (C7).
 files_over_400 14
-bare_except_pass 57
+bare_except_pass 42
 runtime_deps 0
 mocked_internal_modules 0

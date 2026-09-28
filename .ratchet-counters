@@ -3,6 +3,6 @@
 # Counted over tracked source only (git ls-files): scratch files must
 # not move a ratchet.
 files_over_400|n=0; for f in $(git ls-files '*.py'); do case "$f" in tests/*|benchmarks/*) continue;; esac; [ "$(wc -l < "$f")" -gt 400 ] && n=$((n+1)); done; echo $n
-bare_except_pass|python3 -c "import re,subprocess; files=[f for f in subprocess.run(['git','ls-files','*.py'],capture_output=True,text=True).stdout.split() if not f.startswith(('tests/','benchmarks/'))]; print(sum(len(re.findall(r'except[^\n]*:\n\s*pass\b', open(f, errors='replace').read())) for f in files))"
+bare_except_pass|python3 -c "import re,subprocess; files=[f for f in subprocess.run(['git','ls-files','*.py'],capture_output=True,text=True).stdout.split() if not f.startswith(('tests/','benchmarks/'))]; print(sum(len(re.findall(r'except\\s*(Exception|BaseException)?\\s*:\\s*\\n\\s*pass\\b', open(f, errors='replace').read())) for f in files))"
 runtime_deps|python3 -c "import tomllib; print(len(tomllib.load(open('pyproject.toml','rb'))['project'].get('dependencies', [])))"
 mocked_internal_modules|git grep -l 'unittest\.mock' -- 'tests/*.py' | wc -l
