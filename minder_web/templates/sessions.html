@@ -7,6 +7,11 @@
   Session ids are dsh's own (<code>~/.dsh/sessions/</code>) - the same id the
   hook records and <code>episodes.task_id</code> carries.
 </p>
+<p class="legend">
+  tokens = words of compute the session used (exact number on hover);
+  context = how full the AI's working memory was (over 80% means it
+  starts forgetting); capture = whether minder saved this session's evidence.
+</p>
 
 <form method="get" class="filters">
   <input type="search" name="q" value="{{ query }}" placeholder="filter by path, title or id">
@@ -38,7 +43,7 @@
       <td>{{ r.age }}<div class="excerpt">{{ r.format or '?' }} · {{ (r.log_bytes / 1024) | round(0) | int }} KiB</div></td>
       <td>{{ r.turns if r.turns is not none else '-' }}</td>
       <td>{{ r.steps if r.steps is not none else '-' }}</td>
-      <td>{{ '{:,}'.format(r.tokens_total) if r.tokens_total else '-' }}</td>
+      <td title="{{ '{:,}'.format(r.tokens_total) }} tokens"{% if not r.tokens_total %} class="na"{% endif %}>{{ r.tokens_total | human_tokens if r.tokens_total else '-' }}</td>
       <td>{% if r.context_pressure_pct is not none %}{{ r.context_pressure_pct }}%{% else %}-{% endif %}</td>
       <td>
         {% if r.sandbox_mode == 'danger-full-access' %}

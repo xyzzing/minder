@@ -18,10 +18,33 @@ header {
   padding: .6rem 1.2rem; background: var(--card);
   border-bottom: 1px solid var(--line);
 }
-nav a { margin-right: 1rem; color: var(--ink); text-decoration: none; }
+nav { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem; }
+nav a { margin-right: .55rem; color: var(--ink); text-decoration: none; }
 nav a:hover { text-decoration: underline; }
-.brand { font-weight: 700; margin-right: 1.2rem; }
-.health { color: var(--muted); font-size: .85rem; }
+.brand { font-weight: 700; margin-right: .8rem; }
+.navlabel {
+  color: var(--muted); font-size: .72rem; margin: 0 .15rem 0 .45rem;
+}
+details.adv { position: relative; display: inline-block; }
+details.adv summary {
+  cursor: pointer; color: var(--ink); list-style: none; user-select: none;
+}
+details.adv summary::-webkit-details-marker { display: none; }
+details.adv summary:hover { text-decoration: underline; }
+details.adv .advmenu {
+  position: absolute; top: calc(100% + .4rem); left: 0; z-index: 30;
+  display: flex; flex-direction: column; min-width: 7rem;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: .25rem; padding: .45rem .7rem;
+  box-shadow: 0 4px 14px rgba(29, 36, 48, .09);
+}
+details.adv .advmenu a { margin: .18rem 0; }
+.health { color: var(--muted); font-size: .85rem; white-space: nowrap; }
+.wtoggle { font-size: .8rem; color: var(--muted); font-weight: 400; }
+.wtoggle a { color: var(--muted); }
+.wtoggle a.active { color: var(--ink); font-weight: 600;
+                    text-decoration: underline; }
+.legend { color: var(--muted); font-size: .82rem; margin: .4rem 0 .8rem; }
 main { max-width: 68rem; margin: 1.2rem auto; padding: 0 1.2rem; }
 h1 { font-size: 1.35rem; } h2 { font-size: 1.05rem; margin-top: 1.6rem; }
 small { color: var(--muted); font-weight: 400; }

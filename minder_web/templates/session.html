@@ -29,8 +29,8 @@
   <tr><th>tool failures seen in log</th><td>{{ stats.tool_failures }}</td></tr>
   <tr><th>llm / tool time</th><td>{{ llm_ms or '-' }} ms /
     {{ tool_ms or '-' }} ms</td></tr>
-  <tr><th>context pressure</th><td>{% if context_pressure_pct is not none %}{{ context_pressure_pct }}%{% else %}-{% endif %}</td></tr>
-  <tr><th>tokens (total)</th><td>{{ '{:,}'.format(tokens_total) if tokens_total else '-' }}</td></tr>
+  <tr><th>context pressure <small>(how full the AI's working memory was)</small></th><td>{% if context_pressure_pct is not none %}{{ context_pressure_pct }}%{% else %}-{% endif %}</td></tr>
+  <tr><th>tokens (total) <small>(words of compute)</small></th><td title="{{ '{:,}'.format(tokens_total) if tokens_total else '' }}">{{ tokens_total | human_tokens if tokens_total else '-' }}</td></tr>
 </table>
 
 <h2>hook cost <small>(every tool call pays this)</small></h2>

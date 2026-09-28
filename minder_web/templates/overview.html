@@ -6,14 +6,18 @@
 <code>--db</code> pointing at a minder memory sqlite.</p>
 {% endif %}
 
-<h2>what to improve first <small>(past {{ window_hours }}h, from
-observed evidence on this machine)</small></h2>
+<h2>what to improve first
+  <small>(past {{ window_text }}, from observed evidence on this machine)</small>
+  <span class="wtoggle">window:
+    <a href="/?window_hours=24"{% if window_hours == 24 %} class="active"{% endif %}>day</a> ·
+    <a href="/?window_hours=168"{% if window_hours == 168 %} class="active"{% endif %}>week</a>
+  </span></h2>
 {% if verdicts %}
 <ul class="focus">
   {% for verdict in verdicts %}<li>{{ verdict }}</li>{% endfor %}
 </ul>
 {% else %}
-<p class="ok">nothing flagged in the last {{ window_hours }}h.</p>
+<p class="ok">nothing flagged in the past {{ window_text }}.</p>
 {% endif %}
 
 {% if capture %}
@@ -21,11 +25,11 @@ observed evidence on this machine)</small></h2>
 <div class="strip">
   <span class="stat"><b>
     {% if capture.coverage.ratio is none %}n/a{% else %}{{ '%.0f%%' % (capture.coverage.ratio * 100) }}{% endif %}
-  </b>coverage ({{ capture.coverage.persisted }} / {{ capture.coverage.invocations }} hooks, {{ capture.window_hours }}h)</span>
-  <span class="stat"><b>{{ capture.sink.configured and 'yes' or 'no' }}</b>sink configured</span>
+  </b>coverage ({{ capture.coverage.persisted }} of {{ capture.coverage.invocations }} tool calls saved, {{ capture.window_hours }}h)</span>
+  <span class="stat"><b>{{ capture.sink.configured and 'yes' or 'no' }}</b>save path ready (sink)</span>
   <span class="stat"><b>
     {% set fresh = capture.stores | selectattr('status', 'equalto', 'fresh') | list | length %}
-    {{ fresh }}/{{ capture.stores | length }}</b>stores fresh</span>
+    {{ fresh }}/{{ capture.stores | length }}</b>data sources fresh (stores)</span>
   <a href="/capture"><b>&rarr;</b>capture detail{% if not capture.ok %} ({{ capture.warnings | length }} warning(s)){% endif %}</a>
 </div>
 {% if not capture.ok %}
@@ -41,19 +45,19 @@ observed evidence on this machine)</small></h2>
 <table class="kv">
   <tr><th>episodes opened</th><td>{{ summary.episodes.opened_in_window }}</td></tr>
   <tr><th>episodes open now</th><td>{{ summary.episodes.open_now }}</td></tr>
-  <tr><th>verified resolution</th><td>
+  <tr><th>verified resolution <small>(fixed with a confirmed fix)</small></th><td>
     {%- set rate = summary.episodes.verified_resolution_rate -%}
     {%- if rate is none %}n/a{% else %}{{ "%.1f%%" % (rate * 100) }}{% endif -%}
   </td></tr>
   <tr><th>tool failures</th><td>{{ summary.failures.tool_failures_in_window }}</td></tr>
-  <tr><th>repeat failure keys</th><td>{{ summary.failures.repeat_failure_keys }}</td></tr>
+  <tr><th>repeat failure keys <small>(the same error coming back)</small></th><td>{{ summary.failures.repeat_failure_keys }}</td></tr>
   <tr><th>lessons created (verified / candidate)</th>
       <td>{{ summary.lessons.created_in_window.get('verified', 0) }} /
           {{ summary.lessons.created_in_window.get('candidate', 0) }}</td></tr>
   <tr><th>open gaps</th><td>{{ summary.gaps.open_now }}</td></tr>
-  <tr><th>frontier helpfulness</th>
+  <tr><th>frontier helpfulness <small>(did the outside model help?)</small></th>
       <td>{% for label, n in summary.consults.by_helpfulness | dictsort %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
-  <tr><th>decision traces / overrides</th>
+  <tr><th>decision traces / overrides <small>(routing choices / human overrides)</small></th>
       <td>{{ summary.decisions.traces_in_window }} /
           {{ summary.decisions.overrides }}</td></tr>
   <tr><th>benchmarks</th><td>{{ summary.benchmarks.status }}</td></tr>

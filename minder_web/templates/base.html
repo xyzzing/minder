@@ -10,20 +10,28 @@
   <header>
     <nav>
       <span class="brand">minder</span>
+      <span class="navlabel">how am I doing?</span>
       <a href="/">overview</a>
-      <a href="/episodes">episodes</a>
-      <a href="/events">events</a>
-      <a href="/sessions">sessions</a>
-      <a href="/capture">capture</a>
       <a href="/scorecard">scorecard</a>
+      <span class="navlabel">what happened?</span>
+      <a href="/sessions">sessions</a>
+      <a href="/events">events</a>
+      <a href="/episodes">episodes</a>
+      <span class="navlabel">what has it learned?</span>
       <a href="/lessons">lessons</a>
       <a href="/gaps">gaps</a>
       <a href="/skills">skills</a>
-      <a href="/consults">consults</a>
-      <a href="/decisions">decisions</a>
-      <a href="/difficulty">difficulty</a>
-      <a href="/benchmarks">benchmarks</a>
-      <a href="/traces">traces</a>
+      <details class="adv">
+        <summary>advanced</summary>
+        <div class="advmenu">
+          <a href="/capture">capture</a>
+          <a href="/consults">consults</a>
+          <a href="/decisions">decisions</a>
+          <a href="/difficulty">difficulty</a>
+          <a href="/benchmarks">benchmarks</a>
+          <a href="/traces">traces</a>
+        </div>
+      </details>
     </nav>
     <span class="health" title="schema v{{ health.schema_version if health.schema_version is not none else '?' }} · {{ health.status }}">{{ recording }}</span>
   </header>

@@ -81,3 +81,17 @@ def test_http_surface_is_get_only():
         methods = getattr(route, "methods", None)
         if methods:
             assert not methods & unsafe, (route.path, methods)
+
+
+def test_human_units_helpers():
+    """Wave 4: window labels and token units read as words, not raw
+    numbers."""
+    assert services._window_text(24) == "day"
+    assert services._window_text(168) == "week"
+    assert services._window_text(48) == "2 days"
+    assert services._window_text(6) == "6h"
+    assert services._human_tokens(2_056_100) == "2.06M"
+    assert services._human_tokens(5_315) == "5.3k"
+    assert services._human_tokens(918) == "918"
+    assert services._human_tokens(None) == "-"
+    assert services._human_tokens("junk") == "junk"

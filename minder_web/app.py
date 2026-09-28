@@ -23,6 +23,7 @@ from minder_web import services
 _PACKAGE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_PACKAGE_DIR / "templates"))
 templates.env.filters["human_date"] = services._human_date
+templates.env.filters["human_tokens"] = services._human_tokens
 
 app = FastAPI(title="minder operator console", docs_url=None,
               redoc_url=None, openapi_url=None)

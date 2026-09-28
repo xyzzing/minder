@@ -101,6 +101,7 @@ def overview(db_path, window_hours=24):
         "verdicts": verdicts,
         "since": since,
         "window_hours": window_hours,
+        "window_text": _window_text(window_hours),
         "focus": focus[:3],
     }
 
@@ -319,6 +320,32 @@ def _human_date(iso):
         return f"{dt.strftime('%b')} {dt.day}"
     except (TypeError, ValueError):
         return ""
+
+
+def _window_text(hours):
+    """24 -> 'day', 168 -> 'week', 48 -> '2 days', 6 -> '6h'."""
+    h = int(hours or 0)
+    if h and h % 24 == 0:
+        days = h // 24
+        if days == 1:
+            return "day"
+        if days == 7:
+            return "week"
+        return f"{days} days"
+    return f"{h}h"
+
+
+def _human_tokens(n):
+    """2056100 -> '2.06M'; 5315 -> '5.3k'; 918 -> '918'."""
+    try:
+        value = float(n)
+    except (TypeError, ValueError):
+        return str(n or "-")
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.2f}M"
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}k"
+    return f"{int(value)}" if value else "-"
 
 
 def recording(db_path):

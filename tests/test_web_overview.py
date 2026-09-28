@@ -40,8 +40,36 @@ def test_overview_window_param_reaches_capture_strip(tmp_path,
     dbp = new_db(tmp_path)
     client = webseed.client_for(dbp, monkeypatch)
     text = client.get("/?window_hours=48").text
-    assert "past 48h" in text
-    assert "48h" in text  # verdict section label carries the window
+    assert "past 2 days" in text  # human window label, not raw hours
+    # day/week toggle links present, day active at default window
+    assert "window:" in text
+    assert '/?window_hours=24"' in text and '/?window_hours=168"' in text
+
+
+def test_nav_groups_links_behind_advanced_drawer(tmp_path, monkeypatch):
+    """Wave 4: the nav answers three questions; operator-only surfaces
+    sit behind the advanced drawer (all still one click, GET-only)."""
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    text = client.get("/").text
+    for label in ("how am I doing?", "what happened?",
+                  "what has it learned?"):
+        assert label in text
+    assert 'class="adv"' in text and "<summary>advanced</summary>" in text
+    for href in ('href="/capture"', 'href="/difficulty"',
+                 'href="/traces"'):
+        assert href in text
+    # plain-language glosses on the landing page
+    assert "tool calls saved" in text
+    assert "save path ready" in text
+
+
+def test_overview_glosses_weekly_jargon(tmp_path, monkeypatch):
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    text = client.get("/").text
+    assert "the same error coming back" in text
+    assert "did the outside model help?" in text
 
 
 def test_overview_shows_env_flags_display_only(tmp_path, monkeypatch):
