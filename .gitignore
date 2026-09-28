@@ -40,7 +40,6 @@ docs/*
 
 # injected by local audit hooks — generic agent scaffolding, not project code
 .agentic/
-CLAUDE.md
 
 # python build artifacts
 *.egg-info/

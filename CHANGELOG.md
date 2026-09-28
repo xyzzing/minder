@@ -3,6 +3,24 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## Unreleased — gap-trap quality framework
+
+- **Instruction files + gates installed (gap-trap setup).** AGENTS.md
+  is now the portable rules core (I/P/C/M rules, self-improvement
+  protocol); AGENTS.project.md carries five architecture contracts
+  (SQLite access, outbound HTTP, process execution, secret redaction,
+  version single-source), project rules (direct-push exception,
+  fail-open logging, no runtime deps, console copy), verification, and
+  the graft guide (always-loaded, per owner choice). Gates: instruction
+  gate (tests/test_instruction_gate.py), ratchet
+  (files_over_400/bare_except_pass/runtime_deps/mocked_internal_modules),
+  mutation smoke (comparator/redaction/transaction), proven red + PR
+  acceptance CI jobs, `make gates`, and a versioned pre-commit hook
+  chaining the user's global hook. Every gate proven red before
+  landing. CLAUDE.md was un-ignored (it had never actually been
+  committed despite the 0.8.1 commit message claiming so) and is now
+  the 2-line import stub.
+
 ## Unreleased — console plain-language tier (wave 4) + 0.8.1 recheck fixes
 
 - **The console nav answers three questions.** Destinations regroup as

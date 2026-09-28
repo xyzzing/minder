@@ -13,10 +13,13 @@ MINDER_NO_SYSTEMD=1 python3 -m pytest tests/ -q
 
 - `MINDER_NO_SYSTEMD=1` is required unless you actually want the suite to
   touch your user systemd units — install/uninstall paths are per-user.
+- Inside the zcode harness, prefix with `env -u LD_LIBRARY_PATH` (the
+  appimage library path poisons subprocess Python).
 - The suite is hermetic: all traffic hits an in-repo mock upstream, and state
   is isolated into a temp dir. A slow machine may need `MINDER_TEST_TIMEOUT=120`.
-- Please run the suite before opening a PR; CI runs the same command on
-  Python 3.10–3.12.
+- Please run the suite before opening a PR (`make gates` also runs the
+  instruction gate and the ratchet); CI runs the same command on
+  Python 3.11–3.14, plus pinned ruff and mypy jobs.
 
 ## Design conventions
 
