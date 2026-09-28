@@ -23,7 +23,8 @@ import pytest
 # ---- config ---------------------------------------------------------------
 REPO = Path(__file__).resolve().parents[1]
 PACKAGE_DIRS = ["minder_core", "minder_memory", "minder_decision",
-                "minder_trace", "minder_op", "minder_web", "dsh"]
+                "minder_trace", "minder_op", "minder_web", "dsh",
+                "minder_domain_evals"]
 ROOT_MODULES = ["minder.py", "hook.py", "proxy.py", "sink.py",
                 "frontier.py", "adapter.py", "reflex.py",
                 "probe_dialect.py"]
