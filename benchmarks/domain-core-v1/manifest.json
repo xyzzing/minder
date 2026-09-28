@@ -1,0 +1,36 @@
+{
+  "manifest_version": 1,
+  "suite_id": "domain-core-v1",
+  "title": "Deterministic non-coding domain suite (finance, trade, sustainability, governance, grounded extraction)",
+  "description": "Seeded business-rule cases graded by code oracles, not by a judge model. Families: Singapore carbon tax + GHG Scope 2; CFO-office finance (GST, NPV, loan annuity, IFRS 16 initial measurement, budget variance); UCP 600 letter-of-credit examination and Incoterms 2020 risk allocation; procurement controls (delegation of authority, three-way match, segregation of duties) and PDPA breach notification; grounded extraction with verbatim-quote checks. Every case carries abstention probes and metamorphic twins. Rule parameters and their provenance live in minder_domain_evals/rulebook.py. Seeds >= 1000 are the holdout split. The committed fixture is a small dev sample; any (seed, n) regenerates byte-identically.",
+  "tiers": [0, 1, 2],
+  "tasks": [
+    {
+      "task_id": "t0_domain_oracles",
+      "tier": 0,
+      "family": "contract",
+      "title": "Oracles pass themselves, every mutant fails, hand-worked anchors hold (tests/test_domain_evals.py)",
+      "fixtures": [],
+      "expected": "tests_pass",
+      "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "network", "package_install", "ssh", "writes_outside_sandbox"]
+    },
+    {
+      "task_id": "t1_domain_reference_replay",
+      "tier": 1,
+      "family": "decision_replay",
+      "title": "Reference answers replay through the grader at 100% on the committed dev sample",
+      "fixtures": ["cases/dev-seed7-n10.jsonl"],
+      "expected": "tests_pass",
+      "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "network", "package_install", "ssh", "writes_outside_sandbox"]
+    },
+    {
+      "task_id": "t2_domain_live_model",
+      "tier": 2,
+      "family": "domain_live",
+      "title": "Local model through the minder proxy: python -m minder_domain_evals run/score; compare reports with minder-op benchmark compare",
+      "fixtures": ["cases/dev-seed7-n10.jsonl"],
+      "expected": "manual_review",
+      "forbidden": ["browser", "broker", "dsh_gui", "frontier_call", "package_install", "ssh", "writes_outside_sandbox"]
+    }
+  ]
+}

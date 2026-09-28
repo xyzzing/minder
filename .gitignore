@@ -36,6 +36,7 @@ opencode.json
 docs/*
 !docs/operator-cli.md
 !docs/operator-web.md
+!docs/domain-evals.md
 !docs/adr/
 
 # injected by local audit hooks — generic agent scaffolding, not project code

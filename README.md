@@ -131,6 +131,25 @@ domain-routing cases through any provider
 (`minder-op routes replay --provider rules|laya|null`) using the same
 comparator.
 
+### Non-coding domains: `domain-core-v1`
+
+Finance, trade finance, sustainability and governance tasks with **code
+oracles instead of a judge model**. Seeded generators produce unlimited
+cases. Each case has a unique answer fixed by a rule (GST, IFRS 16, UCP 600,
+Incoterms 2020, the Singapore Carbon Pricing Act, PDPA Part 6A) or by a
+stated company policy. The suite also scores abstention (`insufficient_data`
+when an input is missing), fabricated evidence in document extraction, and
+metamorphic consistency.
+
+```bash
+python3 -m minder_domain_evals selfcheck --seed 7 --n 200
+python3 -m minder_domain_evals generate --seed 7 --n 50 --out cases.jsonl
+python3 -m minder_domain_evals run --cases cases.jsonl --out answers.jsonl --model qwen-exec
+python3 -m minder_domain_evals score --cases cases.jsonl --answers answers.jsonl --out report.json
+```
+
+Details, rule provenance and limits: [docs/domain-evals.md](docs/domain-evals.md).
+
 ## minder_core — use the pieces without the runtime
 
 Two parts of minder are deliberately dependency-free (Python stdlib only,
