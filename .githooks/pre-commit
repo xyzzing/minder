@@ -1,0 +1,11 @@
+#!/bin/sh
+# gap-trap pre-commit: instruction gate + ratchet, then the user's
+# global hook (agent-audit) when present. Enable once per clone:
+#   git config core.hooksPath .githooks
+set -e
+cd "$(git rev-parse --show-toplevel)"
+env -u LD_LIBRARY_PATH python3 -m pytest tests/test_instruction_gate.py -q
+scripts/ratchet.sh
+if [ -x "$HOME/.git-hooks/pre-commit" ]; then
+  "$HOME/.git-hooks/pre-commit" "$@"
+fi
