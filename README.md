@@ -112,6 +112,29 @@ MINDER_DECISION=shadow                             # log-only gateway traces
 Frontier consults (L2) run through the bundled `frontier.py` runner or your
 own via `--frontier-cmd`; bring your own key — minder never ships one.
 
+### Switching the model upstream
+
+The proxy serves one upstream at a time. To point a running install at a
+different OpenAI-compatible server, add a systemd drop-in and restart:
+
+```bash
+mkdir -p ~/.config/systemd/user/minder-proxy.service.d
+cat > ~/.config/systemd/user/minder-proxy.service.d/upstream.conf <<'EOF'
+[Service]
+Environment=MINDER_UPSTREAM=http://127.0.0.1:8081
+EOF
+systemctl --user daemon-reload && systemctl --user restart minder-proxy
+```
+
+The proxy re-runs the capability probe against the new upstream on boot and
+rewrites `model_caps.json`, so thinking mechanisms and tool-call dialects
+are re-measured on every switch. Presets only need changes if the new
+server validates model names — a server that ignores them works with the
+installed presets as-is. Two engines competing for the same GPU cannot run
+concurrently: stop one before starting the other, and while the configured
+upstream is down the proxy returns an honest 502
+(`minder_upstream_unavailable`) instead of failing silently.
+
 ## Benchmark and evaluation harness
 
 ```bash
