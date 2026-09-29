@@ -27,6 +27,18 @@ commit hash behind it; the instruction gate checks the hash exists.
   healthy (sink ops ok) while capturing nothing. Diagnose with
   `minder-op capture` and a hook/result scan of the dsh session log.
   (07dbfc2)
+- The proxy upstream is switchable on a running install via the systemd
+  drop-in `minder-proxy.service.d/upstream.conf`; the CAP probe
+  re-measures the engine on every proxy restart. The second upstream
+  (Strata HIP server, loopback :8081) is mutually exclusive with
+  llama-server on GPU VRAM: stop one engine before starting the other.
+  (#1)
+- The Strata upstream serves one sequence at a time (FIFO), so
+  concurrent minder-routed requests queue behind each other, and its
+  tuning tooling stops the server mid-run - honest 502s from the proxy
+  until it returns. It ignores request model names and reports usage on
+  the final SSE chunk, so installed presets and the token ledger work
+  unchanged. (#1)
 
 ## Code paths that failed silently
 
