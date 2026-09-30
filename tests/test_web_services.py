@@ -76,19 +76,23 @@ def test_limit_is_bounded(tmp_path):
 
 def test_http_surface_is_get_only():
     """GET-only except the engine lifecycle switch (issue #3), the
-    console's single write path; any other write route is a regression."""
+    console's single write path; the write surface must exist and must
+    not grow."""
     from minder_web.app import app
     unsafe = {"PUT", "DELETE", "PATCH"}
     write_routes = {"/engine/switch"}
+    seen_write = set()
     for route in app.routes:
         methods = getattr(route, "methods", None)
         if not methods:
             continue
         if route.path in write_routes:
             assert methods == {"POST"}, (route.path, methods)
+            seen_write.add(route.path)
             continue
         assert not (methods & unsafe or "POST" in methods), \
             (route.path, methods)
+    assert seen_write == write_routes
 
 
 def test_human_units_helpers():
