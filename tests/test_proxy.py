@@ -8,6 +8,7 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 import proxy
+import minder
 from mock_upstream import MockUpstream
 
 CONFIG_DIR = proxy.CONFIG_DIR
@@ -419,7 +420,7 @@ def test_boot_reverify_writes_fresh_caps(proxy_over_mock, monkeypatch, tmp_path)
     mock, srv, url = proxy_over_mock("default")
     try:
         monkeypatch.setattr(proxy, "UPSTREAM", mock.url)
-        monkeypatch.setattr(proxy, "CONFIG_DIR", tmp_path)
+        monkeypatch.setattr(minder, "CAPS_PATH", tmp_path / "model_caps.json")
         monkeypatch.setattr(proxy.minder, "log", lambda *a, **k: None)
         stale = {"fingerprint": {"model_id": "old-model"},
                  "thinking": {"mechanism": "none"}}

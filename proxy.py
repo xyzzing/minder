@@ -74,22 +74,66 @@ def load_presets():
 
 
 PRESETS = load_presets()
-_caps_cache = {"mtime": None, "caps": None}
+
+
+def _config_stamp():
+    """(mtime_ns, size) of minder.json — the change signal for hot engine
+    switches; None when the config file does not exist."""
+    try:
+        st = minder.CFG_PATH.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _engine_fingerprint(c):
+    """What refresh_upstream() may act on: the active engine and its
+    registry entry. Other config edits (budgets, guardrails) never
+    re-resolve the upstream."""
+    engines, active = minder.engine_registry(c)
+    return json.dumps([active, engines], sort_keys=True)
+
+
+_engine_state = {"stamp": _config_stamp(),
+                 "fp": _engine_fingerprint(minder.cfg())}
+
+
+def refresh_upstream():
+    """Re-resolve the active engine's upstream when the engine registry in
+    minder.json changes (issue #3): an engine switch is a config edit, not
+    a proxy restart. The stamp keeps the per-request check a stat call, and
+    a directly assigned UPSTREAM (tests, the legacy env path) stands until
+    the registry itself changes."""
+    global UPSTREAM
+    stamp = _config_stamp()
+    if stamp == _engine_state["stamp"]:
+        return
+    c = minder.cfg()
+    fp = _engine_fingerprint(c)
+    switched = fp != _engine_state["fp"]
+    _engine_state.update(stamp=stamp, fp=fp)
+    if switched:
+        UPSTREAM = minder.engine_upstream(c)
+
+
+_caps_cache = {"path": None, "mtime": None, "caps": None}
 
 
 def get_caps():
+    p = minder.caps_path()
     try:
-        m = (CONFIG_DIR / "model_caps.json").stat().st_mtime
+        m = p.stat().st_mtime
     except OSError:
+        _caps_cache.update(path=str(p), mtime=None, caps=None)
         return None
-    if _caps_cache["mtime"] != m:
+    if _caps_cache.get("path") != str(p) or _caps_cache.get("mtime") != m:
         try:
-            _caps_cache["caps"] = json.loads(
-                (CONFIG_DIR / "model_caps.json").read_text())
+            _caps_cache["caps"] = json.loads(p.read_text())
         except (OSError, ValueError):
             _caps_cache["caps"] = None
+        _caps_cache["path"] = str(p)
         _caps_cache["mtime"] = m
-    return _caps_cache["caps"]
+    return _caps_cache.get("caps")
 
 
 def flat_params(preset):
@@ -571,6 +615,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def do_POST(self):
+        refresh_upstream()
         try:
             raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         except (ValueError, ConnectionResetError):
@@ -630,6 +675,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(msg)
 
     def do_GET(self):
+        refresh_upstream()
         if self.path.rstrip("/").endswith("/models"):
             try:
                 with urllib.request.urlopen(UPSTREAM + self.path,
@@ -672,10 +718,10 @@ def refresh_caps_in_background():
             return
         cached = get_caps() or {}
         try:
-            adapter.write_caps(CONFIG_DIR / "model_caps.json", fresh)
+            adapter.write_caps(minder.caps_path(), fresh)
         except OSError:
             return
-        _caps_cache["mtime"] = None  # force reload on next get_caps()
+        _caps_cache.update(path=None, mtime=None)  # force reload on next get_caps()
         changed = ((cached.get("fingerprint") or {}).get("model_id") !=
                    (fresh.get("fingerprint") or {}).get("model_id") or
                    (cached.get("thinking") or {}).get("mechanism") !=
@@ -691,6 +737,7 @@ def refresh_caps_in_background():
 
 
 def main():
+    refresh_upstream()
     minder.log("proxy", "cap_result",
                mechanism=(get_caps() or {}).get("thinking", {}).get("mechanism"),
                model_id=(get_caps() or {}).get("fingerprint", {}).get("model_id"))

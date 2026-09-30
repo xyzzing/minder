@@ -135,6 +135,28 @@ concurrently: stop one before starting the other, and while the configured
 upstream is down the proxy returns an honest 502
 (`minder_upstream_unavailable`) instead of failing silently.
 
+### Engine registry
+
+For installs that move between engines regularly, `minder.json` can name
+them. Each entry carries the upstream URL and the systemd user unit that
+runs the engine; `active_engine` picks which one the proxy forwards to:
+
+```json
+{
+  "engines": {
+    "llama":  {"upstream": "http://127.0.0.1:8080", "unit": "llama-model@qwen27b"},
+    "strata": {"upstream": "http://127.0.0.1:8081", "unit": "strata-hip"}
+  },
+  "active_engine": "llama"
+}
+```
+
+With a registry present the proxy re-resolves the active engine on every
+request, so switching is a one-line config edit and a unit restart — no
+proxy restart. Capabilities are measured per engine into
+`model_caps.<engine>.json`. An install without an `engines` key keeps the
+single-upstream behavior above.
+
 ## Benchmark and evaluation harness
 
 ```bash

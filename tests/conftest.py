@@ -6,7 +6,10 @@ import tempfile
 _SESSION_TMP = tempfile.mkdtemp(prefix="minder-session-")
 os.environ.setdefault("MINDER_STATE_DIR", os.path.join(_SESSION_TMP, "state"))
 os.environ.setdefault("MINDER_CONFIG", os.path.join(_SESSION_TMP, "minder.json"))
-os.environ.setdefault("MINDER_CAPS", os.path.join(_SESSION_TMP, "caps.json"))
+# Same filename as the CONFIG_DIR caps file: in production CAPS_PATH and
+# CONFIG_DIR are the one ~/.config/minder/model_caps.json, and the proxy
+# resolves caps through minder.caps_path().
+os.environ.setdefault("MINDER_CAPS", os.path.join(_SESSION_TMP, "model_caps.json"))
 os.environ.setdefault("MINDER_CONFIG_DIR", _SESSION_TMP)
 os.environ.setdefault("MINDER_UPSTREAM", "http://127.0.0.1:1")
 os.environ.setdefault("MINDER_PORT", "0")
