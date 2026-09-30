@@ -27,6 +27,34 @@ commit hash behind it; the instruction gate checks the hash exists.
   healthy (sink ops ok) while capturing nothing. Diagnose with
   `minder-op capture` and a hook/result scan of the dsh session log.
   (07dbfc2)
+- The proxy upstream is switchable on a running install via the systemd
+  drop-in `minder-proxy.service.d/upstream.conf`; the CAP probe
+  re-measures the engine on every proxy restart. The second upstream
+  (Strata HIP server, loopback :8081) is mutually exclusive with
+  llama-server on GPU VRAM: stop one engine before starting the other.
+  (#1)
+- The Strata upstream serves one sequence at a time (FIFO), so
+  concurrent minder-routed requests queue behind each other, and its
+  tuning tooling stops the server mid-run - honest 502s from the proxy
+  until it returns. It ignores request model names and reports usage on
+  the final SSE chunk, so installed presets and the token ledger work
+  unchanged. (#1)
+- Multi-turn Strata prefix-cache measurements (2026-10-01, engine 0.1.24
+  + PR #121 HIP build, 12-turn replay, ~260-token turns growing to
+  ~3.6k prompt tokens; `benchmarks/multiturn_cache.py`): an append-only
+  conversation with constant chat_template_kwargs re-reads ~263 tokens
+  per turn (86% reuse); alternating enable_thinking per turn re-reads
+  the whole conversation every turn (0% reuse, re-reads growing 826 ->
+  3588 tokens, 2.3x wall at 3.6k context and linear in context length);
+  a one-time history reorder costs exactly one full re-prefill (~1.6k
+  tokens) and caching then resumes. Two implications: the proxy pins
+  thinking kwargs per session on single-slot engines (#3), and any
+  harness that mutates rendered history mid-session pays a full
+  re-prefill per mutation on this engine. Caveat: the fork's OpenAI
+  usage omits prompt_tokens_details.cached_tokens - reuse is visible
+  only in /metrics totals (reused counter), which is why the ledger's
+  cached_tokens field stays empty on Strata until the fork maps its
+  `reused` counter into the usage payload. (#3)
 
 ## Code paths that failed silently
 

@@ -303,6 +303,34 @@ def run_checks(db_path, probe=True, now=None):
             f"{len(baselines)} pinned: "
             + ", ".join(row["suite_id"] for row in baselines))
 
+    # Engine registry (issue #3): which engine is active, is its unit
+    # running, is its upstream answering; warn when two engine units run
+    # at once (they compete for the same GPU).
+    try:
+        from minder_op import engines as engines_mod
+        rows = engines_mod.status()
+        if not rows:
+            add("engine", "info",
+                "no engine registry - proxy uses MINDER_UPSTREAM directly")
+        else:
+            active = next((r for r in rows if r["active"]), None)
+            if active:
+                state = f"unit {active['unit_state']}" if \
+                    active["unit_state"] else "no unit"
+                health = "healthy" if active["healthy"] else "unhealthy"
+                status = "ok" if active["healthy"] else "warn"
+                add("engine", status,
+                    f"active '{active['name']}' at {active['upstream']} "
+                    f"({state}, {health})")
+            running = [r["name"] for r in rows
+                       if r.get("unit_state") == "active"]
+            if len(running) > 1:
+                add("engine_units", "warn",
+                    f"engine units running together: {', '.join(running)} "
+                    "- they compete for the same GPU; stop one")
+    except Exception as exc:  # never let a health check crash doctor
+        add("engine", "info", f"engine registry unavailable: {exc}")
+
     return {
         "healthy": not any(c["status"] == "fail" for c in checks),
         "checks": checks,

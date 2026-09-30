@@ -74,22 +74,176 @@ def load_presets():
 
 
 PRESETS = load_presets()
-_caps_cache = {"mtime": None, "caps": None}
+
+
+def _config_stamp():
+    """(mtime_ns, size) of minder.json — the change signal for hot engine
+    switches; None when the config file does not exist."""
+    try:
+        st = minder.CFG_PATH.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _engine_fingerprint(c):
+    """What refresh_upstream() may act on: the active engine and its
+    registry entry. Other config edits (budgets, guardrails) never
+    re-resolve the upstream."""
+    engines, active = minder.engine_registry(c)
+    return json.dumps([active, engines], sort_keys=True)
+
+
+_engine_state = {"stamp": _config_stamp(),
+                 "fp": _engine_fingerprint(minder.cfg())}
+
+
+def refresh_upstream():
+    """Re-resolve the active engine's upstream when the engine registry in
+    minder.json changes (issue #3): an engine switch is a config edit, not
+    a proxy restart. The stamp keeps the per-request check a stat call, and
+    a directly assigned UPSTREAM (tests, the legacy env path) stands until
+    the registry itself changes."""
+    global UPSTREAM
+    stamp = _config_stamp()
+    if stamp == _engine_state["stamp"]:
+        return
+    c = minder.cfg()
+    fp = _engine_fingerprint(c)
+    switched = fp != _engine_state["fp"]
+    _engine_state.update(stamp=stamp, fp=fp)
+    if switched:
+        UPSTREAM = minder.engine_upstream(c)
+
+
+_caps_cache = {"path": None, "mtime": None, "caps": None}
 
 
 def get_caps():
+    p = minder.caps_path()
     try:
-        m = (CONFIG_DIR / "model_caps.json").stat().st_mtime
+        m = p.stat().st_mtime
     except OSError:
+        _caps_cache.update(path=str(p), mtime=None, caps=None)
         return None
-    if _caps_cache["mtime"] != m:
+    if _caps_cache.get("path") != str(p) or _caps_cache.get("mtime") != m:
         try:
-            _caps_cache["caps"] = json.loads(
-                (CONFIG_DIR / "model_caps.json").read_text())
+            _caps_cache["caps"] = json.loads(p.read_text())
         except (OSError, ValueError):
             _caps_cache["caps"] = None
+        _caps_cache["path"] = str(p)
         _caps_cache["mtime"] = m
-    return _caps_cache["caps"]
+    return _caps_cache.get("caps")
+
+
+def _single_slot():
+    return bool(((get_caps() or {}).get("concurrency") or {})
+                .get("single_slot"))
+
+
+def _session(handler):
+    return getattr(handler, "_fp", None) or "session:passthru"
+
+
+# --- single-slot engine queue (issue #3) --------------------------------
+# strata-amd serves one sequence at a time. When caps measure single_slot,
+# chat requests serialize here so harness concurrency becomes an honest
+# wait (logged) instead of an opaque upstream stall, and overflow is a 503
+# instead of a silent pile-up.
+_slot = {"lock": threading.Lock(), "busy": False, "waiters": []}
+MIN_MAX_TOKENS = 512
+
+
+def _slot_reset():
+    """Test hook: return the queue to its idle state."""
+    with _slot["lock"]:
+        _slot.update(busy=False, waiters=[])
+
+
+def _slot_acquire(depth):
+    """Take the engine slot. Returns the wait in ms (0.0 when immediate),
+    or None when depth waiters are already queued (caller answers 503)."""
+    my = threading.Event()
+    with _slot["lock"]:
+        if _slot["busy"] or _slot["waiters"]:
+            if len(_slot["waiters"]) >= depth:
+                return None
+            _slot["waiters"].append(my)
+        else:
+            _slot["busy"] = True
+            return 0.0
+    start = time.monotonic()
+    my.wait()
+    return (time.monotonic() - start) * 1000.0
+
+
+def _slot_release():
+    """Hand the slot to the longest-waiting request, or free it."""
+    with _slot["lock"]:
+        if _slot["waiters"]:
+            _slot["waiters"].pop(0).set()
+        else:
+            _slot["busy"] = False
+
+
+# --- prefix stability (issue #3) ----------------------------------------
+# A single-slot engine reuses conversation checkpoints only on an exact
+# prompt prefix. chat_template_kwargs are rendered into that prefix, so
+# mid-session flips re-render it. The exec/think path pins the first
+# thinking decision per session (escalation still overrides, deliberately);
+# any kwargs change that does land is logged as a cache_prefix_break.
+_MODE_PIN = {}
+_LAST_KWARGS = {}
+_PIN_LIMIT = 512
+
+
+def _pin_thinking(session_fp, want, level, caps):
+    """Pin the session's thinking decision under a single-slot kwargs
+    engine. Softswitch changes touch only the request tail and pass
+    through unpinned."""
+    if not _single_slot() or \
+            (caps or {}).get("thinking", {}).get("mechanism") != "kwargs":
+        return want
+    if len(_MODE_PIN) > _PIN_LIMIT:
+        _MODE_PIN.clear()
+    if level is not None:
+        _MODE_PIN[session_fp] = want
+        return want
+    prev = _MODE_PIN.setdefault(session_fp, want)
+    if prev != want:
+        minder.log(session_fp, "mode_pin_hold", held=prev, requested=want)
+        return prev
+    return want
+
+
+def _note_prefix(session_fp, req):
+    """Log a cache_prefix_break when a request's chat_template_kwargs
+    differ from the session's previous request. Escalation flips,
+    effort-schedule changes, and budget assignments all surface here."""
+    if not _single_slot():
+        return
+    ctk = req.get("chat_template_kwargs")
+    if not isinstance(ctk, dict) or not ctk:
+        return
+    if len(_LAST_KWARGS) > _PIN_LIMIT:
+        _LAST_KWARGS.clear()
+    key = json.dumps(ctk, sort_keys=True)
+    prev = _LAST_KWARGS.get(session_fp)
+    _LAST_KWARGS[session_fp] = key
+    if prev is not None and prev != key:
+        minder.log(session_fp, "cache_prefix_break", was=prev, now=key)
+
+
+def _is_context_400_body(raw):
+    """Strata rejects prompt+max_tokens over context with 400 and a message
+    about the context; llama.cpp words it similarly. Both match here."""
+    try:
+        body = json.loads(raw.decode("utf-8", "replace"))
+        msg = str(((body or {}).get("error") or {}).get("message", ""))
+    except (ValueError, AttributeError):
+        return False
+    low = msg.lower()
+    return "context" in low and ("exceed" in low or "no room" in low)
 
 
 def flat_params(preset):
@@ -185,6 +339,7 @@ def apply_pipeline(req, session_fp, mode=None):
     if caps is None:
         minder.log(session_fp, "caps_missing")
     else:
+        want = _pin_thinking(session_fp, want, level, caps)
         req, degraded = adapter.apply_mode(req, want, caps, active)
         if degraded:
             minder.log(session_fp, "l1_degraded")
@@ -196,6 +351,7 @@ def apply_pipeline(req, session_fp, mode=None):
             ctk = dict(req.get("chat_template_kwargs") or {})
             ctk["thinking_budget"] = MODE_BUDGET[mode]
             req["chat_template_kwargs"] = ctk
+        _note_prefix(session_fp, req)
 
     um = active.get("upstream_model")
     if um:
@@ -416,6 +572,7 @@ def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None,
             req["chat_template_kwargs"] = ctk
     else:
         req["chat_template_kwargs"] = {"enable_thinking": want}
+    _note_prefix(session_fp, req)
     um = preset.get("upstream_model")
     if um:
         req["model"] = um
@@ -518,8 +675,11 @@ class Handler(BaseHTTPRequestHandler):
                             cd["reasoning_tokens"])
             flat = {k: u[k] for k in ("prompt_tokens", "completion_tokens",
                                       "total_tokens") if u.get(k) is not None}
+            # the engine is the registry's active entry at response time;
+            # across a switch boundary one response can carry the new name
             minder.log(getattr(self, "_fp", None) or "session:passthru",
-                       "token_usage", **flat, **details)
+                       "token_usage", engine=minder.engine_registry()[1],
+                       **flat, **details)
 
     def _relay(self, up):
         self.send_response(up.status)
@@ -545,15 +705,43 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             self._log_usage()
 
-    def _forward_raw(self, body=None):
+    def _forward_raw(self, body=None, parsed=None):
         headers = {"Content-Type": self.headers.get("Content-Type",
                                                     "application/json")}
+        # single-slot engines reject over-context requests with 400 instead
+        # of truncating; one honest retry with a halved max_tokens recovers
+        # the request when the prompt itself still fits (issue #3)
+        can_retry = (parsed is not None and _single_slot()
+                     and isinstance(parsed.get("max_tokens"), int)
+                     and parsed["max_tokens"] > MIN_MAX_TOKENS)
         r = urllib.request.Request(UPSTREAM + self.path, data=body,
                                    headers=headers, method=self.command)
         try:
             up = urllib.request.urlopen(r, timeout=600)
         except urllib.error.HTTPError as e:
-            up = e
+            up = None
+            if can_retry and e.code == 400:
+                captured = e.read()
+                if _is_context_400_body(captured):
+                    was = parsed["max_tokens"]
+                    parsed["max_tokens"] = max(MIN_MAX_TOKENS, was // 2)
+                    minder.log(_session(self), "context_clamp_retry",
+                               was=was, now=parsed["max_tokens"])
+                    body = json.dumps(parsed).encode()
+                    r = urllib.request.Request(UPSTREAM + self.path,
+                                               data=body, headers=headers,
+                                               method=self.command)
+                    try:
+                        up = urllib.request.urlopen(r, timeout=600)
+                    except urllib.error.HTTPError as e2:
+                        up = e2
+                else:
+                    self._respond(e.code, captured,
+                                  e.headers.get("Content-Type")
+                                  if e.headers else None)
+                    return
+            if up is None:
+                up = e
         except Exception:
             msg = json.dumps({"error": {"message":
                 f"minder: upstream unreachable at {UPSTREAM} (fail-open: "
@@ -570,16 +758,26 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    def _respond(self, status, body, ctype=None):
+        self.send_response(status)
+        self.send_header("Content-Type", ctype or "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
+        refresh_upstream()
         try:
             raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         except (ValueError, ConnectionResetError):
             return
+        parsed = None
         if self.path.rstrip("/").endswith("/chat/completions") and \
                 0 < len(raw) <= SCAN_GATE_BYTES:
             try:
                 req = json.loads(raw)
                 if isinstance(req, dict):
+                    parsed = req
                     if DUMP_DIR:
                         try:
                             pathlib.Path(DUMP_DIR).mkdir(parents=True,
@@ -617,7 +815,31 @@ class Handler(BaseHTTPRequestHandler):
                     raw = json.dumps(req).encode()
             except (ValueError, TypeError):
                 pass  # non-JSON body → pass through untouched
-        self._forward_raw(raw)
+        depth = None
+        if parsed is not None and _single_slot():
+            depth = minder.cfg().get("single_slot_queue_depth", 8)
+            wait = _slot_acquire(depth)
+            if wait is None:
+                minder.log(_session(self), "queue_full", depth=depth)
+                body = json.dumps({"error": {"message":
+                    f"minder: the single-slot engine's queue is full "
+                    f"(depth {depth}); retry shortly",
+                    "type": "minder_queue_full"}}).encode()
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Retry-After", "2")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if wait > 0:
+                minder.log(_session(self), "queue_wait",
+                           wait_ms=round(wait), depth=depth)
+        try:
+            self._forward_raw(raw, parsed=parsed)
+        finally:
+            if depth is not None:
+                _slot_release()
 
     def _upstream_down(self):
         msg = json.dumps({"error": {"message":
@@ -630,6 +852,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(msg)
 
     def do_GET(self):
+        refresh_upstream()
         if self.path.rstrip("/").endswith("/models"):
             try:
                 with urllib.request.urlopen(UPSTREAM + self.path,
@@ -672,10 +895,10 @@ def refresh_caps_in_background():
             return
         cached = get_caps() or {}
         try:
-            adapter.write_caps(CONFIG_DIR / "model_caps.json", fresh)
+            adapter.write_caps(minder.caps_path(), fresh)
         except OSError:
             return
-        _caps_cache["mtime"] = None  # force reload on next get_caps()
+        _caps_cache.update(path=None, mtime=None)  # force reload on next get_caps()
         changed = ((cached.get("fingerprint") or {}).get("model_id") !=
                    (fresh.get("fingerprint") or {}).get("model_id") or
                    (cached.get("thinking") or {}).get("mechanism") !=
@@ -691,6 +914,7 @@ def refresh_caps_in_background():
 
 
 def main():
+    refresh_upstream()
     minder.log("proxy", "cap_result",
                mechanism=(get_caps() or {}).get("thinking", {}).get("mechanism"),
                model_id=(get_caps() or {}).get("fingerprint", {}).get("model_id"))

@@ -46,6 +46,14 @@ DEFAULTS = {
     "laya_timeout_ms": 1500,      # wall-clock cap on one classify pass
     "spend_guardrail_tokens": 50000,  # session thinking-token cap (0 = off)
     "difficulty_bands": {},       # optional per-label band overrides
+    # dual-engine registry (issue #3): name -> {"upstream": url, "unit":
+    # systemd user unit}; installs without this key keep the legacy
+    # single-upstream behavior resolved from MINDER_UPSTREAM
+    "engines": {},
+    "active_engine": None,
+    # single-slot engine profile (issue #3): how many chat requests may
+    # wait for the engine's one sequence before the proxy answers 503
+    "single_slot_queue_depth": 8,
 }
 
 # §6.1 structural failure signals — never semantic, never model-name based.
@@ -94,6 +102,47 @@ def cfg():
 
 
 _chain_tail = None
+
+
+def engine_registry(c=None):
+    """Normalized engine map plus the active engine name (issue #3).
+
+    An install without an engines key keeps the legacy single-upstream
+    behavior: one implicit engine named llama resolved from
+    MINDER_UPSTREAM. Entries without an upstream are skipped; an
+    active_engine that names nothing falls back to the first entry."""
+    c = cfg() if c is None else c
+    engines = {}
+    raw = c.get("engines")
+    if isinstance(raw, dict):
+        for name, e in raw.items():
+            if isinstance(e, dict) and e.get("upstream"):
+                engines[name] = {"upstream": str(e["upstream"]).rstrip("/"),
+                                 "unit": e.get("unit") or None}
+    if not engines:
+        env = os.environ.get("MINDER_UPSTREAM", "http://127.0.0.1:8080")
+        engines["llama"] = {"upstream": env.rstrip("/"), "unit": None}
+        return engines, "llama"
+    active = c.get("active_engine")
+    if active not in engines:
+        active = next(iter(engines))
+    return engines, active
+
+
+def engine_upstream(c=None):
+    """Upstream URL of the active engine."""
+    engines, active = engine_registry(c)
+    return engines[active]["upstream"]
+
+
+def caps_path(c=None):
+    """Caps file of the active engine: the legacy single file while no
+    registry is configured, model_caps.<engine>.json otherwise."""
+    c = cfg() if c is None else c
+    if not c.get("engines"):
+        return CAPS_PATH
+    _, active = engine_registry(c)
+    return CAPS_PATH.with_name("model_caps.%s.json" % active)
 
 
 def _read_last_chain():
@@ -258,7 +307,7 @@ def snapshot_caps(task):
     """SessionStart (§5.3): copy caps mechanism so mid-upgrade behavior is stable."""
     mech = "unknown"
     try:
-        caps = json.loads(CAPS_PATH.read_text())
+        caps = json.loads(caps_path().read_text())
         mech = caps.get("thinking", {}).get("mechanism", "unknown")
     except (OSError, ValueError):
         pass
@@ -434,7 +483,7 @@ def _process(ev, c, out):
             # No SessionStart snapshot (e.g. dsh registers PostToolUse only):
             # fall back to the live caps file, then pin it for the session.
             try:
-                mechanism = json.loads(CAPS_PATH.read_text()).get(
+                mechanism = json.loads(caps_path().read_text()).get(
                     "thinking", {}).get("mechanism", "none")
             except (OSError, ValueError):
                 mechanism = "none"

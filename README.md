@@ -112,7 +112,94 @@ MINDER_DECISION=shadow                             # log-only gateway traces
 Frontier consults (L2) run through the bundled `frontier.py` runner or your
 own via `--frontier-cmd`; bring your own key — minder never ships one.
 
+### Switching the model upstream
+
+The proxy serves one upstream at a time. To point a running install at a
+different OpenAI-compatible server, add a systemd drop-in and restart:
+
+```bash
+mkdir -p ~/.config/systemd/user/minder-proxy.service.d
+cat > ~/.config/systemd/user/minder-proxy.service.d/upstream.conf <<'EOF'
+[Service]
+Environment=MINDER_UPSTREAM=http://127.0.0.1:8081
+EOF
+systemctl --user daemon-reload && systemctl --user restart minder-proxy
+```
+
+The proxy re-runs the capability probe against the new upstream on boot and
+rewrites `model_caps.json`, so thinking mechanisms and tool-call dialects
+are re-measured on every switch. Presets only need changes if the new
+server validates model names — a server that ignores them works with the
+installed presets as-is. Two engines competing for the same GPU cannot run
+concurrently: stop one before starting the other, and while the configured
+upstream is down the proxy returns an honest 502
+(`minder_upstream_unavailable`) instead of failing silently.
+
+### Engine registry
+
+For installs that move between engines regularly, `minder.json` can name
+them. Each entry carries the upstream URL and the systemd user unit that
+runs the engine; `active_engine` picks which one the proxy forwards to:
+
+```json
+{
+  "engines": {
+    "llama":  {"upstream": "http://127.0.0.1:8080", "unit": "llama-model@qwen27b"},
+    "strata": {"upstream": "http://127.0.0.1:8081", "unit": "strata-hip"}
+  },
+  "active_engine": "llama"
+}
+```
+
+With a registry present the proxy re-resolves the active engine on every
+request, so switching is a one-line config edit and a unit restart — no
+proxy restart. Capabilities are measured per engine into
+`model_caps.<engine>.json`. An install without an `engines` key keeps the
+single-upstream behavior above.
+
+### Switching engines (lifecycle)
+
+When each engine entry carries a systemd user `unit`, the operator CLI
+and the console can do the whole switch: stop the current engine unit,
+start the target, health-check its `/health` endpoint, and only then
+flip `active_engine` in `minder.json` (backup written to
+`minder.json.bak`). A target that never becomes healthy rolls back to
+the previous engine.
+
+```bash
+minder-op engine status             # rows: active flag, unit state, health
+minder-op engine switch strata --yes
+```
+
+The console exposes the same switch at `/engine`. `doctor` reports the
+active engine's health and warns when two engine units run at the same
+time — they compete for the GPU. `install.sh --engine NAME=URL[,UNIT]`
+(repeatable) plus `--active-engine NAME` write the registry at install
+time.
+
 ## Benchmark and evaluation harness
+
+### Multi-turn prompt-cache replay
+
+`benchmarks/multiturn_cache.py` replays a growing conversation against
+any OpenAI-compatible engine under three request patterns (append-only,
+alternating thinking flags, reordered history) and reports per-turn
+cache reuse from usage or engine metrics:
+
+```bash
+python3 benchmarks/multiturn_cache.py --base-url http://127.0.0.1:8081 \
+    --turns 12 --tail-chars 1200 --json-out /tmp/multiturn.json
+```
+
+Measured against the strata-amd HIP build (2026-10-01): the append-only
+pattern re-reads about 263 tokens per turn (86% reuse); alternating
+thinking flags re-read the whole conversation every turn (2.3x wall at
+3.6k context, linear in context length); a one-time history reorder
+costs one re-prefill and then caching resumes. This is why the proxy
+pins thinking kwargs per session on single-slot engines. The fork's
+usage payload omits `cached_tokens`, so on strata the ledger's reuse
+field stays empty until the engine maps its internal `reused` counter
+into the OpenAI usage shape.
 
 ```bash
 python3 -m minder_op benchmark list

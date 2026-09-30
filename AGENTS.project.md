@@ -47,8 +47,9 @@ Gate: `tests/test_instruction_gate.py` (greps `0.8.` outside `minder.py`).
 
 - Run commands from the repo root. Run `git config core.hooksPath
   .githooks` once per clone so the pre-commit gates exist.
-- This repo lands on `main` by direct push (P1 exception, owner's
-  release.sh flow; main is not branch-protected). Issue-first still
+- `main` carries branch protection (required CI checks, no force-push or
+  deletion; admin bypass retained for the release flow). Direct push by
+  the owner remains the sanctioned landing path. Issue-first still
   applies to feature and bug work when feasible; PRs, when used, carry
   `## Acceptance` lines (the `pr-acceptance` CI job checks).
 - Fail-open handlers: a bare `except Exception: pass` only where the

@@ -1,8 +1,9 @@
-"""minder_web — localhost, read-only operator console (8E).
+"""minder_web — localhost operator console (8E + issue #3).
 
 Reuse rules: routes call minder_web.services, which call minder_op
-query/summary functions. No SQL here, no policy, no writes: every
-route is GET and there is no write endpoint in 8E.
+query/summary functions. No SQL here, no policy. Every route is GET
+except POST /engine/switch, the console's one write path: the engine
+lifecycle switch (stop unit, start unit, health-check, flip config).
 
 Deployment boundary (docs/operator-web.md): bind 127.0.0.1 only; the
 __main__ entrypoint refuses any non-loopback host. If the web extra is
@@ -14,7 +15,7 @@ import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -206,6 +207,22 @@ def trace(request: Request, review_id: str):
 @app.get("/healthz")
 def healthz():
     return JSONResponse(services.health(_db_path()))
+
+
+@app.get("/engine")
+def engine_page(request: Request):
+    return render(request, "engine", services.engine_page())
+
+
+@app.post("/engine/switch")
+def engine_switch_route(request: Request, engine: str = ""):
+    try:
+        services.engine_switch((engine or "").strip())
+        return RedirectResponse("/engine", status_code=303)
+    except Exception as e:  # noqa: BLE001 — the page names the failure
+        ctx = services.engine_page()
+        ctx["error"] = f"{type(e).__name__}: {e}"
+        return render(request, "engine", ctx)
 
 
 app.mount("/static", StaticFiles(directory=str(_PACKAGE_DIR / "static")),

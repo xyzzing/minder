@@ -161,6 +161,47 @@ def build_caps(fingerprint, kwargs_accepted, mechanism, budget_supported,
 # CAP probe (network)
 # ---------------------------------------------------------------------------
 
+def probe_concurrency(base_url, get=None):
+    """Measure the engine's concurrency posture (issue #3).
+
+    /v1/status (strata) reports serving concurrency; a llama.cpp-shaped
+    /slots reports the slot count. Returns None when neither endpoint
+    speaks a known shape — unknown is reported as absent, never guessed:
+    the proxy only serializes requests on measured single-slot engines."""
+    get = get or (lambda path, t=30: http_json("GET",
+                                               base_url.rstrip("/") + path,
+                                               timeout=t))
+
+    def from_status():
+        # transport failure and unknown shape are the same outcome here:
+        # no measured answer, fall through to /slots
+        try:
+            st, body = get("/v1/status")
+        except Exception:
+            return None
+        if st == 200 and isinstance(body, dict):
+            conc = body.get("concurrency")
+            if isinstance(conc, dict) and \
+                    isinstance(conc.get("serving"), int):
+                return {"single_slot": conc["serving"] == 1,
+                        "serving": conc["serving"], "source": "status"}
+        return None
+
+    def from_slots():
+        try:
+            st, body = get("/slots")
+        except Exception:
+            return None
+        if st == 200:
+            slots = body.get("slots") if isinstance(body, dict) else body
+            if isinstance(slots, list) and slots:
+                return {"single_slot": len(slots) == 1,
+                        "serving": len(slots), "source": "slots"}
+        return None
+
+    return from_status() or from_slots()
+
+
 def run_cap(base_url, cfg=None, post=None, get=None):
     """Run the full CAP procedure. Returns (caps, error_transcript).
 
@@ -203,6 +244,14 @@ def run_cap(base_url, cfg=None, post=None, get=None):
         transcript.append(f"GET /props failed: {e!r}")
     fingerprint = {"model_id": model_id, "props_path": props_path,
                    "template_source": template_source}
+
+    # 1b. Concurrency posture (issue #3). Absence is measured, not assumed:
+    # a multi-slot or unknown-shape engine never gets proxy-side queueing.
+    try:
+        conc = probe_concurrency(base_url, get=get)
+    except Exception as e:
+        conc = None
+        transcript.append(f"concurrency probe failed: {e!r}")
 
     # 2. T1 — kwargs differential. A 400 here means the server rejects the
     # kwarg outright (A9) ⇒ record kwargs_accepted:false and fall through to
@@ -333,6 +382,8 @@ def run_cap(base_url, cfg=None, post=None, get=None):
                           "dirty": tool_dirty,
                           "probes": tool_runs,
                           "detail": tool_detail or None}
+    if conc is not None:
+        caps["concurrency"] = conc
     return caps, None
 
 
