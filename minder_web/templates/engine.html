@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>engines</h1>
+{% if error %}
+<p class="na">{{ error }}</p>
+{% endif %}
+<table>
+  <thead><tr><th>engine</th><th>upstream</th><th>unit</th><th>unit state</th><th>upstream health</th><th>switch</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r.name }}{% if r.active %} <strong>(active)</strong>{% endif %}</td>
+      <td><code>{{ r.upstream }}</code></td>
+      <td>{{ r.unit or 'n/a' }}</td>
+      <td>{{ r.unit_state or 'n/a' }}</td>
+      <td>{{ 'healthy' if r.healthy else 'unhealthy' }}</td>
+      <td>
+        {% if r.active %}
+          <span class="na">current</span>
+        {% else %}
+          <form method="post" action="/engine/switch?engine={{ r.name }}">
+            <button type="submit">switch to {{ r.name }}</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="na">no engine registry configured (minder.json engines key).</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">switching stops the current engine unit, starts the target,
+and health-checks it before flipping the config; a failed switch rolls
+back. Engines sharing one GPU cannot run at the same time. CLI:
+<code>minder-op engine status</code>.</p>
+{% endblock %}

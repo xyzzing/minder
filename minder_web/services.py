@@ -103,6 +103,8 @@ def overview(db_path, window_hours=24):
         "window_hours": window_hours,
         "window_text": _window_text(window_hours),
         "focus": focus[:3],
+        "engine": _try(engine_summary, db_path, window_hours=window_hours,
+                       default=None),
     }
 
 
@@ -546,3 +548,45 @@ def trace_detail(db_path, review_id):
         "redaction_status": review.get("redaction_status"),
         "severity_order": SEVERITY_ORDER,
     }
+
+
+def _engine_rows():
+    from minder_op import engines
+    return engines.status()
+
+
+def engine_page():
+    """Engine registry rows for the console; a broken probe or a missing
+    registry renders as a named error, never a 500."""
+    try:
+        return {"rows": _engine_rows(), "error": None}
+    except Exception as e:  # noqa: BLE001
+        return {"rows": [], "error": f"{type(e).__name__}: {e}"}
+
+
+def engine_switch(name):
+    """Console write path (issue #3): the engine lifecycle switch."""
+    from minder_op import engines
+    return engines.switch(name)
+
+
+def engine_summary(db_path, window_hours=24):
+    """Active engine and prompt-cache reuse for the window (issue #3).
+    Reuse is cached_tokens / prompt_tokens from token_usage events; a
+    ratio near zero means the engine's prompt cache is being defeated."""
+    try:
+        import minder
+        _engines, active = minder.engine_registry()
+    except Exception:  # noqa: BLE001
+        active = None
+    try:
+        from minder_op import queries
+        stats = queries.token_reuse(db_path, window_hours=window_hours)
+    except Exception:  # noqa: BLE001
+        stats = None
+    reuse = None
+    if stats and stats["prompt_tokens"]:
+        reuse = round(100.0 * stats["cached_tokens"] /
+                      stats["prompt_tokens"])
+    return {"name": active, "reuse_pct": reuse,
+            "events": (stats or {}).get("events", 0)}

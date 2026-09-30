@@ -194,3 +194,31 @@ def test_generic_install_touches_no_harness_or_systemd(tmp_path):
     assert not (home / ".config" / "systemd" / "user").exists()
     assert "generic mode" in r.stdout
     assert "harness base URL" in r.stdout
+
+
+def test_engine_registry_flag_writes_config(tmp_path):
+    """--engine NAME=URL[,UNIT] (repeatable) + --active-engine merge the
+    dual-engine registry into minder.json (issue #3); explicit user values
+    survive, and the flag form is validated."""
+    with MockUpstream("default") as mock:
+        home = scratch_home(tmp_path)
+        r = run_installer(home, mock.url,
+                          "--engine", f"llama={mock.url},u-llama",
+                          "--engine", "strata=http://127.0.0.1:8081,u-strata",
+                          "--active-engine", "strata")
+    assert r.returncode == 0, r.stdout + r.stderr
+    cfg = json.loads((home / ".config" / "minder" /
+                      "minder.json").read_text())
+    assert cfg["engines"]["llama"] == {"upstream": mock.url,
+                                       "unit": "u-llama"}
+    assert cfg["engines"]["strata"] == {
+        "upstream": "http://127.0.0.1:8081", "unit": "u-strata"}
+    assert cfg["active_engine"] == "strata"
+
+
+def test_engine_registry_flag_rejects_malformed(tmp_path):
+    with MockUpstream("default") as mock:
+        home = scratch_home(tmp_path)
+        r = run_installer(home, mock.url, "--engine", "broken-no-url")
+    assert r.returncode != 0
+    assert "NAME=URL" in (r.stdout + r.stderr)

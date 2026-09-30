@@ -157,6 +157,26 @@ proxy restart. Capabilities are measured per engine into
 `model_caps.<engine>.json`. An install without an `engines` key keeps the
 single-upstream behavior above.
 
+### Switching engines (lifecycle)
+
+When each engine entry carries a systemd user `unit`, the operator CLI
+and the console can do the whole switch: stop the current engine unit,
+start the target, health-check its `/health` endpoint, and only then
+flip `active_engine` in `minder.json` (backup written to
+`minder.json.bak`). A target that never becomes healthy rolls back to
+the previous engine.
+
+```bash
+minder-op engine status             # rows: active flag, unit state, health
+minder-op engine switch strata --yes
+```
+
+The console exposes the same switch at `/engine`. `doctor` reports the
+active engine's health and warns when two engine units run at the same
+time — they compete for the GPU. `install.sh --engine NAME=URL[,UNIT]`
+(repeatable) plus `--active-engine NAME` write the registry at install
+time.
+
 ## Benchmark and evaluation harness
 
 ```bash

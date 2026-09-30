@@ -91,4 +91,11 @@
   <tr><th>status</th><td>{{ health.status }}</td></tr>
   <tr><th>schema version</th><td>{{ health.schema_version if health.schema_version is not none else 'not available' }}</td></tr>
 </table>
+
+<h2>engine <small>(which model server the proxy forwards to)</small></h2>
+<table class="kv">
+  <tr><th>active engine</th><td>{{ engine.name if engine and engine.name else 'n/a' }}</td></tr>
+  <tr><th>prompt-cache reuse <small>(cached share of prompt tokens, past {{ window_text }})</small></th>
+      <td>{% if engine and engine.reuse_pct is not none %}{{ engine.reuse_pct }}%{% else %}n/a{% endif %}</td></tr>
+</table>
 {% endblock %}

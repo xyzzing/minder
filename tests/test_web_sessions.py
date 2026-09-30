@@ -183,12 +183,20 @@ def test_log_stats_are_derived_from_the_log(tmp_path, monkeypatch):
 
 
 def test_route_surface_is_still_get_only():
+    """GET-only except the engine lifecycle switch (issue #3); a new
+    write route must update this pin deliberately, not sneak in."""
     from minder_web.app import app
-    unsafe = {"POST", "PUT", "DELETE", "PATCH"}
+    unsafe = {"PUT", "DELETE", "PATCH"}
+    write_routes = {"/engine/switch"}
     for route in app.routes:
         methods = getattr(route, "methods", None)
-        if methods:
-            assert not methods & unsafe, (route.path, methods)
+        if not methods:
+            continue
+        if route.path in write_routes:
+            assert methods == {"POST"}, (route.path, methods)
+            continue
+        assert not (methods & unsafe or "POST" in methods), \
+            (route.path, methods)
 
 
 def test_non_loopback_host_header_is_refused(monkeypatch):
