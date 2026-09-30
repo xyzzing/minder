@@ -51,6 +51,9 @@ DEFAULTS = {
     # single-upstream behavior resolved from MINDER_UPSTREAM
     "engines": {},
     "active_engine": None,
+    # single-slot engine profile (issue #3): how many chat requests may
+    # wait for the engine's one sequence before the proxy answers 503
+    "single_slot_queue_depth": 8,
 }
 
 # §6.1 structural failure signals — never semantic, never model-name based.
