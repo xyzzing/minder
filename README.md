@@ -179,6 +179,28 @@ time.
 
 ## Benchmark and evaluation harness
 
+### Multi-turn prompt-cache replay
+
+`benchmarks/multiturn_cache.py` replays a growing conversation against
+any OpenAI-compatible engine under three request patterns (append-only,
+alternating thinking flags, reordered history) and reports per-turn
+cache reuse from usage or engine metrics:
+
+```bash
+python3 benchmarks/multiturn_cache.py --base-url http://127.0.0.1:8081 \
+    --turns 12 --tail-chars 1200 --json-out /tmp/multiturn.json
+```
+
+Measured against the strata-amd HIP build (2026-10-01): the append-only
+pattern re-reads about 263 tokens per turn (86% reuse); alternating
+thinking flags re-read the whole conversation every turn (2.3x wall at
+3.6k context, linear in context length); a one-time history reorder
+costs one re-prefill and then caching resumes. This is why the proxy
+pins thinking kwargs per session on single-slot engines. The fork's
+usage payload omits `cached_tokens`, so on strata the ledger's reuse
+field stays empty until the engine maps its internal `reused` counter
+into the OpenAI usage shape.
+
 ```bash
 python3 -m minder_op benchmark list
 python3 -m minder_op benchmark validate --suite coding-core-v1
