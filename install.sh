@@ -24,6 +24,8 @@ DO_ZCODE=1
 GENERIC=0
 FRONTIER_CMD=""
 EFFORT_MODE="off"
+ENGINES="${MINDER_ENGINES:-}"
+ACTIVE_ENGINE=""
 
 # frontier consult channel: default to the bundled runner (fails honestly
 # without a key; --frontier-cmd overrides with anything stdin/stdout)
@@ -40,6 +42,8 @@ while [ $# -gt 0 ]; do
     --no-start) START_UNIT=0; shift ;;
     --frontier-cmd) FRONTIER_CMD="$2"; shift 2 ;;
     --effort-mode) EFFORT_MODE="$2"; shift 2 ;;
+    --engine) ENGINES="$ENGINES $2"; shift 2 ;;
+    --active-engine) ACTIVE_ENGINE="$2"; shift 2 ;;
     *) echo "unknown flag: $1"; exit 2 ;;
   esac
 done
@@ -173,10 +177,11 @@ for name in ("qwen3-exec", "qwen3-think"):
         del ctk["thinking_budget"]  # §5.4: omit kwarg when unsupported
     p.write_text(json.dumps(preset, indent=2) + "\n")
 PYEOF
-python3 - "$CONFIG" "$ACCEPT_DEGRADED" "$FRONTIER_CMD" "$EFFORT_MODE" <<'PYEOF'
+python3 - "$CONFIG" "$ACCEPT_DEGRADED" "$FRONTIER_CMD" "$EFFORT_MODE" "$ENGINES" "$ACTIVE_ENGINE" <<'PYEOF' || fail "minder.json update failed"
 import json, sys
 from pathlib import Path
 config, degraded, frontier_cmd, effort_mode = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+engines_spec, active_engine = sys.argv[5], sys.argv[6]
 cfg = {"accept_l1_degraded": degraded == "1"}
 p = Path(config) / "minder.json"
 existing = {}
@@ -190,6 +195,29 @@ if p.exists():
 existing.update(cfg)
 existing.setdefault("effort_mode", effort_mode)
 existing.setdefault("frontier_command", frontier_cmd)
+# dual-engine registry (issue #3): --engine NAME=URL[,UNIT], repeatable.
+# Entries merge with whatever the config already carries.
+if engines_spec:
+    engines = existing.get("engines") if isinstance(
+        existing.get("engines"), dict) else {}
+    for spec in engines_spec.split():
+        name, _, rest = spec.partition("=")
+        url, _, unit = rest.partition(",")
+        if not name or not url:
+            print(f"[minder] STOP: --engine wants NAME=URL[,UNIT], "
+                  f"got {spec!r}", file=sys.stderr)
+            sys.exit(2)
+        entry = {"upstream": url.rstrip("/")}
+        if unit:
+            entry["unit"] = unit
+        engines[name] = entry
+    existing["engines"] = engines
+if active_engine:
+    if active_engine not in existing.get("engines", {}):
+        print(f"[minder] STOP: --active-engine {active_engine!r} is not "
+              "in the engine registry", file=sys.stderr)
+        sys.exit(2)
+    existing["active_engine"] = active_engine
 # frontier endpoint defaults — written only when absent so explicit user
 # values survive reinstalls (frontier.py carries the same fallbacks)
 for k, v in (("frontier_base_url", "https://api.deepseek.com"),

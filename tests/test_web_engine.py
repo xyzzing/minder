@@ -1,0 +1,74 @@
+"""Engine console page (issue #3): the engine registry renders with the
+active engine and unit health, and the switch route is the console's
+write path. Loopback-only like every console route."""
+import json
+
+import minder
+import minder_web.services as services
+import webseed
+from webseed import SECRET, new_db
+
+
+def _registry_config(tmp_path, monkeypatch):
+    cfg = tmp_path / "minder.json"
+    monkeypatch.setattr(minder, "CFG_PATH", cfg)
+    cfg.write_text(json.dumps({
+        "engines": {
+            "llama": {"upstream": "http://127.0.0.1:8080",
+                      "unit": "u-llama"},
+            "strata": {"upstream": "http://127.0.0.1:8081",
+                       "unit": "u-strata"},
+        },
+        "active_engine": "strata"}))
+    return cfg
+
+
+def test_engine_page_renders_registry(tmp_path, monkeypatch):
+    _registry_config(tmp_path, monkeypatch)
+    monkeypatch.setattr(services, "_engine_rows", lambda: [
+        {"name": "llama", "active": False, "upstream": "http://127.0.0.1:8080",
+         "unit": "u-llama", "unit_state": "inactive", "healthy": True},
+        {"name": "strata", "active": True, "upstream": "http://127.0.0.1:8081",
+         "unit": "u-strata", "unit_state": "active", "healthy": True},
+    ])
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    resp = client.get("/engine")
+    assert resp.status_code == 200
+    text = resp.text
+    assert "strata" in text and "llama" in text
+    assert "active" in text
+    assert "/engine/switch" in text
+    assert SECRET not in text
+
+
+def test_engine_switch_route_flips(tmp_path, monkeypatch):
+    _registry_config(tmp_path, monkeypatch)
+    seen = []
+    monkeypatch.setattr(services, "engine_switch",
+                        lambda name: seen.append(name) or
+                        {"switched": True, "from": "llama", "engine": name})
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    resp = client.post("/engine/switch?engine=strata", follow_redirects=False)
+    assert resp.status_code == 303
+    assert seen == ["strata"]
+
+
+def test_engine_switch_route_names_failure(tmp_path, monkeypatch):
+    _registry_config(tmp_path, monkeypatch)
+
+    def boom(name):
+        raise minder_op_engines_error(name)
+
+    monkeypatch.setattr(services, "engine_switch", boom)
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    resp = client.post("/engine/switch?engine=nope")
+    assert resp.status_code == 200
+    assert "nope" in resp.text
+
+
+def minder_op_engines_error(name):
+    from minder_op.engines import EngineError
+    return EngineError(f"unknown engine '{name}'")

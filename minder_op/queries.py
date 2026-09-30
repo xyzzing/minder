@@ -7,6 +7,7 @@ corrupt storage; the CLI maps that to exit code 2.
 """
 import json
 import sqlite3
+import time
 from pathlib import Path
 
 from minder_memory import db as _db
@@ -236,6 +237,34 @@ def event(path, event_id):
                 " WHERE ee.event_id = e.event_id ORDER BY ee.seq LIMIT 1)"
                 " AS episode_id FROM events e WHERE event_id = ?",
                 (event_id,))
+
+
+def token_reuse(path, window_hours=24, now=None):
+    """Cache-reuse sums over token_usage events in the window (issue #3):
+    (events, cached_tokens, prompt_tokens). cached_tokens arrives from the
+    upstream's prompt_tokens_details; a ratio near zero means the engine's
+    prompt cache is being defeated."""
+    from datetime import datetime, timezone
+    now = time.time() if now is None else now
+    since = datetime.fromtimestamp(now - window_hours * 3600,
+                                   timezone.utc).isoformat()
+    rows = _rows(path,
+                 "SELECT payload_json FROM events"
+                 " WHERE event_type = 'token_usage' AND ts >= ?"
+                 " LIMIT 100000", (since,))
+    cached = prompt = count = 0
+    for row in rows:
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except ValueError:
+            continue
+        if isinstance(payload.get("cached_tokens"), int):
+            cached += payload["cached_tokens"]
+        if isinstance(payload.get("prompt_tokens"), int):
+            prompt += payload["prompt_tokens"]
+        count += 1
+    return {"events": count, "cached_tokens": cached,
+            "prompt_tokens": prompt}
 
 
 def last_event_ts(path):

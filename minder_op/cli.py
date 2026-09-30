@@ -59,6 +59,18 @@ def build_parser():
 
     sub.add_parser("status", help="one screen: schema, counts, flags")
     sub.add_parser("flags", help="show MINDER_* decision flags (read-only")
+    eng = sub.add_parser("engine", help=(
+        "dual-engine registry: unit state, upstream health, lifecycle "
+        "switch (issue #3)"))
+    eng_sub = eng.add_subparsers(dest="subcommand")
+    eng_sub.add_parser("status", help=(
+        "per-engine rows: active flag, systemd unit state, upstream health"))
+    eng_sw = eng_sub.add_parser("switch", help=(
+        "stop the current engine unit, start the target, health-check it, "
+        "then flip active_engine; rolls back when the target never comes up"))
+    eng_sw.add_argument("name", help="engine name from the minder.json registry")
+    eng_sw.add_argument("--yes", action="store_true", help=(
+        "required: the switch restarts engine units"))
     doc = sub.add_parser("doctor", help=(
         "one-shot install health report: db, schema, flags, hook "
         "wiring, event staleness, proxy, benchmarks (read-only)"))
@@ -421,6 +433,10 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_status(path)
     if command == "flags":
         return _cmd_flags()
+    if command == "engine" and sub == "status":
+        return _cmd_engine_status(args)
+    if command == "engine" and sub == "switch":
+        return _cmd_engine_switch(args)
     if command == "doctor":
         return _cmd_doctor(args)
     if command == "events" and sub == "ls":
@@ -556,6 +572,38 @@ def _cmd_flags():
           " trace only)")
     print()
     print(DEFERRED)
+    return EXIT_OK
+
+
+def _cmd_engine_status(args):
+    from minder_op import engines
+    rows = engines.status()
+    if not rows:
+        print("no engine registry configured")
+        return EXIT_OK
+    for r in rows:
+        mark = "*" if r["active"] else " "
+        unit = r["unit"] or "n/a"
+        state = r["unit_state"] or "n/a"
+        health = "healthy" if r["healthy"] else "unhealthy"
+        print(f"{mark} {r['name']:<12} {r['upstream']}  unit={unit} "
+              f"({state})  {health}")
+    print("\n* = active engine; switch with: minder-op engine switch NAME --yes")
+    return EXIT_OK
+
+
+def _cmd_engine_switch(args):
+    from minder_op import engines
+    if not args.yes:
+        print("refusing to restart engine units without --yes")
+        return EXIT_USAGE
+    result = engines.switch(args.name)
+    if result["switched"]:
+        print(f"switched {result['from']} -> {result['engine']} "
+              f"(target healthy, config updated; backup at "
+              f"minder.json.bak)")
+    else:
+        print(f"already on '{result['engine']}'; nothing to do")
     return EXIT_OK
 
 
@@ -1591,7 +1639,7 @@ def main(argv=None):
     path = _resolve_db(args)
     needs_db = args.command not in ("flags", "export-stats", "benchmark", "quality",
                                     "doctor", "capture", "scorecard",
-                                    "trace")
+                                    "trace", "engine")
     if needs_db:
         code = _guard_db(path)
         if code != EXIT_OK:
