@@ -12,10 +12,14 @@ Behaviors (constructor arg):
   sse_usage        — sse + usage-only event when the request asked
                      include_usage (split mid-JSON to stress reassembly)
   json_usage       — non-streaming reply carrying a top-level usage object
+  slow             — sleeps 0.3 s before answering (queue serialization tests)
+  context_400      — 400 with a strata-shaped context-overflow message when
+                     max_tokens > 600, otherwise a normal reply
 Records every request body to .requests (list) for body assertions (AT-7b, AT-16).
 """
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 THINK_BLOCK = ("<think>Let me compute 7 times 6. Seven sixes are forty-two."
@@ -41,6 +45,16 @@ class MockUpstream:
                     body = None
                 with outer._lock:
                     outer.requests.append(body)
+                if outer.behavior == "slow":
+                    time.sleep(0.3)
+                if outer.behavior == "context_400" and body and \
+                        isinstance(body.get("max_tokens"), int) and \
+                        body["max_tokens"] > 600:
+                    self._json(400, {"error": {
+                        "type": "invalid_request_error",
+                        "message": "prompt (8) + max tokens (%d) exceeds the "
+                                   "context size" % body["max_tokens"]}})
+                    return
                 if self.path.rstrip("/").endswith("/models"):
                     payload = json.dumps(
                         {"object": "list",
