@@ -94,9 +94,17 @@ def test_switch_requires_registry(tmp_path, monkeypatch):
 
 
 def test_status_reports_units_and_health(config):
-    states = {"u-llama": "active", "u-strata": "inactive"}
-    rows = engines.status(run=fake_run(states, []),
-                          probe=lambda url: url.endswith(":8080"))
+    active_units = {"u-llama"}
+
+    def run(cmd):
+        if cmd[:3] == ["systemctl", "--user", "is-active"]:
+            unit = cmd[3]
+            if unit in active_units:
+                return 0, "active\n", ""
+            return 3, "inactive\n", ""
+        return 0, "", ""
+
+    rows = engines.status(run=run, probe=lambda url: url.endswith(":8080"))
     by_name = {r["name"]: r for r in rows}
     assert by_name["llama"]["active"] is True
     assert by_name["llama"]["unit_state"] == "active"

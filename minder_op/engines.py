@@ -124,7 +124,9 @@ def status(run=None, probe=None):
         if e.get("unit"):
             rc, out, _err = run(["systemctl", "--user", "is-active",
                                  e["unit"]])
-            unit_state = out.strip() if rc == 0 else f"rc={rc}"
+            # systemctl maps states to rc: 0 active, 3 inactive, 4 unknown
+            unit_state = out.strip() if rc == 0 else {
+                3: "inactive"}.get(rc, f"rc={rc}")
         rows.append({"name": name, "active": name == active,
                      "upstream": e["upstream"], "unit": e.get("unit"),
                      "unit_state": unit_state, "healthy": probe(e["upstream"])})
