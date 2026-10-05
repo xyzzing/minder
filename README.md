@@ -32,6 +32,11 @@ Nothing leaves your machine. The log is a local database, the web
 console only answers on 127.0.0.1 (your computer's private loopback
 address, unreachable from the network), and there is no telemetry.
 
+The walkthrough above is from coding, minder's first domain. The same
+machinery now reaches other subject areas - trading, finance,
+sustainability, privacy, resume work - under the same rules. See
+[Domains](#domains-one-governance-kernel-many-subject-areas) below.
+
 ## The pieces
 
 | Piece | What it does in practice |
@@ -46,6 +51,47 @@ address, unreachable from the network), and there is no telemetry.
 Two rules hold across all of it: fixed policy always decides (models
 only propose), and history is append-only. Corrections add evidence;
 the record is never rewritten.
+
+## Domains: one governance kernel, many subject areas
+
+Coding is minder's first domain, not its only one. Staged escalation,
+budgets, append-only evidence and rule-anchored benchmarks do not care
+what the work is. A new domain plugs in without changing the kernel:
+
+- **A profile.** `minder.json` carries named profiles (coding, trading,
+  legal, ...) whose settings overlay the defaults, so budgets and
+  thresholds can differ per domain while the machinery stays the same.
+- **Explicit task boundaries.** A task is declared with
+  `minder-op task declare` before the work starts, and evidence
+  attaches to that boundary instead of floating free.
+- **Code oracles, not judge models.** `domain-core-v1` generates
+  business-rule cases whose right answer is fixed by a published rule,
+  then grades with code: Singapore carbon tax and GHG Scope 2
+  accounting, CFO-office finance (GST, NPV, loan annuity, IFRS 16),
+  UCP 600 letter-of-credit examination, Incoterms 2020 risk allocation,
+  procurement controls (delegation of authority, three-way match,
+  segregation of duties) and PDPA breach notification. Saying
+  "insufficient data" when an input is missing is scored too, and
+  fabricated quotes are caught verbatim. Seeds at 1000 and above are a
+  holdout split the suite never trains on.
+- **Preregistration where money is involved.** The trading research
+  protocol (`minder-op families`) registers a strategy family with a
+  method digest and metric before any trial runs, records trials on
+  declared train/validation/holdout splits, and expects analysis
+  methods from the literature (PBO/CSCV, DSR, PSR, SPA). The holdout
+  stays locked until an explicit, recorded unlock. The same
+  tamper-evident, append-only history backs audit-grade domains such
+  as legal.
+
+Also shipped: resume evidence (`minder-op resume`) keeps career facts,
+wording and intent as separately asserted, correctable, expiring
+records; and domain routing - deciding which profile or model handles a
+task - runs observe-only, proposing in a shadow log until a classifier
+beats the deterministic baseline on `routing-core-v1`.
+
+The roadmap shape: each new domain is one profile, one rule-anchored
+eval suite, and, for money-touching domains, preregistration. The
+kernel itself does not change.
 
 ## Requirements
 
