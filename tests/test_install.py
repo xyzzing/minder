@@ -222,3 +222,19 @@ def test_engine_registry_flag_rejects_malformed(tmp_path):
         r = run_installer(home, mock.url, "--engine", "broken-no-url")
     assert r.returncode != 0
     assert "NAME=URL" in (r.stdout + r.stderr)
+
+
+def test_install_writes_domain_profiles(tmp_path):
+    """The legal and finance domain profiles ship in every install so a
+    minder.json profile overlay can select them (docs Domains section)."""
+    with MockUpstream("default") as mock:
+        home = scratch_home(tmp_path)
+        r = run_installer(home, mock.url)
+    assert r.returncode == 0, r.stdout + r.stderr
+    cfg = json.loads((home / ".config" / "minder" /
+                      "minder.json").read_text())
+    assert cfg["profiles"]["finance"]["l1_budget"] == 4096
+    assert cfg["profiles"]["legal"]["frontier_budget"] == 2
+    for name in ("finance", "legal"):
+        assert {"l1_budget", "l2_budget", "spend_guardrail_tokens",
+                "frontier_budget"} <= set(cfg["profiles"][name])
