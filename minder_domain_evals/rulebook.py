@@ -148,6 +148,36 @@ RULES = {
         "url": "https://ghgprotocol.org/scope-2-guidance",
         "verification": "secondary", "verified_on": "2026-09-28",
     },
+    "limitation.contract_tort": {
+        "text": "Limitation Act 1959 s 6(1)(a): an action founded on "
+                "contract or on tort may not be brought after the expiration "
+                "of six years from the date on which the cause of action "
+                "accrued. A claim filed on or before the sixth anniversary "
+                "is in time; filed after it is time-barred.",
+        "values": {"years": 6},
+        "source": "Limitation Act 1959 (Singapore), s 6",
+        "url": "https://sso.agc.gov.sg/Act/LA1959",
+        "verification": "secondary", "verified_on": "2026-10-05",
+        "caveat": "Act title and the s 6 heading were read on Singapore "
+                  "Statutes Online on this date, but the section body "
+                  "renders progressively and the six-year figure could not "
+                  "be read from the primary text in this session; "
+                  "re-verify against the section before external reliance.",
+    },
+    "ea.salary_payment": {
+        "text": "Employment Act 1968 s 11: salary must be paid to the "
+                "employee no later than 7 days after the end of the salary "
+                "period in which it is earned. Payment on the 7th day is "
+                "in time; later is late.",
+        "values": {"days": 7},
+        "source": "Employment Act 1968 (Singapore), s 11; MOM guidance",
+        "url": "https://www.mom.gov.sg/employment-practices/salary",
+        "verification": "secondary", "verified_on": "2026-10-05",
+        "caveat": "MOM returned HTTP 403 and SSO renders the Act "
+                  "progressively, so the 7-day figure is corroborated from "
+                  "secondary knowledge on this date; re-verify before "
+                  "external reliance.",
+    },
     "convention.rounding": {
         "text": "Monetary results round half-up to 2 decimal places at the "
                 "step stated in the task; intermediate values are unrounded.",

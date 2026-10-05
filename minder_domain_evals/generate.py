@@ -7,13 +7,14 @@ import json
 import random
 
 from . import rulebook
-from .families import extraction, finance, governance, sustainability, trade
+from .families import (extraction, finance, governance, legal,
+                       sustainability, trade)
 from .util import Missing
 
 GENERATOR_VERSION = "domain-core/1"
 FAMILIES = {"sustainability": sustainability, "finance": finance,
             "trade": trade, "governance": governance,
-            "extraction": extraction}
+            "extraction": extraction, "legal": legal}
 HOLDOUT_SEED_FLOOR = 1000  # seeds >= this are the held-out split
 ABSTAIN = {"status": "insufficient_data"}
 

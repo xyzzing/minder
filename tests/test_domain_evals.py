@@ -1,12 +1,13 @@
 """domain-core-v1: deterministic non-coding oracles. No network, no model."""
 import json
+import copy
 import random
 
 import pytest
 
 from minder_domain_evals import rulebook
 from minder_domain_evals.__main__ import main, mutate, reference_answers
-from minder_domain_evals.families import finance, governance, trade
+from minder_domain_evals.families import finance, governance, legal, trade
 from minder_domain_evals.generate import (HoldoutLocked, generate,
                                           render_prompt, suite_fingerprint)
 from minder_domain_evals.score import grade_case, parse_answer, score
@@ -135,3 +136,55 @@ def test_rulebook_every_legal_rule_has_provenance():
 def test_cli_selfcheck_passes(capsys):
     assert main(["selfcheck", "--seed", "3", "--n", "15"]) == 0
     assert '"verdict": "PASS"' in capsys.readouterr().out
+
+
+def test_legal_family_generates_and_survives_mutants():
+    """legal joins the family registry; the generic oracle/mutant law holds
+    on it alone (red-first for legal-core-v1)."""
+    cases = generate(seed=11, n_per_family=20, families=["legal"])
+    assert cases, "legal family produced no cases"
+    assert {c["kind"] for c in cases} >= {
+        "pdpa_deadline", "limitation_expiry", "ea_salary_deadline"}
+    rng = random.Random(5)
+    answered = 0
+    for c in cases:
+        if c["expected_missing"]:
+            continue
+        a = copy.deepcopy(c["expected"])
+        assert grade_case(c, a)["passed"] is True, c["id"]
+        assert grade_case(c, mutate(c, a, rng))["passed"] is False, c["id"]
+        answered += 1
+    assert answered >= 20
+
+
+def test_legal_limitation_six_year_boundary():
+    x = {"kind": "limitation_expiry", "cause": "contract",
+         "accrual_date": "2020-03-10", "claim_filed_date": "2026-03-09"}
+    r = legal.solve(x)
+    assert r == {"limitation_expiry": "2026-03-10", "status": "in_time"}
+    x["claim_filed_date"] = "2026-03-11"
+    assert legal.solve(x)["status"] == "barred"
+    assert legal.solve(dict(x, cause="tort")) == legal.solve(x)
+
+
+def test_legal_ea_salary_seven_day_deadline():
+    x = {"kind": "ea_salary_deadline", "salary_period_end": "2026-05-31",
+         "salary_paid_on": "2026-06-08"}
+    assert legal.solve(x) == {"payment_deadline": "2026-06-07",
+                              "paid_on_time": False}
+    x["salary_paid_on"] = "2026-06-07"
+    assert legal.solve(x)["paid_on_time"] is True
+
+
+def test_legal_pdpa_deadline_scale_and_harm_limb():
+    x = {"kind": "pdpa_deadline", "assessment_date": "2026-03-10",
+         "individuals_affected": 480, "significant_harm_likely": False}
+    assert legal.solve(x) == {"notifiable": False, "notify_pdpc_by": None,
+                              "notify_individuals": False}
+    x["individuals_affected"] = 500
+    assert legal.solve(x) == {"notifiable": True,
+                              "notify_pdpc_by": "2026-03-13",
+                              "notify_individuals": True}
+    x["individuals_affected"] = 200
+    x["significant_harm_likely"] = True
+    assert legal.solve(x)["notifiable"] is True

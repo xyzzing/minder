@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from . import client, rulebook
-from .generate import FAMILIES, HoldoutLocked, generate, render_prompt
+from .generate import HoldoutLocked, generate, render_prompt
 from .score import grade_case, parse_answer, score
 
 
@@ -23,7 +23,10 @@ def _write_jsonl(path, rows):
 def _gen_args(p):
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--n", type=int, default=20, help="base cases per family")
-    p.add_argument("--families", default=",".join(FAMILIES))
+    # domain-core-v1 is pinned to its five families by manifest; legal has
+    # its own suite (legal-core-v1), so it stays opt-in here.
+    p.add_argument("--families",
+                   default="sustainability,finance,trade,governance,extraction")
     p.add_argument("--abstain-rate", type=float, default=0.15)
     p.add_argument("--no-variants", action="store_true")
     p.add_argument("--closed-book", action="store_true",
