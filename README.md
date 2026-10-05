@@ -2,50 +2,60 @@
 
 [![CI](https://github.com/xyzzing/minder/actions/workflows/ci.yml/badge.svg)](https://github.com/xyzzing/minder/actions/workflows/ci.yml)
 
-A supervisor for AI coding assistants, running entirely on your own
-computer.
+A supervisor for AI assistants, running entirely on your own computer.
 
 ## What minder does
 
-AI coding assistants get stuck. The same error comes back, the proposed
-fix does not fix anything, and each retry costs time and patience. minder
-sits between your assistant and the local AI model and watches for
-exactly that.
+AI assistants get stuck. You ask for something, the answer is wrong,
+you point that out, and the assistant makes the same mistake again with
+more confidence. minder is a supervisor for that: it watches the work
+an AI assistant does on your computer, and when the same failure keeps
+coming back, it steps in.
 
-When the same failure shows up again, minder steps in, in stages:
+It steps in, in stages:
 
-1. **Retries with more careful thinking.** It re-sends the request with a
-   bigger reasoning budget, so the model works the problem instead of
-   guessing again.
-2. **Asks for a second opinion.** If the retry fails too, minder can
-   consult a bigger model from an outside provider. You set the budget,
-   your text is redacted before anything is stored, and minder records
-   only labels and hashes, never the raw conversation.
-3. **Stops and tells you.** If the second opinion does not help, minder
-   raises a clear alarm instead of letting the assistant flail.
+1. **A retry with more careful thinking.** minder re-sends the request
+   with a bigger reasoning budget, so the AI model works the problem
+   instead of guessing again.
+2. **A second opinion.** If the retry fails too, minder can ask a
+   bigger model from an outside provider. You set the budget, your text
+   is redacted before anything is stored, and minder records only
+   labels and hashes, never the raw conversation.
+3. **A clear stop.** If the second opinion does not help, minder raises
+   an alarm instead of letting the assistant keep flailing.
 
 Everything minder decides is written to an append-only log (entries go
 in, nothing gets edited out). "What did the supervisor do last night?"
 is a one-command answer, not an archaeology project.
 
-Nothing leaves your machine. The log is a local database, the web
+Nothing leaves your machine. The log is a local database file, the web
 console only answers on 127.0.0.1 (your computer's private loopback
 address, unreachable from the network), and there is no telemetry.
 
-The walkthrough above is from coding, minder's first domain. The same
-machinery now reaches other subject areas - trading, finance,
-sustainability, privacy, resume work - under the same rules. See
+The example above sounds like computer programming because that is
+where minder is installed deepest today. The same machinery covers
+other subject areas - trading, finance, sustainability, privacy law,
+resume work - under the same rules. See
 [Domains](#domains-one-governance-kernel-many-subject-areas) below.
+
+**How to read the rest of this file:** the first three sections are for
+everyone. From "Requirements" on, it is operator and developer
+material - commands to type, configuration files, and test suites.
+Each command is shown with a plain-language comment saying what it
+answers.
 
 ## The pieces
 
+minder has a few moving parts. None of them talk to the internet
+except when you ask for a second opinion:
+
 | Piece | What it does in practice |
 |---|---|
-| Proxy | A small go-between. Your assistant talks to it, it talks to the model. It speaks the standard OpenAI chat format, so any tool that can point at a web address works. |
+| Proxy | A small go-between program. Your assistant sends its requests to the proxy, the proxy forwards them to the AI model. It speaks the standard OpenAI chat format (the common way software talks to AI models), so any assistant that can point at a web address works. |
 | Warden | The supervisor itself: spots repeated failures, upgrades retries to deeper thinking, spends second-opinion budgets, then stops and alarms. |
 | Memory | A local database of past failures and verified fixes, so last week's dead end is not rediscovered this week. |
-| Decision gateway | When smarter components (classifiers, models) suggest an action, they only propose. A fixed rule set decides, and new components must beat the old rules on pinned benchmarks before they are trusted. |
-| Operator tools | The `minder-op` command and a localhost web console for reading the evidence. |
+| Decision gateway | When smarter components (classifiers, models) suggest an action, they only propose. A fixed rule set decides, and a new component must beat the old rules on pinned benchmarks before it is trusted. |
+| Operator tools | The `minder-op` command (things you type in a terminal) and a localhost web page for reading the evidence. |
 | Benchmarks | Versioned test suites with tamper-resistant comparison, so "it got better" is a measured claim, not a feeling. |
 
 Two rules hold across all of it: fixed policy always decides (models
@@ -95,18 +105,25 @@ kernel itself does not change.
 
 ## Requirements
 
-- Python 3.10+. The core is standard library only, no pip dependencies.
+- Python 3.10+ (a programming language runner). The core of minder is
+  written using only what Python ships with: nothing to install beyond
+  Python itself.
 - Optional web console: `pip install --user -r requirements-web.txt`
 - Optional local classifier model: [laya](https://huggingface.co/convaiinnovations/laya) (see below)
-- A full governed runtime also needs a local model server
-  (`llama.cpp llama-server`, or another OpenAI-compatible engine).
-  The systemd/dsh/zcode integration tier needs Linux; the generic proxy
-  path works anywhere Python runs.
+- A full governed runtime also needs a local model server: a program
+  that runs the AI model on this computer, such as llama.cpp's
+  `llama-server` or the strata-amd server. ("OpenAI-compatible" means
+  it accepts requests in the standard OpenAI chat format.)
+  A "harness" below means the software your AI assistant runs inside.
+  The systemd/dsh/zcode integration tier needs Linux (systemd is the
+  part of Linux that starts and restarts background programs for you);
+  the generic proxy path works anywhere Python runs.
 
 ## Quick start: look around (no model required)
 
 The operator tools read minder's local evidence store and work even
-without a running model:
+without a running model. Type these in a terminal after cloning this
+repository (`git clone` downloads the code):
 
 ```bash
 git clone https://github.com/xyzzing/minder && cd minder
@@ -128,10 +145,12 @@ minder-web --port 8765 --db ~/.local/state/minder/memory.sqlite
 ```
 
 `capture` and `scorecard` read dsh's own session store (`~/.dsh`, or
-`$MINDER_DSH_HOME`). dsh hooks run inside a file sandbox whose only
-writable path is the session workspace, so they cannot write minder's
-state directory themselves; the loopback `sink.py` sidecar does it for
-them (see [docs/operator-web.md](docs/operator-web.md#capture-how-the-hooks-persist)).
+`$MINDER_DSH_HOME`). dsh is one of the two assistant tools minder
+integrates with deeply (the other is zcode). dsh hooks run inside a
+file sandbox whose only writable path is the session workspace, so they
+cannot write minder's state directory themselves; the loopback
+`sink.py` sidecar (a small helper program) does it for them (see
+[docs/operator-web.md](docs/operator-web.md#capture-how-the-hooks-persist)).
 The console's `/capture`, `/sessions` and `/scorecard` pages show the
 same data.
 
@@ -264,15 +283,18 @@ python3 benchmarks/multiturn_cache.py --base-url http://127.0.0.1:8081 \
     --turns 12 --tail-chars 1200 --json-out /tmp/multiturn.json
 ```
 
-Measured against the strata-amd HIP build (2026-10-01): the append-only
-pattern re-reads about 263 tokens per turn (86% reuse); alternating
-thinking flags re-read the whole conversation every turn (2.3x wall at
-3.6k context, linear in context length); a one-time history reorder
-costs one re-prefill and then caching resumes. This is why the proxy
-pins thinking settings per session on single-slot engines. The fork's
-usage payload omits `cached_tokens`, so on strata the ledger's reuse
-field stays empty until the engine maps its internal `reused` counter
-into the OpenAI usage shape.
+Measured against the strata-amd HIP build (2026-10-01; a "fork" is a
+copy of another project carrying local changes): the append-only
+pattern re-reads about 263 tokens per turn (86% reuse; a token is
+roughly a short word, and re-reading is the per-turn cost of the model
+re-reading your conversation) - alternating thinking flags re-read the
+whole conversation every turn (2.3x the wall-clock time at 3,600-token
+conversations, and it grows with conversation length); a one-time
+history reorder costs one re-prefill and then caching resumes. This is
+why the proxy pins thinking settings per session on single-slot
+engines. The strata build's usage report omits `cached_tokens`, so on
+strata the ledger's reuse field stays empty until the engine publishes
+its internal `reused` counter in the OpenAI usage shape.
 
 ### Coding suites with protected comparison
 
@@ -295,13 +317,17 @@ using the same comparator.
 
 ### Non-coding domains: `domain-core-v1`
 
-Finance, trade finance, sustainability and governance tasks with code
-oracles instead of a judge model. Seeded generators produce unlimited
-cases. Each case has a unique answer fixed by a rule (GST, IFRS 16,
-UCP 600, Incoterms 2020, the Singapore Carbon Pricing Act, PDPA Part
-6A) or by a stated company policy. The suite also scores abstention
+Finance, trade finance, sustainability and governance tasks graded by
+code oracles instead of a judge model (another AI asked "was this
+answer good?"). A code oracle instead checks the answer against a
+published rule, so the grading itself cannot be argued with. Seeded
+generators produce unlimited cases from the same distributions. Each
+case has a unique answer fixed by a rule (GST, IFRS 16, UCP 600,
+Incoterms 2020, the Singapore Carbon Pricing Act, PDPA Part 6A) or by a
+stated company policy. The suite also scores abstention
 (`insufficient_data` when an input is missing), fabricated evidence in
-document extraction, and metamorphic consistency.
+document extraction, and metamorphic consistency (the same question in
+a different costume must get the same answer).
 
 ```bash
 python3 -m minder_domain_evals selfcheck --seed 7 --n 200
