@@ -218,6 +218,15 @@ if active_engine:
               "in the engine registry", file=sys.stderr)
         sys.exit(2)
     existing["active_engine"] = active_engine
+# domain profiles (minder.json "profile" overlay, minder.py cfg loader):
+# finance tolerates longer L1 thinking on numeric work; legal keeps the
+# frontier budget at 2 because statute recall deserves the second opinion
+existing.setdefault("profiles", {
+    "finance": {"l1_budget": 4096, "l2_budget": 16384,
+                "spend_guardrail_tokens": 80000, "frontier_budget": 1},
+    "legal": {"l1_budget": 2048, "l2_budget": 8192,
+              "spend_guardrail_tokens": 40000, "frontier_budget": 2},
+})
 # frontier endpoint defaults — written only when absent so explicit user
 # values survive reinstalls (frontier.py carries the same fallbacks)
 for k, v in (("frontier_base_url", "https://api.deepseek.com"),

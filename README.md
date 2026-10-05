@@ -74,13 +74,17 @@ what the work is. A new domain plugs in without changing the kernel:
 - **Explicit task boundaries.** A task is declared with
   `minder-op task declare` before the work starts, and evidence
   attaches to that boundary instead of floating free.
-- **Code oracles, not judge models.** `domain-core-v1` generates
+- **Code oracles, not judge models.** Three suites generate
   business-rule cases whose right answer is fixed by a published rule,
-  then grades with code: Singapore carbon tax and GHG Scope 2
-  accounting, CFO-office finance (GST, NPV, loan annuity, IFRS 16),
-  UCP 600 letter-of-credit examination, Incoterms 2020 risk allocation,
-  procurement controls (delegation of authority, three-way match,
-  segregation of duties) and PDPA breach notification. Saying
+  then grade with code. `domain-core-v1` covers Singapore carbon tax
+  and GHG Scope 2 accounting, CFO-office finance (GST, NPV, loan
+  annuity, IFRS 16), UCP 600 letter-of-credit examination, Incoterms
+  2020 risk allocation, procurement controls (delegation of authority,
+  three-way match, segregation of duties) and PDPA breach
+  notification. `legal-core-v1` drills legal deadline arithmetic:
+  PDPA breach notification, the Limitation Act 1959 six-year
+  contract/tort window, Employment Act salary payment timing.
+  `finance-core-v1` isolates the finance family on its own. Saying
   "insufficient data" when an input is missing is scored too, and
   fabricated quotes are caught verbatim. Seeds at 1000 and above are a
   holdout split the suite never trains on.
