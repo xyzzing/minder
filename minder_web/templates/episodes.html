@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>episodes</h1>
+<h1>{{ S.episodes.title }}</h1>
 <table>
-  <thead><tr><th>id</th><th>opened</th><th>status</th><th>repo</th><th>task</th></tr></thead>
+  <thead><tr><th>{{ S.episodes.col_id }}</th><th>{{ S.episodes.col_opened }}</th><th>{{ S.episodes.col_status }}</th><th>{{ S.episodes.col_repo }}</th><th>{{ S.episodes.col_task }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
@@ -12,9 +12,9 @@
       <td>{{ r.repo }}</td><td>{{ r.task_id }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="5" class="na">not available.</td></tr>
+    <tr><td colspan="5" class="na">{{ S.episodes.empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
-<p class="note">showing up to {{ limit }} most recent.</p>
+<p class="note">{{ S.episodes.showing.format(limit=limit) }}</p>
 {% endblock %}

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>decision gateway traces <small>(shadow - log only)</small></h1>
+<h1>{{ S.decisions.title }} <small>{{ S.decisions.gloss }}</small></h1>
 <table>
-  <thead><tr><th>id</th><th>ts</th><th>contract</th><th>failure_key</th><th>model</th><th>policy</th><th>override</th><th>confidence</th><th>provider</th></tr></thead>
+  <thead><tr><th>{{ S.decisions.col_id }}</th><th>{{ S.decisions.col_ts }}</th><th>{{ S.decisions.col_contract }}</th><th>{{ S.decisions.col_failure_key }}</th><th>{{ S.decisions.col_model }}</th><th>{{ S.decisions.col_policy }}</th><th>{{ S.decisions.col_override }}</th><th>{{ S.decisions.col_confidence }}</th><th>{{ S.decisions.col_provider }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr><td>{{ r.id }}</td><td>{{ r.ts }}</td>
@@ -14,10 +14,9 @@
         <td>{{ r.confidence }}</td>
         <td>{{ r.provider }}</td></tr>
   {% else %}
-    <tr><td colspan="9" class="na">not available.</td></tr>
+    <tr><td colspan="9" class="na">{{ S.decisions.empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
-<p class="note">nothing in policy reads this table; traces separate the
-model recommendation from the final policy decision.</p>
+<p class="note">{{ S.decisions.note }}</p>
 {% endblock %}

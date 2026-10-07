@@ -4,7 +4,8 @@ Every number and label comes from the minder_op query/summary layer —
 this module issues no SQL of its own and knows no policy. Anything
 free-text passes through minder_op.format.safe (redact + truncate)
 before it can reach a template; missing DB or optional tables become
-"not available" models here, so a route can never 500 on storage.
+the NOT_AVAILABLE model (minder_web.strings) here, so a route can
+never 500 on storage.
 """
 import os
 
@@ -14,9 +15,11 @@ from minder_op import queries
 from minder_op.queries import DBError
 from minder_op.summary import build_weekly_summary
 
+from minder_web import strings
+
 FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
              "MINDER_SUCCESS_GUARD")
-NOT_AVAILABLE = "not available"
+NOT_AVAILABLE = strings.NOT_AVAILABLE
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
 
@@ -95,7 +98,7 @@ def overview(db_path, window_hours=24):
         "db_ok": db_ok,
         "health": health(db_path),
         "flags": [{"name": var, "value": os.environ.get(var)
-                   or "(unset)"} for var in FLAG_VARS],
+                   or strings.UNSET} for var in FLAG_VARS],
         "summary": summary,
         "capture": capture,
         "verdicts": verdicts,
@@ -300,16 +303,16 @@ def session_detail_page(db_path, session_id, dsh_root=None):
 
 def _age_text(age_s):
     if age_s is None:
-        return "unknown"
+        return strings.UNKNOWN
     try:
         age = float(age_s)
     except (TypeError, ValueError):
-        return "unknown"
+        return strings.UNKNOWN
     if age < 90:
-        return f"{int(age)}s ago"
+        return strings.AGE_SECONDS.format(n=int(age))
     if age < 48 * 3600:
-        return f"{int(age // 3600)}h ago"
-    return f"{int(age // 86400)}d ago"
+        return strings.AGE_HOURS.format(n=int(age // 3600))
+    return strings.AGE_DAYS.format(n=int(age // 86400))
 
 
 def _human_date(iso):
@@ -330,11 +333,11 @@ def _window_text(hours):
     if h and h % 24 == 0:
         days = h // 24
         if days == 1:
-            return "day"
+            return strings.WINDOW_DAY
         if days == 7:
-            return "week"
-        return f"{days} days"
-    return f"{h}h"
+            return strings.WINDOW_WEEK
+        return strings.WINDOW_DAYS.format(n=days)
+    return strings.WINDOW_HOURS.format(n=h)
 
 
 def _human_tokens(n):
@@ -347,7 +350,7 @@ def _human_tokens(n):
         return f"{value / 1_000_000:.2f}M"
     if value >= 1_000:
         return f"{value / 1_000:.1f}k"
-    return f"{int(value)}" if value else "-"
+    return f"{int(value)}" if value else strings.DASH
 
 
 def recording(db_path):
@@ -356,7 +359,7 @@ def recording(db_path):
     db health stay available via the title attribute and /healthz."""
     last = _try(queries.last_event_ts, db_path, default=None)
     if not last:
-        return "recording: unknown"
+        return strings.RECORDING_UNKNOWN
     try:
         from datetime import datetime, timezone
         parsed = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
@@ -364,10 +367,10 @@ def recording(db_path):
             parsed = parsed.replace(tzinfo=timezone.utc)
         age = (datetime.now(timezone.utc) - parsed).total_seconds()
     except (TypeError, ValueError):
-        return "recording: unknown"
+        return strings.RECORDING_UNKNOWN
     if age > 86400:
-        return f"recording: stale {_age_text(age)}"
-    return "recording: ok"
+        return strings.RECORDING_STALE.format(age=_age_text(age))
+    return strings.RECORDING_OK
 
 
 def _decorate_capture(report):

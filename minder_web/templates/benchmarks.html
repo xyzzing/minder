@@ -1,28 +1,28 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>benchmarks</h1>
-<h2>suites</h2>
-{% if suites == 'not available' %}
-<p class="na">not available.</p>
+<h1>{{ S.benchmarks.title }}</h1>
+<h2>{{ S.benchmarks.suites }}</h2>
+{% if suites == S.common.not_available %}
+<p class="na">{{ S.common.not_available }}.</p>
 {% else %}
 <table>
-  <thead><tr><th>suite</th><th>manifest</th><th>tasks</th><th>fingerprint</th><th>status</th></tr></thead>
+  <thead><tr><th>{{ S.benchmarks.col_suite }}</th><th>{{ S.benchmarks.col_manifest }}</th><th>{{ S.benchmarks.col_tasks }}</th><th>{{ S.benchmarks.col_fingerprint }}</th><th>{{ S.benchmarks.col_status }}</th></tr></thead>
   <tbody>
   {% for s in suites %}
     <tr><td>{{ s.suite_id }}</td><td>v{{ s.manifest_version }}</td>
         <td>{{ s.tasks }}</td><td><code>{{ s.fingerprint }}</code></td>
         <td>{{ s.status }}</td></tr>
   {% else %}
-    <tr><td colspan="5" class="na">no suites found.</td></tr>
+    <tr><td colspan="5" class="na">{{ S.benchmarks.suites_empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
 {% endif %}
 
-<h2>pinned baselines</h2>
+<h2>{{ S.benchmarks.baselines }}</h2>
 {% if baselines %}
 <table>
-  <thead><tr><th>suite</th><th>fingerprint</th><th>generated_at</th><th>runs</th><th>verified rate</th><th>status</th></tr></thead>
+  <thead><tr><th>{{ S.benchmarks.col_suite }}</th><th>{{ S.benchmarks.col_fingerprint }}</th><th>{{ S.benchmarks.col_generated_at }}</th><th>{{ S.benchmarks.col_runs }}</th><th>{{ S.benchmarks.col_verified_rate }}</th><th>{{ S.benchmarks.col_status }}</th></tr></thead>
   <tbody>
   {% for b in baselines %}
     <tr><td>{{ b.suite_id }}</td><td><code>{{ b.fingerprint }}</code></td>
@@ -33,10 +33,7 @@
   </tbody>
 </table>
 {% else %}
-<p class="na">no pinned baseline (created only via
-<code>minder-op benchmark baseline create --yes</code>).</p>
+<p class="na">{{ S.benchmarks.baselines_empty }}</p>
 {% endif %}
-<p class="note">comparison verdicts come from
-<code>minder-op benchmark compare</code>; improvement claims require a
-pinned baseline comparison, never console activity.</p>
+<p class="note">{{ S.benchmarks.note }}</p>
 {% endblock %}

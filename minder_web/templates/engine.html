@@ -1,36 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>engines</h1>
+<h1>{{ S.engine.title }}</h1>
 {% if error %}
 <p class="na">{{ error }}</p>
 {% endif %}
 <table>
-  <thead><tr><th>engine</th><th>upstream</th><th>unit</th><th>unit state</th><th>upstream health</th><th>switch</th></tr></thead>
+  <thead><tr><th>{{ S.engine.col_engine }}</th><th>{{ S.engine.col_upstream }}</th><th>{{ S.engine.col_unit }}</th><th>{{ S.engine.col_unit_state }}</th><th>{{ S.engine.col_health }}</th><th>{{ S.engine.col_switch }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td>{{ r.name }}{% if r.active %} <strong>(active)</strong>{% endif %}</td>
+      <td>{{ r.name }}{% if r.active %} <strong>{{ S.engine.active }}</strong>{% endif %}</td>
       <td><code>{{ r.upstream }}</code></td>
-      <td>{{ r.unit or 'n/a' }}</td>
-      <td>{{ r.unit_state or 'n/a' }}</td>
-      <td>{{ 'healthy' if r.healthy else 'unhealthy' }}</td>
+      <td>{{ r.unit or S.common.na }}</td>
+      <td>{{ r.unit_state or S.common.na }}</td>
+      <td>{{ S.engine.healthy if r.healthy else S.engine.unhealthy }}</td>
       <td>
         {% if r.active %}
-          <span class="na">current</span>
+          <span class="na">{{ S.engine.current }}</span>
         {% else %}
           <form method="post" action="/engine/switch?engine={{ r.name }}">
-            <button type="submit">switch to {{ r.name }}</button>
+            <button type="submit">{{ S.engine.switch_to.format(name=r.name) }}</button>
           </form>
         {% endif %}
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="na">no engine registry configured (minder.json engines key).</td></tr>
+    <tr><td colspan="6" class="na">{{ S.engine.empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
-<p class="note">switching stops the current engine unit, starts the target,
-and health-checks it before flipping the config; a failed switch rolls
-back. Engines sharing one GPU cannot run at the same time. CLI:
-<code>minder-op engine status</code>.</p>
+<p class="note">{{ S.engine.note }}</p>
 {% endblock %}

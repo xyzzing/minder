@@ -3,35 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>minder operator console</title>
+  <title>{{ S.base.title }}</title>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
   <header>
     <nav>
       <span class="brand">minder</span>
-      <span class="navlabel">how am I doing?</span>
-      <a href="/">overview</a>
-      <a href="/scorecard">scorecard</a>
-      <span class="navlabel">what happened?</span>
-      <a href="/sessions">sessions</a>
-      <a href="/events">events</a>
-      <a href="/episodes">episodes</a>
-      <span class="navlabel">what has it learned?</span>
-      <a href="/lessons">lessons</a>
-      <a href="/gaps">gaps</a>
-      <a href="/skills">skills</a>
-      <span class="navlabel">running on</span>
-      <a href="/engine">engines</a>
+      <span class="navlabel">{{ S.nav.doing }}</span>
+      <a href="/">{{ S.nav.overview }}</a>
+      <a href="/scorecard">{{ S.nav.scorecard }}</a>
+      <span class="navlabel">{{ S.nav.happened }}</span>
+      <a href="/sessions">{{ S.nav.sessions }}</a>
+      <a href="/events">{{ S.nav.events }}</a>
+      <a href="/episodes">{{ S.nav.episodes }}</a>
+      <span class="navlabel">{{ S.nav.learned }}</span>
+      <a href="/lessons">{{ S.nav.lessons }}</a>
+      <a href="/gaps">{{ S.nav.gaps }}</a>
+      <a href="/skills">{{ S.nav.skills }}</a>
+      <span class="navlabel">{{ S.nav.running }}</span>
+      <a href="/engine">{{ S.nav.engines }}</a>
       <details class="adv">
-        <summary>advanced</summary>
+        <summary>{{ S.nav.advanced }}</summary>
         <div class="advmenu">
-          <a href="/capture">capture</a>
-          <a href="/consults">consults</a>
-          <a href="/decisions">decisions</a>
-          <a href="/difficulty">difficulty</a>
-          <a href="/benchmarks">benchmarks</a>
-          <a href="/traces">traces</a>
+          <a href="/capture">{{ S.nav.capture }}</a>
+          <a href="/consults">{{ S.nav.consults }}</a>
+          <a href="/decisions">{{ S.nav.decisions }}</a>
+          <a href="/difficulty">{{ S.nav.difficulty }}</a>
+          <a href="/benchmarks">{{ S.nav.benchmarks }}</a>
+          <a href="/traces">{{ S.nav.traces }}</a>
         </div>
       </details>
     </nav>
@@ -41,8 +41,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer>
-    localhost · observed workflow evidence only, no
-    productivity claims - the console is not a policy engine.
+    {{ S.base.footer }}
   </footer>
 </body>
 </html>

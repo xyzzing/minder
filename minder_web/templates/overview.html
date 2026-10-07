@@ -1,36 +1,35 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>overview</h1>
+<h1>{{ S.overview.title }}</h1>
 {% if not db_ok %}
-<p class="na">memory database not available - start the console with
-<code>--db</code> pointing at a minder memory sqlite.</p>
+<p class="na">{{ S.overview.no_db_pre }}<code>--db</code>{{ S.overview.no_db_post }}</p>
 {% endif %}
 
-<h2>what to improve first
-  <small>(past {{ window_text }}, from observed evidence on this machine)</small>
-  <span class="wtoggle">window:
-    <a href="/?window_hours=24"{% if window_hours == 24 %} class="active"{% endif %}>day</a> ·
-    <a href="/?window_hours=168"{% if window_hours == 168 %} class="active"{% endif %}>week</a>
+<h2>{{ S.overview.improve }}
+  <small>{{ S.overview.improve_gloss.format(window=window_text) }}</small>
+  <span class="wtoggle">{{ S.overview.window }}
+    <a href="/?window_hours=24"{% if window_hours == 24 %} class="active"{% endif %}>{{ S.common.day }}</a> ·
+    <a href="/?window_hours=168"{% if window_hours == 168 %} class="active"{% endif %}>{{ S.common.week }}</a>
   </span></h2>
 {% if verdicts %}
 <ul class="focus">
   {% for verdict in verdicts %}<li>{{ verdict }}</li>{% endfor %}
 </ul>
 {% else %}
-<p class="ok">nothing flagged in the past {{ window_text }}.</p>
+<p class="ok">{{ S.overview.none_flagged_window.format(window=window_text) }}</p>
 {% endif %}
 
 {% if capture %}
-<h2>capture <small>(is the watchdog recording? - the first thing to check)</small></h2>
+<h2>{{ S.overview.capture }} <small>{{ S.overview.capture_gloss }}</small></h2>
 <div class="strip">
   <span class="stat"><b>
-    {% if capture.coverage.ratio is none %}n/a{% else %}{{ '%.0f%%' % (capture.coverage.ratio * 100) }}{% endif %}
-  </b>coverage ({{ capture.coverage.persisted }} of {{ capture.coverage.invocations }} tool calls saved, {{ capture.window_hours }}h)</span>
-  <span class="stat"><b>{{ capture.sink.configured and 'yes' or 'no' }}</b>save path ready (sink)</span>
+    {% if capture.coverage.ratio is none %}{{ S.common.na }}{% else %}{{ '%.0f%%' % (capture.coverage.ratio * 100) }}{% endif %}
+  </b>{{ S.overview.coverage }} ({{ capture.coverage.persisted }} {{ S.overview.coverage_gloss }}, {{ capture.window_hours }}h)</span>
+  <span class="stat"><b>{{ capture.sink.configured and S.common.yes or S.common.no }}</b>{{ S.overview.sink_ready }}</span>
   <span class="stat"><b>
     {% set fresh = capture.stores | selectattr('status', 'equalto', 'fresh') | list | length %}
-    {{ fresh }}/{{ capture.stores | length }}</b>data sources fresh (stores)</span>
-  <a href="/capture"><b>&rarr;</b>capture detail{% if not capture.ok %} ({{ capture.warnings | length }} warning(s)){% endif %}</a>
+    {{ fresh }}/{{ capture.stores | length }}</b>{{ S.overview.stores_fresh }}</span>
+  <a href="/capture"><b>&rarr;</b>{{ S.overview.capture_detail }}{% if not capture.ok %} ({{ capture.warnings | length }} {{ S.overview.warnings_suffix }}){% endif %}</a>
 </div>
 {% if not capture.ok %}
 <ul class="focus">
@@ -40,45 +39,45 @@
 {% endif %}
 
 {% if summary %}
-<h2>weekly workflow summary
-  <small>past week, {{ summary.window.since | human_date }} to {{ summary.window.until | human_date }}</small></h2>
+<h2>{{ S.overview.weekly }}
+  <small>{{ S.overview.week_gloss.format(since=summary.window.since | human_date, until=summary.window.until | human_date) }}</small></h2>
 <table class="kv">
-  <tr><th>episodes opened</th><td>{{ summary.episodes.opened_in_window }}</td></tr>
-  <tr><th>episodes open now</th><td>{{ summary.episodes.open_now }}</td></tr>
-  <tr><th>verified resolution <small>(fixed with a confirmed fix)</small></th><td>
+  <tr><th>{{ S.overview.episodes_opened }}</th><td>{{ summary.episodes.opened_in_window }}</td></tr>
+  <tr><th>{{ S.overview.episodes_open_now }}</th><td>{{ summary.episodes.open_now }}</td></tr>
+  <tr><th>{{ S.overview.verified_resolution }} <small>{{ S.overview.verified_resolution_gloss }}</small></th><td>
     {%- set rate = summary.episodes.verified_resolution_rate -%}
-    {%- if rate is none %}n/a{% else %}{{ "%.1f%%" % (rate * 100) }}{% endif -%}
+    {%- if rate is none %}{{ S.common.na }}{% else %}{{ "%.1f%%" % (rate * 100) }}{% endif -%}
   </td></tr>
-  <tr><th>tool failures</th><td>{{ summary.failures.tool_failures_in_window }}</td></tr>
-  <tr><th>repeat failure keys <small>(the same error coming back)</small></th><td>{{ summary.failures.repeat_failure_keys }}</td></tr>
-  <tr><th>lessons created (verified / candidate)</th>
+  <tr><th>{{ S.overview.tool_failures }}</th><td>{{ summary.failures.tool_failures_in_window }}</td></tr>
+  <tr><th>{{ S.overview.repeat_keys }} <small>{{ S.overview.repeat_keys_gloss }}</small></th><td>{{ summary.failures.repeat_failure_keys }}</td></tr>
+  <tr><th>{{ S.overview.lessons_created }}</th>
       <td>{{ summary.lessons.created_in_window.get('verified', 0) }} /
           {{ summary.lessons.created_in_window.get('candidate', 0) }}</td></tr>
-  <tr><th>open gaps</th><td>{{ summary.gaps.open_now }}</td></tr>
-  <tr><th>frontier helpfulness <small>(did the outside model help?)</small></th>
+  <tr><th>{{ S.overview.open_gaps }}</th><td>{{ summary.gaps.open_now }}</td></tr>
+  <tr><th>{{ S.overview.frontier_help }} <small>{{ S.overview.frontier_help_gloss }}</small></th>
       <td>{% for label, n in summary.consults.by_helpfulness | dictsort %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
-  <tr><th>decision traces / overrides <small>(routing choices / human overrides)</small></th>
+  <tr><th>{{ S.overview.decisions }} <small>{{ S.overview.decisions_gloss }}</small></th>
       <td>{{ summary.decisions.traces_in_window }} /
           {{ summary.decisions.overrides }}</td></tr>
-  <tr><th>benchmarks</th><td>{{ summary.benchmarks.status }}</td></tr>
+  <tr><th>{{ S.overview.benchmarks }}</th><td>{{ summary.benchmarks.status }}</td></tr>
 </table>
 
-<h2>operator focus</h2>
+<h2>{{ S.overview.operator_focus }}</h2>
 {% if focus %}
 <ol class="focus">
   {% for action in focus %}<li><code>{{ action }}</code></li>{% endfor %}
 </ol>
 {% else %}
-<p class="na">nothing flagged for this window.</p>
+<p class="na">{{ S.overview.nothing_flagged }}</p>
 {% endif %}
 {% else %}
-<h2>weekly workflow summary</h2>
-<p class="na">not available.</p>
+<h2>{{ S.overview.weekly }}</h2>
+<p class="na">{{ S.overview.not_available }}</p>
 {% endif %}
 
-<h2>current flags <small>(environment/systemd owned - display only)</small></h2>
+<h2>{{ S.overview.current_flags }} <small>{{ S.overview.flags_gloss }}</small></h2>
 <table>
-  <thead><tr><th>flag</th><th>value</th></tr></thead>
+  <thead><tr><th>{{ S.overview.flag }}</th><th>{{ S.overview.value }}</th></tr></thead>
   <tbody>
   {% for flag in flags %}
     <tr><td>{{ flag.name }}</td><td>{{ flag.value }}</td></tr>
@@ -86,16 +85,16 @@
   </tbody>
 </table>
 
-<h2>health</h2>
+<h2>{{ S.overview.health }}</h2>
 <table class="kv">
-  <tr><th>status</th><td>{{ health.status }}</td></tr>
-  <tr><th>schema version</th><td>{{ health.schema_version if health.schema_version is not none else 'not available' }}</td></tr>
+  <tr><th>{{ S.common.status }}</th><td>{{ health.status }}</td></tr>
+  <tr><th>{{ S.overview.schema_version }}</th><td>{{ health.schema_version if health.schema_version is not none else S.common.not_available }}</td></tr>
 </table>
 
-<h2>engine <small>(which model server the proxy forwards to)</small></h2>
+<h2>{{ S.overview.engine }} <small>{{ S.overview.engine_gloss }}</small></h2>
 <table class="kv">
-  <tr><th>active engine</th><td>{{ engine.name if engine and engine.name else 'n/a' }}</td></tr>
-  <tr><th>prompt-cache reuse <small>(cached share of prompt tokens, past {{ window_text }})</small></th>
-      <td>{% if engine and engine.reuse_pct is not none %}{{ engine.reuse_pct }}%{% else %}n/a{% endif %}</td></tr>
+  <tr><th>{{ S.overview.active_engine }}</th><td>{{ engine.name if engine and engine.name else S.common.na }}</td></tr>
+  <tr><th>{{ S.overview.reuse }} <small>{{ S.overview.reuse_gloss.format(window=window_text) }}</small></th>
+      <td>{% if engine and engine.reuse_pct is not none %}{{ engine.reuse_pct }}%{% else %}{{ S.common.na }}{% endif %}</td></tr>
 </table>
 {% endblock %}

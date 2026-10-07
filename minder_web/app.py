@@ -20,11 +20,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from minder_web import services
+from minder_web import strings
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_PACKAGE_DIR / "templates"))
 templates.env.filters["human_date"] = services._human_date
 templates.env.filters["human_tokens"] = services._human_tokens
+templates.env.globals["S"] = strings.S
 
 app = FastAPI(title="minder operator console", docs_url=None,
               redoc_url=None, openapi_url=None)
