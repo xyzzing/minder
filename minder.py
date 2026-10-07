@@ -82,11 +82,14 @@ BRIEF_MAX_KEYS = 20
 BRIEF_MAX_CHARS = 4000
 
 
-def cfg():
+def cfg(path=None):
+    """Effective config; path overrides CFG_PATH for callers that must
+    not depend on process-lifetime state (the console, tests)."""
+    config_path = pathlib.Path(path) if path else CFG_PATH
     c = dict(DEFAULTS)
     try:
-        if CFG_PATH.exists():
-            loaded = json.loads(CFG_PATH.read_text())
+        if config_path.exists():
+            loaded = json.loads(config_path.read_text())
             c.update(loaded)
             # domain profile overlay (v0.4): coding | trading | legal | …
             # profile-scoped keys win over globals; explicit request config

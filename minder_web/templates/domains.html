@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ S.domains.title }} <small>{{ S.domains.gloss }}</small></h1>
+
+<h2>{{ S.domains.profile }} <small>{{ S.domains.profile_gloss }}</small></h2>
+{% if profile.error %}
+<p class="warn">{{ profile.error }}</p>
+{% endif %}
+<table class="kv">
+  <tr><th>{{ S.domains.profile_active }}</th>
+      <td>{{ profile.name or S.domains.profile_none }}</td></tr>
+  <tr><th>{{ S.domains.profile_available }}</th>
+      <td>{% if profile.available %}{{ profile.available | join(', ') }}{% else %}{{ S.common.na }}{% endif %}</td></tr>
+  {% for row in profile.rows %}
+  <tr><th>{{ S.domains[row.label_key] }}</th>
+      <td>{{ row.value if row.value is not none else S.common.na }}</td></tr>
+  {% endfor %}
+</table>
+<p class="note">{{ S.domains.profile_note }}</p>
+
+<h2>{{ S.domains.suites }} <small>{{ S.domains.suites_gloss }}</small></h2>
+{% if suites.error %}
+<p class="warn">{{ suites.error }}</p>
+{% elif suites.rows %}
+<table>
+  <thead><tr><th>{{ S.domains.col_domain }}</th><th>{{ S.domains.col_suite }}</th>
+           <th>{{ S.domains.col_tasks }}</th><th>{{ S.domains.col_status }}</th>
+           <th>{{ S.domains.col_verdict }}</th></tr></thead>
+  <tbody>
+  {% for s in suites.rows %}
+    <tr>
+      <td>{{ s.domain }}</td>
+      <td><code>{{ s.suite_id }}</code></td>
+      <td>{{ s.tasks if s.tasks is not none else S.common.na }}</td>
+      <td>{{ s.status }}</td>
+      <td>
+        {% if s.status != 'ok' %}{{ S.domains.verdict_invalid }}
+        {% elif not s.baseline %}{{ S.domains.verdict_no_baseline }}
+        {% else %}{{ S.domains.verdict_baseline.format(
+             date=s.baseline.generated_at | human_date,
+             rate='%.1f' % (s.baseline.rate * 100) if s.baseline.rate is not none else S.common.na,
+             runs=s.baseline.comparable_runs) }}
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="na">{{ S.domains.suites_empty }}</p>
+{% endif %}
+
+<h2>{{ S.domains.knowledge }} <small>{{ S.domains.knowledge_gloss }}</small></h2>
+{% if provenance.error %}
+<p class="warn">{{ provenance.error }}</p>
+{% elif provenance.rows %}
+<table>
+  <thead><tr><th>{{ S.domains.col_rule }}</th><th>{{ S.domains.col_verification }}</th>
+           <th>{{ S.domains.col_verified_on }}</th><th>{{ S.domains.col_caveat }}</th></tr></thead>
+  <tbody>
+  {% for r in provenance.rows %}
+    <tr>
+      <td><code>{{ r.rule }}</code></td>
+      <td>
+        <span class="badge {% if r.verification == 'primary' %}badge-verified{% elif r.verification == 'secondary' %}badge-candidate{% endif %}">{{ r.verification }}</span>
+        <small>{{ S.domains['grade_' + r.verification + '_gloss'] if S.domains['grade_' + r.verification + '_gloss'] is defined else '' }}</small>
+      </td>
+      <td>{{ r.verified_on or S.common.na }}</td>
+      <td>{{ r.caveat or '' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="na">{{ S.domains.knowledge_empty }}</p>
+{% endif %}
+
+<h2>{{ S.domains.routing }} <small>{{ S.domains.routing_gloss }}</small></h2>
+<table class="kv">
+  <tr><th>{{ S.domains.router }}</th>
+      <td>{% if routing.text_key %}{{ S.domains[routing.text_key] }}{% else %}{{ routing.mode or S.common.na }}{% endif %}</td></tr>
+</table>
+
+<p class="note">{{ S.domains.note }}</p>
+{% endblock %}

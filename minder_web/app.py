@@ -19,14 +19,16 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from minder_web import domains
 from minder_web import services
 from minder_web import strings
+from minder_web.strings_domains import DOMAINS as _DOMAIN_STRINGS
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_PACKAGE_DIR / "templates"))
 templates.env.filters["human_date"] = services._human_date
 templates.env.filters["human_tokens"] = services._human_tokens
-templates.env.globals["S"] = strings.S
+templates.env.globals["S"] = {**strings.S, "domains": _DOMAIN_STRINGS}
 
 app = FastAPI(title="minder operator console", docs_url=None,
               redoc_url=None, openapi_url=None)
@@ -190,6 +192,11 @@ def skills(request: Request):
 def benchmarks(request: Request):
     return render(request, "benchmarks",
                   services.benchmarks_page())
+
+
+@app.get("/domains")
+def domains_page(request: Request):
+    return render(request, "domains", domains.domains_page())
 
 
 @app.get("/traces")

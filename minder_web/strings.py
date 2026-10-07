@@ -35,7 +35,7 @@ S = {
         "gaps": "gaps", "skills": "skills", "engines": "engines",
         "capture": "capture", "consults": "consults",
         "decisions": "decisions", "difficulty": "difficulty",
-        "benchmarks": "benchmarks", "traces": "traces",
+        "benchmarks": "benchmarks", "traces": "traces", "domains": "domains",
     },
     "overview": {
         "title": "overview",

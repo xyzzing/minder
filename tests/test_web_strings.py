@@ -4,6 +4,7 @@ hardcoded in template or services source."""
 from pathlib import Path
 
 import minder_web.strings as strings
+import minder_web.strings_domains as strings_domains
 
 TEMPLATE_DIR = Path(strings.__file__).parent / "templates"
 
@@ -41,9 +42,10 @@ def _iter_values(obj):
 
 
 def _module_values():
-    for name in dir(strings):
-        if not name.startswith("_"):
-            yield from _iter_values(getattr(strings, name))
+    for module in (strings, strings_domains):
+        for name in dir(module):
+            if not name.startswith("_"):
+                yield from _iter_values(getattr(module, name))
 
 
 def test_shared_copy_is_defined_in_strings_module():
