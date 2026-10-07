@@ -484,10 +484,14 @@ def classify_recent_activity(messages, window=RECENT_TOOL_WINDOW):
 def schedule_effort(messages, cfg, caps=None):
     """Decide the effort level for a non-escalated `class: auto` request.
 
-    Returns "off" | "low" | "high". Effort-field support (caps) does NOT
-    gate the decision — apply_auto attaches the field only when supported
-    and otherwise degrades to the binary enable_thinking at the scheduled
-    level (heavy activity still thinks; simple turns still skip it).
+    Automatic mode returns exactly "low" | "medium" | "high" | "xhigh"
+    (2026-10-07 policy: never "off"/"minimal" in automatic mode). This
+    is the deterministic fallback the difficulty router lands on when
+    the laya decision worker has no opinion; the router can raise a
+    routed request to "xhigh". Explicit modes (off/fixed) are unchanged.
+    Effort-field support (caps) does NOT gate the decision — apply_auto
+    attaches the field only when supported and otherwise degrades to the
+    binary enable_thinking at the scheduled level (every level thinks).
     """
     mode = (cfg or {}).get("effort_mode", "off")
     if mode == "off":
@@ -497,9 +501,9 @@ def schedule_effort(messages, cfg, caps=None):
         return level if level in ("off", "low", "high") else "low"
     kind, _ = classify_recent_activity(messages)
     if kind == "none":
-        return "off"    # no tool activity: a plain question, skip thinking
+        return "low"    # plain question: minimal thinking, never off
     if kind == "light":
-        return "low"
+        return "medium"
     return "high"
 
 

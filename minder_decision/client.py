@@ -80,3 +80,26 @@ def get_decision_client():
         return None
     except Exception:
         return None
+
+
+def get_difficulty_client():
+    """Client for the proxy's difficulty router: the isolated laya
+    decision worker (minder_decision/worker.py — a persistent subprocess
+    with a per-request deadline; every failure yields None and the
+    deterministic four-level scheduler takes over).
+
+    Independent of MINDER_DECISION, which governs the hook/sink decision
+    loops and stays in-process there. MINDER_LAYA_WORKER=0 (or
+    MINDER_DECISION=off) disables the worker and the router runs on the
+    scheduler alone; MINDER_DECISION=fake keeps the fixture client for
+    dev/tests."""
+    if (os.environ.get("MINDER_LAYA_WORKER") or "").strip().lower() in \
+            ("0", "false", "off"):
+        return None
+    mode = (os.environ.get("MINDER_DECISION") or "").strip().lower()
+    if mode in ("off", "none", "null"):
+        return None
+    if mode == "fake":
+        return FakeClient()
+    from .worker import WorkerDifficultyClient
+    return WorkerDifficultyClient()

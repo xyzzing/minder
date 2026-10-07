@@ -329,12 +329,14 @@ def test_auto_pipeline_effort_modes(proxy_over_mock, tmp_path, monkeypatch):
         assert body["chat_template_kwargs"] == {
             "enable_thinking": True, "reasoning_effort": "high"}
 
-        # plain question, no tool activity → off
+        # plain question, no tool activity → low (automatic mode never
+        # schedules off)
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
                            "messages": [{"role": "user",
                                          "content": "what is 2+2?"}]})
         body = mock.requests[-1]
-        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "low"}
 
         # escalation digest overrides everything → high + Standard budget
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
@@ -633,7 +635,7 @@ def test_client_effort_beats_scheduler(proxy_over_mock, tmp_path,
     try:
         write_caps("kwargs", effort_levels=["low", "medium", "xhigh"])
         minder.CFG_PATH.write_text(json.dumps({"effort_mode": "auto"}))
-        # plain question would schedule off; UI pick of xhigh wins
+        # plain question would schedule low; UI pick of xhigh wins
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
                            "reasoning_effort": "xhigh",
                            "messages": [{"role": "user",
@@ -652,13 +654,14 @@ def test_client_effort_beats_scheduler(proxy_over_mock, tmp_path,
         assert mock.last_body["chat_template_kwargs"] == {
             "enable_thinking": True, "reasoning_effort": "xhigh",
             "thinking_budget": 2048}
-        # unknown vocabulary value is ignored → scheduler (off for plain)
+        # unknown vocabulary value is ignored → scheduler (low for plain,
+        # never off in automatic mode)
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
                            "reasoning_effort": "ultramax",
                            "messages": [{"role": "user",
                                          "content": "what is 2+2?"}]})
         assert mock.last_body["chat_template_kwargs"] == {
-            "enable_thinking": False}
+            "enable_thinking": True, "reasoning_effort": "low"}
     finally:
         clear_caps()
         stop(mock, srv)
@@ -669,8 +672,9 @@ def test_client_effort_beats_scheduler(proxy_over_mock, tmp_path,
 # ---------------------------------------------------------------------------
 
 def _fake_difficulty_client(monkeypatch, label, score, confidence=0.9):
-    """Monkeypatch the decision client to a FakeClient that always answers
-    the given difficulty label/score. Returns the client (for assertions)."""
+    """Monkeypatch the difficulty-router client to a FakeClient that always
+    answers the given difficulty label/score. Returns the client (for
+    assertions)."""
     import minder_decision.client as decision_client
     from minder_decision.providers.fake import FakeClient
     key = "difficulty-test"
@@ -678,7 +682,7 @@ def _fake_difficulty_client(monkeypatch, label, score, confidence=0.9):
         fixtures={key: {"difficulty": label, "difficulty_score": score,
                         "confidence": confidence}},
         key_fn=lambda _s: key)
-    monkeypatch.setattr(decision_client, "get_decision_client",
+    monkeypatch.setattr(decision_client, "get_difficulty_client",
                         lambda: client)
     return client
 
@@ -707,7 +711,7 @@ def test_t6_active_band_applied(proxy_over_mock, tmp_path, monkeypatch):
                                          "content": "refactor this module"}]})
         body = mock.last_body
         assert body["chat_template_kwargs"] == {
-            "enable_thinking": True, "reasoning_effort": "low",
+            "enable_thinking": True, "reasoning_effort": "medium",
             "thinking_budget": 2048}
         # ceiling caps the client's 32768 down to the routine band's 8192
         assert body["max_tokens"] == 8192
@@ -774,8 +778,10 @@ def test_t9_shadow_request_untouched(proxy_over_mock, tmp_path, monkeypatch):
                            "messages": [{"role": "user",
                                          "content": "refactor this module"}]})
         body = mock.last_body
-        # shadow: no budget, no ceiling, scheduler effort (off for plain)
-        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        # shadow: no budget, no ceiling; the scheduler effort lands
+        # (low for a plain question — automatic mode never schedules off)
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "low"}
         assert body["max_tokens"] == 32768
         ledger = (tmp_path / "state" / "events.jsonl").read_text()
         assert "difficulty_shadow" in ledger
@@ -795,7 +801,10 @@ def test_t10_off_zero_behavior_change(proxy_over_mock, tmp_path, monkeypatch):
                            "messages": [{"role": "user",
                                          "content": "refactor this module"}]})
         body = mock.last_body
-        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        # router off → no laya effect at all; the deterministic scheduler
+        # lands (low for a plain question — never off in automatic mode)
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "low"}
         ledger = (tmp_path / "state" / "events.jsonl").read_text()
         assert "difficulty_shadow" not in ledger
         assert "difficulty_routed" not in ledger
@@ -811,16 +820,43 @@ def test_t11_laya_unavailable_falls_through(proxy_over_mock, tmp_path,
         write_caps("kwargs")
         _difficulty_cfg(tmp_path, "active", monkeypatch)
         import minder_decision.client as decision_client
-        monkeypatch.setattr(decision_client, "get_decision_client",
+        monkeypatch.setattr(decision_client, "get_difficulty_client",
                             lambda: None)
         chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
                            "messages": [{"role": "user",
                                          "content": "what is 2+2?"}]})
         body = mock.last_body
-        # no client → falls through to scheduler (off for plain)
-        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        # no worker → deterministic scheduler fallback (low for plain —
+        # automatic mode never disables thinking)
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "low"}
         ledger = (tmp_path / "state" / "events.jsonl").read_text()
         assert "difficulty_routed" not in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_mechanical_band_thinks_at_low(proxy_over_mock, tmp_path,
+                                       monkeypatch):
+    """The mechanical band must still think (2026-10-07 policy): automatic
+    mode never schedules off/minimal, so a mechanical route reads as low
+    effort with thinking enabled."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "active", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "mechanical", 0.2)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [{"role": "user",
+                                         "content": "rename this variable"}]})
+        body = mock.last_body
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "low"}
+        # the mechanical band's ceiling (8192) caps the client's 32768
+        assert body["max_tokens"] == 8192
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_routed" in ledger
     finally:
         clear_caps()
         stop(mock, srv)
@@ -847,7 +883,7 @@ def test_t12_spend_guardrail_downgrades(proxy_over_mock, tmp_path,
                            "messages": [{"role": "user",
                                          "content": "migrate the schema"}]})
         assert mock.last_body["chat_template_kwargs"] == {
-            "enable_thinking": True, "reasoning_effort": "low",
+            "enable_thinking": True, "reasoning_effort": "medium",
             "thinking_budget": 2048}
         ledger = (tmp_path / "state" / "events.jsonl").read_text()
         assert "spend_guardrail_downgrade" in ledger

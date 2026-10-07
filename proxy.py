@@ -415,8 +415,8 @@ def _difficulty_opinion(req, session_fp, cfg, level, client_effort):
             return None
         from minder_decision.contracts import task_difficulty_contract
         from minder_decision.difficulty import resolve_difficulty
-        from minder_decision.client import get_decision_client
-        client = get_decision_client()
+        from minder_decision.client import get_difficulty_client
+        client = get_difficulty_client()
         if client is None:
             return None
         contract = task_difficulty_contract()

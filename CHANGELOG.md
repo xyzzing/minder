@@ -3,6 +3,26 @@
 All notable changes to minder. Versions follow [SemVer](https://semver.org/)
 loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
+## Unreleased
+
+- **Four-level automatic reasoning selection (issue #7).** Automatic
+  mode (`effort_mode=auto`) now selects exactly `low` / `medium` /
+  `high` / `xhigh` — never `off` or `minimal`. The deterministic
+  activity scheduler maps plain questions to `low`, light tool activity
+  to `medium`, heavy activity to `high`; the difficulty bands map
+  mechanical to `low`, routine to `medium`, complex to `high`,
+  expert_or_ambiguous to `xhigh` (the mechanical ceiling grows to 8192
+  to leave room for reasoning tokens). The laya difficulty opinion now
+  comes from an isolated worker subprocess (`python3 -m
+  minder_decision.worker`) that owns the model, persists across
+  requests, and enforces a per-decision deadline on both sides of the
+  socket; worker failure, timeout, invalid output, or low confidence
+  fall back to the deterministic scheduler, and model traffic never
+  blocks on laya. Explicit behaviour is unchanged: escalation markers,
+  client `reasoning_effort`, `X-Minder-Mode`, and `effort_mode=off`
+  or `fixed`. The worker is disabled with `MINDER_LAYA_WORKER=0`;
+  hooks' in-process `MINDER_DECISION=laya` path is untouched.
+
 ## 0.8.2 — 2026-09-28
 
 - **Verification integrity (PRD v0.9 step 9A).** The verified can no

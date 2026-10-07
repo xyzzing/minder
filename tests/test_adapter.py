@@ -182,10 +182,20 @@ def test_schedule_effort_decision_table():
     assert adapter.schedule_effort(heavy, CFG_OFF, CAPS_EFFORT) == "off"
     # fixed mode
     assert adapter.schedule_effort(plain, CFG_FIXED, CAPS_EFFORT) == "high"
-    # auto table
-    assert adapter.schedule_effort(plain, CFG_AUTO, CAPS_EFFORT) == "off"
-    assert adapter.schedule_effort(light, CFG_AUTO, CAPS_EFFORT) == "low"
+    # auto table (2026-10-07 policy: automatic mode never disables
+    # thinking — the ladder is low/medium/high/xhigh only)
+    assert adapter.schedule_effort(plain, CFG_AUTO, CAPS_EFFORT) == "low"
+    assert adapter.schedule_effort(light, CFG_AUTO, CAPS_EFFORT) == "medium"
     assert adapter.schedule_effort(heavy, CFG_AUTO, CAPS_EFFORT) == "high"
+
+
+def test_schedule_effort_auto_never_disables_thinking():
+    kinds = (None, [], [{"role": "user", "content": "hi"}],
+             [msg_tool_call("read_file"), msg_tool_result("short")],
+             [msg_tool_call("bash", "{}"), msg_tool_result("x" * 5000)])
+    for messages in kinds:
+        level = adapter.schedule_effort(messages, CFG_AUTO, CAPS_EFFORT)
+        assert level in ("low", "medium", "high", "xhigh")
 
 
 def test_apply_auto_channels():

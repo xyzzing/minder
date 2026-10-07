@@ -55,9 +55,12 @@ def test_score_label_malformed():
 
 def test_t1_labels_map_to_bands():
     assert DEFAULT_BANDS["mechanical"]["level"] == 0
-    assert DEFAULT_BANDS["mechanical"]["effort"] == "off"
+    assert DEFAULT_BANDS["mechanical"]["effort"] == "low"
+    # mechanical now thinks at low — the ceiling must leave room for
+    # reasoning tokens (the old 2048 was sized for thinking-off)
+    assert DEFAULT_BANDS["mechanical"]["max_tokens"] == 8192
     assert DEFAULT_BANDS["routine"]["level"] == 1
-    assert DEFAULT_BANDS["routine"]["effort"] == "low"
+    assert DEFAULT_BANDS["routine"]["effort"] == "medium"
     assert DEFAULT_BANDS["routine"]["budget"] == 2048
     assert DEFAULT_BANDS["complex"]["level"] == 2
     assert DEFAULT_BANDS["complex"]["effort"] == "high"
@@ -67,6 +70,13 @@ def test_t1_labels_map_to_bands():
     assert DEFAULT_BANDS["expert_or_ambiguous"]["effort"] == "xhigh"
     assert DEFAULT_BANDS["expert_or_ambiguous"]["budget"] == 12000
     assert DEFAULT_BANDS["expert_or_ambiguous"]["guardrail"] == "spend"
+
+
+def test_bands_never_disable_thinking():
+    """Automatic mode selects exactly low/medium/high/xhigh — no band may
+    schedule off/minimal (2026-10-07 policy)."""
+    for label, band in DEFAULT_BANDS.items():
+        assert band["effort"] in ("low", "medium", "high", "xhigh"), label
 
 
 def test_t1_resolve_each_label():
@@ -173,7 +183,7 @@ def test_t5_band_override():
     assert resolved is not None
     assert resolved[1]["budget"] == 4096
     # non-overridden fields stay default
-    assert resolved[1]["effort"] == "low"
+    assert resolved[1]["effort"] == "medium"
     assert resolved[1]["level"] == 1
 
 
@@ -192,10 +202,10 @@ def test_apply_band_sets_budget_and_ceiling():
 
 
 def test_apply_band_never_raises_ceiling():
-    band = band_for("mechanical", CFG)  # ceiling 2048
-    req = {"max_tokens": 4096}
+    band = band_for("routine", CFG)  # ceiling 8192
+    req = {"max_tokens": 40960}
     apply_band(req, band, CFG)
-    assert req["max_tokens"] == 2048
+    assert req["max_tokens"] == 8192
 
 
 def test_apply_band_no_client_ceiling_takes_band():

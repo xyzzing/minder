@@ -25,10 +25,13 @@ SCORE_LABELS = (
 # 2 = deep (Deep). Effort names are semantic — the proxy translates them
 # onto the measured vocabulary. max_tokens is a CEILING only (never
 # raised above the preset).
+# 2026-10-07 policy: automatic mode selects exactly low/medium/high/xhigh
+# — no band schedules off/minimal, so even mechanical tasks think at low
+# (its ceiling is sized to leave room for reasoning tokens).
 DEFAULT_BANDS = {
-    "mechanical": {"level": 0, "effort": "off", "budget": None,
-                   "max_tokens": 2048, "guardrail": None},
-    "routine": {"level": 1, "effort": "low", "budget": 2048,
+    "mechanical": {"level": 0, "effort": "low", "budget": None,
+                   "max_tokens": 8192, "guardrail": None},
+    "routine": {"level": 1, "effort": "medium", "budget": 2048,
                 "max_tokens": 8192, "guardrail": None},
     "complex": {"level": 2, "effort": "high", "budget": 10240,
                 "max_tokens": 32768, "guardrail": "spend"},
