@@ -262,10 +262,36 @@ def _close_on_success(hook_ev, ev, out, db_path):
                                                db_path=db_path)
         out["closed"] = closed_status or status
         out["episode_id"] = ep["episode_id"]
+        if (closed_status or status) == "verified":
+            # Issue #10: the close is the only acceptance evidence a consult
+            # ever gets, so this is where the consult is classified and
+            # distilled into a candidate lesson. Additive, never affects the
+            # close result.
+            _link_consults(ep["episode_id"], db_path)
         return out
     except Exception as e:
         out["status"] = f"degraded:{type(e).__name__}"
         return out
+
+
+def _link_consults(episode_id, db_path):
+    """Classify + distill this episode's consults. frontier_link is
+    self-contained and never raises; the import guard only covers an
+    uninstalled package, and it reports the degradation instead of
+    swallowing it (C7: no new bare except-pass). The ledger names what the
+    join did, because the lesson it wrote is otherwise invisible until an
+    operator opens the candidate queue."""
+    try:
+        from . import frontier_link
+    except Exception as e:
+        minder.log(episode_id, "frontier_link_unavailable",
+                   error=type(e).__name__)
+        return
+    joined = frontier_link.link_verified_episode(episode_id,
+                                                 db_path=db_path)
+    if joined.get("traces") or joined.get("lessons"):
+        minder.log(episode_id, "frontier_distilled",
+                   consults=joined["traces"], lessons=joined["lessons"])
 
 
 def _record_verification(episode_id, ev, evidence, db_path):

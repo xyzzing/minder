@@ -31,8 +31,18 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import minder  # noqa: E402  (config merge + STATE conventions)
 
+# The panel's text — the ask, the redaction of what leaves the machine, and
+# what in an answer is an action — is pure judgement, so it lives in
+# minder_core/panel_text.py next to the other evidence rules: no I/O, no
+# minder imports, and under the file-size law this file is close to (C2).
+from minder_core import panel_text as _panel  # noqa: E402
+
 MAX_ANSWER_CHARS = 4000
-NOTE_CHARS = 350  # per-consultant appendix length in panel output
+NOTE_CHARS = _panel.NOTE_CHARS  # per-consultant appendix length
+
+# `warden-l2` names the warden rung that asks for a consult (issue #10);
+# minder_memory/frontier_traces.py is what records the value.
+CONSULT_TRIGGER = "warden-l2"
 
 DEFAULTS = {
     "frontier_base_url": "https://api.deepseek.com",
@@ -115,82 +125,17 @@ def resolve_providers(cfg):
              "timeout": cfg.get("frontier_timeout")}]
 
 
-def redact(text, patterns):
-    """Apply profile egress-redaction regexes (legal/privacy domains) to a
-    payload field before it leaves the machine."""
-    for p in patterns or []:
-        try:
-            text = re.sub(p, "[REDACTED]", text)
-        except re.error:
-            continue
-    return text
+# The panel's text lives in minder_core/panel_text.py; these are the runner's
+# names for it, kept because the runner is what tests and the docs name. The
+# redaction patterns come from config, so scrub_payload keeps the cfg-shaped
+# signature the caller already has.
+redact = _panel.redact
+build_prompt = _panel.consult_prompt
+build_synthesis_prompt = _panel.synthesis_prompt
 
 
 def scrub_payload(payload, cfg):
-    patterns = cfg.get("egress_redaction")
-    if not patterns:
-        return payload
-    out = dict(payload)
-    for k in ("key", "error", "resolution", "task"):
-        if isinstance(out.get(k), str):
-            out[k] = redact(out[k], patterns)
-    return out
-
-
-def build_prompt(payload, template=None):
-    """Pure: escalation payload → frontier prompt text. `kind: verify` gets
-    the verification prompt; a profile template (with {key}/{attempts}/{error}
-    slots) overrides the default consult prompt."""
-    if payload.get("kind") == "verify":
-        return (
-            "You are verifying a resolved escalation for a coding agent. The "
-            "action below failed repeatedly, was escalated for a frontier "
-            "consult, and then succeeded. Judge only: does the resolution "
-            "plausibly address the root cause of the failure?\n\n"
-            f"Failed action: {payload.get('key', '?')} "
-            f"(failed {payload.get('attempts', '?')}x)\n"
-            f"Failure (truncated): {str(payload.get('error', ''))[:800]}\n"
-            f"Resolution (the tool output that succeeded, truncated): "
-            f"{str(payload.get('resolution', ''))[:800]}\n\n"
-            "Reply exactly 'VERDICT: ADDRESSED' or 'VERDICT: NOT_ADDRESSED', "
-            "then one line why. Max 60 words."
-        )
-    if template:
-        try:
-            return template.format(key=payload.get("key", "?"),
-                                   attempts=payload.get("attempts", "?"),
-                                   error=str(payload.get("error", ""))[:1500])
-        except (KeyError, IndexError, ValueError):
-            pass  # malformed template → honest default prompt
-    return (
-        "You are the frontier consultant for a coding agent stuck in a "
-        "failure loop. A deterministic watchdog escalated after repeated "
-        "failures of the same action.\n\n"
-        f"Failed action: {payload.get('key', '?')}\n"
-        f"Attempt count: {payload.get('attempts', '?')}\n"
-        f"Last error (truncated): {str(payload.get('error', ''))[:1500]}\n\n"
-        "Reply with: (1) the 2-3 most likely root causes, ranked, one line "
-        "each; (2) THE single next concrete action most likely to break the "
-        "loop (a command, a file to read, or a check to run). Terse. No "
-        "pleasantries, no restating the problem. Max ~150 words."
-    )
-
-
-def build_synthesis_prompt(payload, answers):
-    """Pure: original question + consultant answers → merge prompt."""
-    parts = [f"Consultant {name}:\n{ans}" for name, ans in answers]
-    return (
-        "Two independent consultants answered a stuck coding agent's "
-        "escalation. Reconcile them into ONE recommendation: the 2-3 most "
-        "likely root causes, ranked, one line each, and THE single next "
-        "concrete action. Where the consultants disagree, prefer the one "
-        "that better fits the error text and keep a final line exactly "
-        "'DISAGREEMENT: <one sentence>'. Terse, max ~150 words.\n\n"
-        f"Failed action: {payload.get('key', '?')} "
-        f"(attempt {payload.get('attempts', '?')})\n"
-        f"Last error (truncated): {str(payload.get('error', ''))[:800]}\n\n"
-        + "\n\n".join(parts)
-    )
+    return _panel.scrub_payload(payload, cfg.get("egress_redaction"))
 
 
 def build_request(prompt, provider, model, api_key):
@@ -264,6 +209,60 @@ def ask(prompt, provider, api_key, post=None, get=None):
     return answer or "(empty content)"
 
 
+def distill_actions(answer):
+    """The actionable lines of a panel answer, deterministically (issue
+    #10). The reading rules are `minder_core.panel_text`'s: bullet and
+    numbered lines only, capped, and only lines that read as an action
+    rather than a root cause. A consult answer is untrusted input, so a
+    malformed one costs the record, never the panel."""
+    try:
+        return _panel.action_lines(answer)
+    except Exception:
+        return []
+
+
+def _profile_for_record(cfg):
+    """The profile a consult trace is stored under. `egress_redaction` is
+    the domain-profile config key (see egress_precheck); the governed
+    storage profile is the one minder_memory knows."""
+    try:
+        from minder_memory import frontier_redaction as fr
+        configured = str(cfg.get("redaction_profile") or "")
+        if configured in fr.PROFILES:
+            return configured
+        if cfg.get("egress_redaction"):
+            return fr.EXTERNAL_PROHIBITED
+        return fr.INTERNAL_CODE_DEFAULT
+    except Exception:
+        return None
+
+
+def trace_hook(cfg=None, db_path=None):
+    """The governed trace record used as run_panel's on_trace (issue #10).
+    Replaces the legacy un-governed `record`: a consult now stores its
+    redaction profile, trigger and distilled action list, which is what
+    classify_consult and distill_lesson_from_consult need to exist at all.
+    Tracing must never alter the answer, so everything is swallowed."""
+    def on_trace(meta):
+        try:
+            from minder_memory import frontier_traces
+            frontier_traces.record_consult({
+                "failure_key": meta.get("failure_key"),
+                "episode_id": meta.get("episode_id"),
+                "local_attempts": meta.get("local_attempts"),
+                "redaction_profile": (meta.get("redaction_profile")
+                                      or _profile_for_record(cfg or {})),
+                "providers": meta.get("providers"),
+                "prompt": meta.get("request_hash_source"),
+                "response": meta.get("answer"),
+                "distilled": meta.get("distilled_actions"),
+                "trigger": meta.get("trigger") or CONSULT_TRIGGER,
+            }, db_path=db_path)
+        except Exception:
+            pass
+    return on_trace
+
+
 def egress_precheck(payload, cfg):
     """P6.2: deterministic local gate evaluated before any outbound
     consult. Tests call this directly; run_panel skips outbound on
@@ -331,11 +330,12 @@ def run_panel(payload, cfg, post=None, get=None, forced_key=None,
                 "failure_key": payload.get("key"),
                 "episode_id": payload.get("episode_id"),
                 "local_attempts": payload.get("attempts"),
-                "redaction_profile": ("default" if cfg.get("egress_redaction")
-                                      else None),
+                "redaction_profile": _profile_for_record(cfg),
                 "providers": [p for p, _ in ok],
                 "request_hash_source": prompt,
                 "answer": answer,
+                "distilled_actions": distill_actions(answer),
+                "trigger": CONSULT_TRIGGER,
             })
         except Exception:
             pass
@@ -364,23 +364,8 @@ def main():
             f"minder frontier: no API key for any provider — add a "
             f"{names.replace(', ', '=… or ')}=… line in {_key_env_file()}\n")
         return 3
-    def _trace(meta):
-        """PR 7: hashed consult metadata → memory store (fail-open, additive)."""
-        try:
-            from minder_memory import frontier_traces
-            frontier_traces.record(
-                {"key": meta.get("failure_key"),
-                 "attempts": meta.get("local_attempts"),
-                 "prompt": meta.get("request_hash_source"),
-                 "episode_id": meta.get("episode_id")},
-                meta.get("answer"), providers=meta.get("providers"),
-                redaction_profile=meta.get("redaction_profile"),
-                episode_id=meta.get("episode_id"))
-        except Exception:
-            pass
-
-    answer = run_panel(payload, cfg, on_trace=_trace)
-    if answer.startswith("("):
+    answer = run_panel(payload, cfg, on_trace=trace_hook(cfg))
+    if answer.startswith(_panel.FAILURE_PREFIX):
         sys.stderr.write(answer + "\n")
         return 4
     sys.stdout.write(answer)
