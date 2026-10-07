@@ -1,15 +1,33 @@
 """Lesson promotion + invalidation (docs/prd-memory-v1.md PR 4).
 
 Promotion rule (v1): only from an episode whose status is `verified` AND
-with explicit verification.tests_passed=true. Frontier output is never a
-trusted lesson on its own (constraint 5); the default promoter in tests is
-the operator fixture. Never raises — returns (lesson_dict, status).
+with verification.tests_passed. The evidence may arrive with the call or
+already sit in the episode's event ledger — `_close_on_success` records a
+`verification` event when a clean test run closes an episode (issue #9), so
+an operator promoting that episode states the lesson, not the proof.
+Frontier output is never a trusted lesson on its own (constraint 5); the
+default promoter in tests is the operator fixture.
+Never raises — returns (lesson_dict, status).
 """
 import json
 
 from . import db as _db
 from . import store
 from .store import _now, _uid
+
+
+def _stored_verification(episode_id, db_path):
+    """tests_passed evidence already recorded on the episode, or None."""
+    for e in store.episode_events(episode_id, db_path=db_path):
+        if e.get("event_type") != "verification":
+            continue
+        try:
+            payload = json.loads(e.get("payload_json") or "{}")
+        except ValueError:
+            continue
+        if isinstance(payload, dict) and payload.get("tests_passed"):
+            return payload
+    return None
 
 
 def promote_lesson(episode_id, instruction, anti_pattern="", verification=None,
@@ -22,6 +40,10 @@ def promote_lesson(episode_id, instruction, anti_pattern="", verification=None,
         if ep.get("status") != "verified":
             return None, f"rejected:episode-status-{ep.get('status')}"
         verification = dict(verification or {})
+        if not verification.get("tests_passed"):
+            stored = _stored_verification(episode_id, db_path)
+            if stored:
+                verification = {**stored, **verification}
         if not verification.get("tests_passed"):
             return None, "rejected:no-verified-tests"
         if not failure_key:
