@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>{{ S.overview.title }}</h1>
+<p class="note">
+  {{ S.overview.evidence_through.format(as_of=freshness.as_of or S.common.unknown) }}
+</p>
+{% if freshness.stale %}
+<p class="warn">{{ S.overview.stale_warn.format(age=freshness.age) }}</p>
+{% endif %}
 {% if not db_ok %}
 <p class="na">{{ S.overview.no_db_pre }}<code>--db</code>{{ S.overview.no_db_post }}</p>
 {% endif %}

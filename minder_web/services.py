@@ -22,6 +22,8 @@ FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
 NOT_AVAILABLE = strings.NOT_AVAILABLE
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
+# a page is stale when the newest stored event is older than this
+STALE_AFTER_S = 86400
 
 
 def _bounded_limit(limit):
@@ -97,6 +99,7 @@ def overview(db_path, window_hours=24):
     return {
         "db_ok": db_ok,
         "health": health(db_path),
+        "freshness": freshness(db_path),
         "flags": [{"name": var, "value": os.environ.get(var)
                    or strings.UNSET} for var in FLAG_VARS],
         "summary": summary,
@@ -353,13 +356,13 @@ def _human_tokens(n):
     return f"{int(value)}" if value else strings.DASH
 
 
-def recording(db_path):
-    """Header-chip text: is evidence still being written? One cheap
-    MAX(ts) query per page render — no dsh scan. The schema version and
-    db health stay available via the title attribute and /healthz."""
+def _last_event_age(db_path):
+    """(last_ts_iso, age_seconds) for the newest stored event; (None,
+    None) when the store is empty or unreadable. Shared by the header
+    chip (recording) and the overview freshness strip."""
     last = _try(queries.last_event_ts, db_path, default=None)
     if not last:
-        return strings.RECORDING_UNKNOWN
+        return None, None
     try:
         from datetime import datetime, timezone
         parsed = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
@@ -367,10 +370,31 @@ def recording(db_path):
             parsed = parsed.replace(tzinfo=timezone.utc)
         age = (datetime.now(timezone.utc) - parsed).total_seconds()
     except (TypeError, ValueError):
+        return None, None
+    return str(last), age
+
+
+def recording(db_path):
+    """Header-chip text: is evidence still being written? One cheap
+    MAX(ts) query per page render — no dsh scan. The schema version and
+    db health stay available via the title attribute and /healthz."""
+    _last, age = _last_event_age(db_path)
+    if age is None:
         return strings.RECORDING_UNKNOWN
-    if age > 86400:
+    if age > STALE_AFTER_S:
         return strings.RECORDING_STALE.format(age=_age_text(age))
     return strings.RECORDING_OK
+
+
+def freshness(db_path):
+    """Landing-page lag model (DDIA): through when does the evidence
+    run, and is it stale? Empty store reads as unknown, never as
+    stale - absence of data is not a capture break."""
+    _last, age = _last_event_age(db_path)
+    if age is None:
+        return {"as_of": None, "stale": False, "age": None}
+    return {"as_of": _human_date(_last) or None, "stale": age > STALE_AFTER_S,
+            "age": _age_text(age)}
 
 
 def _decorate_capture(report):

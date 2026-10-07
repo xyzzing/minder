@@ -80,6 +80,30 @@ def test_overview_shows_env_flags_display_only(tmp_path, monkeypatch):
     assert "MINDER_ASSIST" in text and "retrieve" in text
 
 
+def test_overview_freshness_strip_names_its_data_age(tmp_path,
+                                                     monkeypatch):
+    """DDIA (issue #8): a derived page carries its lag - the landing
+    states through when the evidence runs and warns when recording has
+    gone stale instead of silently showing old numbers."""
+    dbp = new_db(tmp_path)
+    webseed.add_episode(dbp)
+    webseed.add_event(dbp)  # fixed seed ts, days behind the wall clock
+    client = webseed.client_for(dbp, monkeypatch)
+    text = client.get("/").text
+    assert "evidence through" in text
+    assert "Sep 22" in text
+    assert "no new evidence for" in text
+    assert 'href="/capture"' in text
+
+
+def test_overview_freshness_unknown_without_events(tmp_path, monkeypatch):
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    text = client.get("/").text
+    assert "evidence through" in text
+    assert "no new evidence for" not in text
+
+
 def test_overview_missing_db_renders_not_available(tmp_path, monkeypatch):
     client = webseed.client_for(tmp_path / "nope.sqlite", monkeypatch)
     resp = client.get("/")
