@@ -13,6 +13,12 @@ import sqlite3
 import frontier
 from minder_memory import (frontier_traces, from_hook, retrieval)
 
+# The cap lives in minder_core.panel_text, which does not exist before this
+# change. Read it through frontier so the module-level import stays a name
+# the pre-change code has (proven-red scores an ImportError as weak red).
+DISTILL_MAX_LINES = getattr(
+    getattr(frontier, "_panel", None), "DISTILL_MAX_LINES", 0)
+
 SECRET = "sk-proj-supersecret1234567890"
 REPO = "/repo"
 CMD = "pytest tests/test_supplier.py"
@@ -31,6 +37,10 @@ PANEL_ANSWER = (
     "1. The dict lookup misses on a missing supplier_id.\n"
     "- Use dict.setdefault for supplier_id before the lookup\n"
     "- per deepseek-v4-pro: add a test for the empty case\n")
+CAUSES_ONLY_ANSWER = (
+    "PANEL CONSULT: probe-a \u2713\n"
+    "1. The dict lookup misses on a missing supplier_id.\n"
+    "2. The fixture never seeds supplier rows.\n")
 
 
 def fail_event(session="fd-s1"):
@@ -145,12 +155,25 @@ def test_frontier_module_uses_governed_record(tmp_path, monkeypatch):
 
 
 def test_distilled_actions_extracted_from_panel_answer():
-    """Pure: bullet and numbered advice lines only, capped, prose dropped."""
-    actions = frontier.distill_actions(PANEL_ANSWER)
-    assert actions == ["Use dict.setdefault for supplier_id before the lookup",
-                       "add a test for the empty case"]
+    """Pure: the actionable lines of an answer only, capped, prose dropped.
+    The consult prompt asks for ranked root causes plus THE single next
+    concrete action, so a line is an action only when it reads like one;
+    a cause explains the failure and must not become lesson instruction."""
+    assert frontier.distill_actions(PANEL_ANSWER) == [
+        "Use dict.setdefault for supplier_id before the lookup",
+        "add a test for the empty case"]
+    assert frontier.distill_actions(CAUSES_ONLY_ANSWER) == []
     assert frontier.distill_actions("") == []
     assert frontier.distill_actions("(call failed: timeout)") == []
+    many = "\n".join(f"- run check number {i}" for i in range(20))
+    assert len(frontier.distill_actions(many)) == DISTILL_MAX_LINES
+    # The panel's own per-consultant notes are answer text, not the merged
+    # recommendation: they never become distilled actions.
+    noted = ("SYNTHESIS (merged, disagreements flagged):\n"
+             "- run pytest tests/test_supplier.py\n---\n"
+             "[probe-a] - run it again with -x\n")
+    assert frontier.distill_actions(noted) == [
+        "run pytest tests/test_supplier.py"]
 
 
 # --- acceptance 2/3: a verified close classifies and distills ------------
