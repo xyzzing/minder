@@ -35,7 +35,7 @@ python3 -m minder_op lessons ls [--status verified|candidate|invalidated]
 python3 -m minder_op lessons show LESSON_ID
 python3 -m minder_op lessons invalidate LESSON_ID --reason "..." --yes
 python3 -m minder_op lessons promote EPISODE_ID --instruction "..." \
---tests-passed --yes # same gates as promote_lesson
+[--tests-passed] --yes # same gates as promote_lesson
 python3 -m minder_op gaps ls [--status open|closed]
 python3 -m minder_op gaps close GAP_ID --reason "..." --yes
 python3 -m minder_op consults ls [--limit N]
@@ -220,6 +220,16 @@ never displayed as a label.
 - The default `lessons ls` view is verified-only, mirroring retrieval.
 Frontier-distilled **candidates** are inert until promoted and appear
 only with `--status candidate`.
+- A `verified` episode already carries its proof. When a hook sees a
+recognised test-runner command (`pytest`, `unittest`, `vitest`, `jest`,
+`go test`, `cargo test`, `npm test`, ...) whose output states a passing
+count and no failing count, it closes the session's open episode
+`verified` and appends a `verification` event holding the runner and the
+redacted command. `lessons promote` then needs only `--instruction`;
+`--tests-passed` remains for episodes closed `verified` by another path,
+and promoting an episode with neither still fails with
+`rejected:no-verified-tests`. Recognition and the clean-run judgement
+live in `minder_core/verification.py`.
 - All flags (`MINDER_ASSIST`, `MINDER_CLASSIFIER`, `MINDER_DECISION`,
 `MINDER_SUCCESS_GUARD`, `MINDER_TRACE_REVIEW`)
 are environment/systemd owned. Change them there and restart the hook;

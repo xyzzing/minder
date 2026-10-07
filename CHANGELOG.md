@@ -5,6 +5,22 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **Verified lessons can now happen (issue #9).** The lesson gate asked
+  for `verification.tests_passed`, and nothing in minder ever set it, so
+  the live store held 234 episodes, 228 of them closed as `candidate`, and
+  zero lessons. A successful hook call that runs a recognised test runner
+  (`pytest`, `unittest`, `vitest`, `jest`, `mocha`, `playwright`, `rspec`,
+  `go test`, `cargo test`, `npm`/`pnpm`/`yarn test`, `make test`, ...) and
+  whose output states a passing count with no failing count now closes the
+  session's open episode `verified` and appends a `verification` event
+  carrying the runner and the redacted command. `lessons promote` reads
+  that evidence from the store, so an operator states the lesson instead
+  of re-asserting a test result. A run that reports failures, or a runner
+  word that only appears in an argument, verifies nothing; the frontier's
+  output is still a hypothesis, never evidence. Recognition and the
+  clean-run judgement live in a new stdlib-only `minder_core.verification`
+  module.
+
 - **Console reads better and shows the domain story (issue #8).** Every
   user-visible console string now lives in one strings module (C3), the
   stylesheet is token-based with a dark scheme, reduced-transparency

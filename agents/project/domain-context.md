@@ -67,6 +67,19 @@ commit hash behind it; the instruction gate checks the hash exists.
 - `db.connect()` used to leak its connection handle whenever a migration
   failed; fixed with close-before-reraise and a broken-migration test.
   (9eed22e)
+- The lesson pipeline had a consumer with no producer: `_close_on_success`
+  read `hook_ev["verification"]["tests_passed"]`, a key nothing in the repo
+  ever wrote, so all 228 closed episodes in the live store were `candidate`
+  and `lessons` was empty. A gate on an input no path can set is dead code
+  that looks like a safety property. Since issue #9 the producer is the
+  hook itself: a recognised test-runner call whose output states a passing
+  count and no failing count closes the session's open episode `verified`
+  and records a `verification` event on it. Two traps in that area:
+  `to_event()` maps the payload's `tool_response` onto `error_excerpt` and
+  never copies `tool_response`, so a success-path reader must use
+  `error_excerpt`; and `go test` prints per-package `ok`/`FAIL` with no
+  counts, so a failing package matches none of `FAIL_SIGNS` and needs its
+  own clean-run rule. (issue #9)
 
 ## Platform quirks
 
