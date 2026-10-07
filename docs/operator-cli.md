@@ -36,6 +36,8 @@ python3 -m minder_op lessons show LESSON_ID
 python3 -m minder_op lessons invalidate LESSON_ID --reason "..." --yes
 python3 -m minder_op lessons promote EPISODE_ID --instruction "..." \
 [--tests-passed] --yes # same gates as promote_lesson
+python3 -m minder_op lessons promote LESSON_ID --from-candidate \
+[--instruction "..."] --yes # adopt a frontier-distilled candidate
 python3 -m minder_op gaps ls [--status open|closed]
 python3 -m minder_op gaps close GAP_ID --reason "..." --yes
 python3 -m minder_op consults ls [--limit N]
@@ -230,6 +232,23 @@ redacted command. `lessons promote` then needs only `--instruction`;
 and promoting an episode with neither still fails with
 `rejected:no-verified-tests`. Recognition and the clean-run judgement
 live in `minder_core/verification.py`.
+- A verified close also finishes the frontier consult that was about it
+(issue #10). The panel records every consult against the episode it was
+asked about, so when that episode closes `verified` the consult is
+labelled `pass`/`helpful` from that close and its distilled actions
+become one **candidate** lesson. A consult with no episode, or one whose
+episode closes any other way, stays unclassified and yields nothing. The
+join is `minder_memory/frontier_link.py`, it runs once per consult, and
+the events ledger names what it did (`frontier_distilled`).
+- Reviewing that queue is one command:
+`minder-op lessons promote <lesson_id> --from-candidate --yes`. It adopts
+the candidate's own distilled text, or an edited one via
+`--instruction`, and the tests evidence is the source episode's, so
+`--tests-passed` is refused there. The candidate is tombstoned
+(`invalidated`, reason `adopted by operator as <lesson_id>`) and the
+verified lesson keeps the consult's `trace_id` in its verification. A
+candidate whose episode has no `verification` event is still refused with
+`rejected:no-verified-tests`.
 - All flags (`MINDER_ASSIST`, `MINDER_CLASSIFIER`, `MINDER_DECISION`,
 `MINDER_SUCCESS_GUARD`, `MINDER_TRACE_REVIEW`)
 are environment/systemd owned. Change them there and restart the hook;

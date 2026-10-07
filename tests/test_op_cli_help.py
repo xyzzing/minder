@@ -3,6 +3,7 @@ exit 1 (2 is reserved for a missing/corrupt DB); the deferred list is
 visible from the help surface."""
 import pytest
 
+from minder_memory import db as _db
 from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 
 DEFERRED_FRAGMENTS = ("web console", "log retention", "skill-risk denylist",
@@ -37,9 +38,22 @@ def test_flags_lists_env_and_persistence_note(monkeypatch, capsys):
 
 
 def test_promote_requires_instruction(tmp_path, capsys):
-    assert main(["--db", str(tmp_path / "m.sqlite"), "lessons", "promote",
-                 "ep_x", "--yes"]) == EXIT_USAGE
+    dbp = tmp_path / "m.sqlite"
+    _db.connect(dbp).close()
+    assert main(["--db", str(dbp), "lessons", "promote", "ep_x",
+                 "--yes"]) == EXIT_USAGE
     assert "instruction" in capsys.readouterr().err
+
+
+def test_promote_from_candidate_needs_no_instruction(tmp_path, capsys):
+    """`--from-candidate` adopts a distilled candidate, whose instruction is
+    already written, so the argument stops being required in that mode. The
+    episode-id mode keeps demanding one."""
+    dbp = tmp_path / "m.sqlite"
+    _db.connect(dbp).close()
+    assert main(["--db", str(dbp), "lessons", "promote", "les_x",
+                 "--from-candidate", "--yes"]) == EXIT_USAGE
+    assert "no-such-lesson" in capsys.readouterr().err
 
 
 def test_package_module_entrypoint():

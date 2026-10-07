@@ -73,7 +73,7 @@ curl -sS http://127.0.0.1:8765/healthz
 | `/scorecard` | the six improvement groups (capture, cost, failures, learning, context, hygiene) plus a 3-item focus list |
 | `/events` | raw observed events with type/tool/failure-key/session filters and a staleness banner |
 | `/episodes`, `/episodes/{id}` | episode list, timeline with redacted excerpts |
-| `/lessons`, `/lessons/{id}` | verified / candidate / invalidated — badges visibly differ; default view is live verified only |
+| `/lessons`, `/lessons/{id}` | verified / candidate / invalidated — badges visibly differ; default view is live verified only. A candidate came from a frontier consult labelled by its episode's verified close; adopting one is a CLI write (`lessons promote <id> --from-candidate`), not a console action |
 | `/gaps` | open skill gaps |
 | `/consults`, `/consults/{id}` | frontier consult labels (`frontier_evals`, never the legacy 003 integer); hashes only, no raw prompt/response text |
 | `/decisions` | shadow decision traces: model recommendation vs policy decision |

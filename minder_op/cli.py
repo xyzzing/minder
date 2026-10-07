@@ -300,12 +300,17 @@ def build_parser():
     le_inv.add_argument("--reason", required=True)
     le_inv.add_argument("--yes", action="store_true")
     le_promote = le_sub.add_parser("promote")
-    le_promote.add_argument("episode_id")
-    le_promote.add_argument("--instruction", required=True)
+    le_promote.add_argument("episode_id", nargs="?",
+                            help="episode to promote from, or the candidate "
+                                 "lesson id with --from-candidate")
+    le_promote.add_argument("--instruction")
     le_promote.add_argument("--anti-pattern", default="")
     le_promote.add_argument("--repo", default="")
     le_promote.add_argument("--failure-key", default="")
     le_promote.add_argument("--tests-passed", action="store_true")
+    le_promote.add_argument("--from-candidate", action="store_true",
+                            help="adopt a frontier-distilled candidate "
+                                 "lesson (id, not episode)")
     le_promote.add_argument("--yes", action="store_true")
 
     gp = sub.add_parser("gaps", help="skill gaps")
@@ -1591,6 +1596,16 @@ def _cmd_lessons_invalidate(args, path):
 
 def _cmd_lessons_promote(args, path):
     from minder_memory import lessons as memory_lessons
+    if args.from_candidate:
+        return _promote_candidate_lesson(args, path, memory_lessons)
+    if not args.episode_id:
+        print("error: lessons promote needs an EPISODE_ID, or --from-candidate "
+              "with a LESSON_ID", file=sys.stderr)
+        return EXIT_USAGE
+    if not args.instruction:
+        print("error: the following arguments are required: --instruction",
+              file=sys.stderr)
+        return EXIT_USAGE
     if _refuse_without_yes(
             args, f"lessons promote episode={args.episode_id} "
                   f"instruction={args.instruction!r} "
@@ -1602,11 +1617,40 @@ def _cmd_lessons_promote(args, path):
         anti_pattern=args.anti_pattern, verification=verification,
         repo=args.repo, failure_key=args.failure_key, actor="operator",
         db_path=path)
+    return _report_promotion(lesson, status)
+
+
+def _promote_candidate_lesson(args, path, memory_lessons):
+    """The candidate queue has to be closable from the same screen that
+    lists it: the id comes from `lessons ls --status candidate`, the
+    instruction is the distilled text unless the operator edits it, and the
+    tests evidence is the source episode's (issue #10)."""
+    lesson_id = args.episode_id
+    if not lesson_id:
+        print("error: --from-candidate needs a LESSON_ID", file=sys.stderr)
+        return EXIT_USAGE
+    if args.tests_passed:
+        print("error: --from-candidate takes its tests evidence from the "
+              "candidate's source episode; --tests-passed is not needed",
+              file=sys.stderr)
+        return EXIT_USAGE
+    if _refuse_without_yes(
+            args, f"lessons promote candidate={lesson_id} "
+                  f"instruction={args.instruction!r} (adopt as verified)"):
+        return EXIT_USAGE
+    lesson, status = memory_lessons.adopt_candidate_lesson(
+        lesson_id, instruction=args.instruction, actor="operator",
+        db_path=path)
+    return _report_promotion(lesson, status)
+
+
+def _report_promotion(lesson, status):
     if not lesson:
         print(f"error: {status}", file=sys.stderr)
         return EXIT_USAGE
     fmt.kv([("lesson_id", lesson["lesson_id"]), ("status", status),
             ("lesson_status", lesson["status"]),
+            ("instruction", fmt.safe(lesson["instruction"], 200)),
             ("source_episode", lesson["source_episode"])])
     return EXIT_OK
 

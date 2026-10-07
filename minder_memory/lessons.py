@@ -102,3 +102,68 @@ def _get(lesson_id, conn):
     row = conn.execute("SELECT * FROM lessons WHERE lesson_id = ?",
                        (lesson_id,)).fetchone()
     return dict(row) if row else None
+
+
+def adopt_candidate_lesson(lesson_id, instruction=None, actor="operator",
+                           db_path=None):
+    """Adopt a frontier-distilled candidate as a verified lesson (issue #10).
+
+    The gates are `promote_lesson`'s, unchanged: the candidate's source
+    episode must be `verified` and carry `verification.tests_passed`
+    evidence, which issue #9's clean test run records. Nothing about the
+    frontier counts as proof here; the operator is the actor and the
+    episode's own test run is the evidence.
+
+    The instruction defaults to the candidate's distilled text, which is
+    what reviewing the queue is for; passing one replaces it. The candidate
+    is tombstoned and replaced rather than updated in place, so the
+    unreviewed text stays in the ledger next to the adopted lesson and its
+    verification keeps the trace_id it was distilled from. Never raises -
+    returns (lesson_dict, status).
+    """
+    try:
+        conn = _db.connect(db_path)
+        try:
+            row = conn.execute("SELECT * FROM lessons WHERE lesson_id = ?",
+                               (lesson_id,)).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None, "rejected:no-such-lesson"
+        candidate = dict(row)
+        if candidate.get("status") != "candidate":
+            return None, f"rejected:lesson-status-{candidate.get('status')}"
+        episode_id = candidate.get("source_episode") or ""
+        text = str(instruction or "").strip() or str(
+            candidate.get("instruction") or "").strip()
+        if not text:
+            return None, "rejected:no-instruction"
+        lesson, status = promote_lesson(
+            episode_id, text, anti_pattern=candidate.get("anti_pattern") or "",
+            verification=_candidate_verification(candidate),
+            repo=candidate.get("repo") or "",
+            failure_key=candidate.get("failure_key") or "", actor=actor,
+            db_path=db_path)
+        if not lesson:
+            return None, status
+        invalidated, _ = invalidate_lesson(
+            lesson_id, "adopted by operator as "
+            f"{lesson['lesson_id']}", db_path=db_path)
+        if not invalidated:
+            return lesson, "adopted-but-candidate-still-open"
+        return lesson, "ok"
+    except Exception as e:
+        return None, f"degraded:{type(e).__name__}"
+
+
+def _candidate_verification(candidate):
+    """The candidate's distill provenance, carried onto the adopted lesson so
+    the verified row still names the consult it came from. `tests_passed` is
+    deliberately not copied from here: it must come from the episode."""
+    try:
+        payload = json.loads(candidate.get("verification_json") or "{}")
+    except ValueError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {k: v for k, v in payload.items() if k != "tests_passed"}

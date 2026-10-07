@@ -5,6 +5,26 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The frontier consult path is now wired into the runtime (issue #10).**
+  `record_consult`, `classify_consult` and `distill_lesson_from_consult`
+  were complete and tested, and nothing ever called them: the panel wrote
+  legacy un-governed traces, `frontier_evals` stayed empty, `helpfulness`
+  was always NULL, `may_distill` never passed, and the candidate lesson
+  queue could not move. `frontier.py` now records each consult through
+  `record_consult`, tagged with the episode it was asked about, and a close
+  that lands `verified` labels that episode's consults `pass` and distils
+  their actions into one candidate lesson
+  (`minder_memory/frontier_link.py`, once per consult). The label is
+  structural - the episode they were about verified - which is why the
+  result is a candidate and never a verified lesson. Reviewing the queue is
+  now one command, `minder-op lessons promote <lesson_id> --from-candidate
+  --yes`: it adopts the distilled text, keeps the consult's `trace_id` as
+  provenance, and takes its tests evidence from the source episode, so
+  `--tests-passed` is refused there. The panel's prompts and its reading of
+  an answer - what counts as an action, what counts as a cause - moved to a
+  new stdlib-only `minder_core.panel_text` module, one contract in both
+  directions.
+
 - **Verified lessons can now happen (issue #9).** The lesson gate asked
   for `verification.tests_passed`, and nothing in minder ever set it, so
   the live store held 234 episodes, 228 of them closed as `candidate`, and

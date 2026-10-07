@@ -355,7 +355,7 @@ Details, rule provenance and limits:
 
 ## Use the pieces without the runtime
 
-Two parts of minder are deliberately dependency-free (Python standard
+Three parts of minder are deliberately dependency-free (Python standard
 library only, zero minder imports) and importable from `minder_core`:
 
 - **`minder_core.comparator`**, the protected-metric benchmark
@@ -365,6 +365,9 @@ library only, zero minder imports) and importable from `minder_core`:
 - **`minder_core.identity`**: canonical failure keys, action
   fingerprints, secret redaction, and result signatures, the exact
   functions minder's evidence log is keyed by.
+- **`minder_core.panel_text`**: the frontier panel's prompts and the rules
+  for reading an answer back - which lines are actions to act on, which are
+  causes, which are another model's attribution.
 
 ```python
 from minder_core import compare_reports, failure_key, result_signature
