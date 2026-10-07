@@ -92,6 +92,8 @@ def main(argv=None):
     sc.add_argument("--out")
     sc.add_argument("--label")
     sc.add_argument("--kind", choices=("baseline", "candidate"), default="candidate")
+    sc.add_argument("--suite-id",
+                    help="override the suite id derived from the case families")
     sf = sub.add_parser("selfcheck", help="oracle passes 100%%, mutants all fail")
     _gen_args(sf)
     sub.add_parser("rules", help="rule provenance table")
@@ -127,7 +129,8 @@ def main(argv=None):
         elif a.cmd == "score":
             cases = _read_jsonl(a.cases)
             answers = {x["id"]: x.get("answer") for x in _read_jsonl(a.answers)}
-            rep = score(cases, answers, a.kind, a.label)
+            rep = score(cases, answers, a.kind, a.label,
+                        suite_id=getattr(a, "suite_id", None))
             text = json.dumps(rep, indent=1, default=str)
             if a.out:
                 Path(a.out).write_text(text)

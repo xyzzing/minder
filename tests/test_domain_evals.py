@@ -33,7 +33,9 @@ def test_holdout_split_is_locked():
 
 def test_oracle_passes_itself_and_every_mutant_fails(cases):
     ref = reference_answers(cases)
-    rep = score(cases, ref)
+    # the fixture spans all six families; no suite pins that mix, so the
+    # report carries an explicit test id (suite naming is covered below)
+    rep = score(cases, ref, suite_id="test-mixed-v1")
     assert rep["domain_metrics"]["passed"] == len(cases)
     rng = random.Random(0)
     for c in cases:
@@ -42,8 +44,33 @@ def test_oracle_passes_itself_and_every_mutant_fails(cases):
 
 def test_report_fits_minder_benchmark_envelope(cases):
     from minder_op.benchmark import validate_report
-    rep = score(cases, reference_answers(cases))
+    rep = score(cases, reference_answers(cases), suite_id="test-mixed-v1")
     assert validate_report(rep) == []
+
+
+def test_report_suite_id_follows_the_cases_families(cases):
+    """Issue #8: score() used to hardcode suite_id 'domain-core-v1', so
+    a legal or finance run was mislabeled and compared against the wrong
+    pinned baseline. The suite id follows the families actually in the
+    cases; an unpinned mix is refused, not silently mislabeled."""
+    legal_cases = generate(21, 4, ["legal"])
+    assert score(legal_cases, reference_answers(legal_cases))["suite_id"] \
+        == "legal-core-v1"
+    fin_cases = generate(22, 4, ["finance"])
+    assert score(fin_cases, reference_answers(fin_cases))["suite_id"] \
+        == "finance-core-v1"
+    five = generate(24, 4, ["sustainability", "finance", "trade",
+                            "governance", "extraction"])
+    assert score(five, reference_answers(five))["suite_id"] == \
+        "domain-core-v1"
+
+
+def test_report_suite_id_unpinned_mix_needs_explicit_id(cases):
+    mixed = generate(23, 3, ["legal", "finance"])
+    with pytest.raises(ValueError):
+        score(mixed, reference_answers(mixed))
+    rep = score(mixed, reference_answers(mixed), suite_id="pilot-mix-v1")
+    assert rep["suite_id"] == "pilot-mix-v1"
 
 
 def test_abstention_outcomes(cases):

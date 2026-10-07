@@ -11,6 +11,26 @@ from .util import D
 
 _NUM_JUNK = re.compile(r"[,\s$]|SGD|USD|S\$", re.I)
 
+# Family-set -> suite conventions (same mapping the manifest pins and
+# the README documents: the default five families are domain-core-v1;
+# legal and finance each have their own suite). An exact match is
+# required; anything else is refused instead of mislabeled.
+SUITE_BY_FAMILY_SET = {
+    frozenset(("sustainability", "finance", "trade", "governance",
+               "extraction")): "domain-core-v1",
+    frozenset(("legal",)): "legal-core-v1",
+    frozenset(("finance",)): "finance-core-v1",
+}
+
+
+def _suite_for_families(families):
+    suite_id = SUITE_BY_FAMILY_SET.get(frozenset(families))
+    if suite_id is None:
+        raise ValueError(
+            "no suite pins these families "
+            f"({', '.join(sorted(families))}); pass an explicit suite_id")
+    return suite_id
+
 
 def parse_answer(text):
     """First balanced JSON object in a model reply (fences/think tolerated)."""
@@ -144,7 +164,13 @@ def grade_case(case, answer):
             "outcome": "correct" if ok else "wrong", "fields": fields}
 
 
-def score(cases, answers_by_id, kind="candidate", label=None):
+def score(cases, answers_by_id, kind="candidate", label=None,
+          suite_id=None):
+    # The suite id must describe the cases actually graded: a legal or
+    # finance run labeled domain-core-v1 would be compared against the
+    # wrong pinned baseline (issue #8).
+    suite_id = suite_id or _suite_for_families(
+        {c["family"] for c in cases})
     results = [grade_case(c, answers_by_id.get(c["id"])) for c in cases]
     by = {c["id"]: c for c in cases}
     fam = defaultdict(lambda: [0, 0])
@@ -171,7 +197,7 @@ def score(cases, answers_by_id, kind="candidate", label=None):
     passed = sum(r["passed"] for r in results)
     return {
         # minder benchmark report v1 envelope (minder_op.benchmark.validate_report)
-        "report_version": 1, "suite_id": "domain-core-v1", "kind": kind,
+        "report_version": 1, "suite_id": suite_id, "kind": kind,
         "label": label, "generator_version": GENERATOR_VERSION,
         "suite_fingerprint": suite_fingerprint(cases),
         "generated_at": datetime.now(timezone.utc).isoformat(),
