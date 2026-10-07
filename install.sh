@@ -68,7 +68,9 @@ cp -R "$SRC/minder_core" "$SHARE/"
 cp -R "$SRC/minder_op" "$SHARE/"
 cp -R "$SRC/minder_web" "$SHARE/"
 cp -R "$SRC/minder_trace" "$SHARE/"
+cp -R "$SRC/minder_domain_evals" "$SHARE/"
 cp -R "$SRC/skills" "$SHARE/"
+cp -R "$SRC/benchmarks" "$SHARE/"
 chmod +x "$SHARE/proxy.py" "$SHARE/hook.py" "$SHARE/frontier.py" \
          "$SHARE/probe_dialect.py" "$SHARE/sink.py" 2>/dev/null || true
 # hooks.json: patch the share path and the sink URL into the command hooks.
