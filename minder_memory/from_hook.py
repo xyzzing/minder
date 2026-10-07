@@ -10,6 +10,7 @@ test 3).
 import json
 
 import minder
+from minder_core import verification
 from . import canonicalise as canon
 from . import store
 
@@ -212,15 +213,49 @@ def blocked_action_directive(hook_ev, db_path=None):
         return None
 
 
+def _verification_evidence(hook_ev, ev):
+    """Local verification for the open episode, or None (issue #9).
+
+    Two sources, in order of trust:
+    1. an explicit `verification` payload carrying tests_passed, supplied by
+       the harness or an operator;
+    2. a clean test-runner run: the command names a recognised runner and
+       its output reports a passing count with no failing count. This is the
+       evidence the lesson gate was missing - nothing ever produced source 1,
+       so all 228 closed episodes in the live store landed at `candidate`.
+
+    Structural, not semantic: a runner word inside an argument is not a run,
+    and a run whose output states no counts proves nothing.
+    """
+    explicit = hook_ev.get("verification") or {}
+    if isinstance(explicit, dict) and explicit.get("tests_passed"):
+        return {"tests_passed": True, "source": "payload"}
+    command = ev.get("command") or ""
+    runner = verification.test_runner(command)
+    if not runner:
+        return None
+    # `to_event()` maps the raw payload's tool_response onto error_excerpt and
+    # never copies tool_response itself, so read the canonical field first
+    # (same trap `_observe_success` documents).
+    output = ev.get("error_excerpt")
+    if output is None:
+        output = hook_ev.get("tool_response") or ""
+    if not verification.run_is_clean(output, runner):
+        return None
+    return {"tests_passed": True, "source": "test-run", "runner": runner,
+            "command": canon.redact(command)[:200]}
+
+
 def _close_on_success(hook_ev, ev, out, db_path):
     try:
         ep = store.find_open_episode(ev.get("task_id") or
                                      ev.get("session_id"), db_path)
         if not ep:
             return out
-        verification = hook_ev.get("verification") or {}
-        if isinstance(verification, dict) and verification.get("tests_passed"):
+        evidence = _verification_evidence(hook_ev, ev)
+        if evidence:
             status = "verified"
+            _record_verification(ep["episode_id"], ev, evidence, db_path)
         else:
             status = "candidate"
         closed_status, _ = store.close_episode(ep["episode_id"], status,
@@ -231,3 +266,22 @@ def _close_on_success(hook_ev, ev, out, db_path):
     except Exception as e:
         out["status"] = f"degraded:{type(e).__name__}"
         return out
+
+
+def _record_verification(episode_id, ev, evidence, db_path):
+    """Persist the evidence as a `verification` event linked to the episode,
+    so the lesson gate can read it from the store and not only from the
+    in-flight payload. `add_attempt` never raises - it returns a degraded
+    status - so a failed insert costs only the ledger row: the close still
+    happens and the in-flight payload keeps the lesson gate satisfied.
+    """
+    event_id, status = store.add_attempt(episode_id, {
+        "event_type": "verification",
+        "session_id": ev.get("session_id"), "task_id": ev.get("task_id"),
+        "repo": ev.get("repo"), "tool": ev.get("tool"),
+        "payload_json": json.dumps(evidence)}, db_path=db_path)
+    if event_id is None:
+        minder.log(ev.get("task_id") or ev.get("session_id") or "",
+                   "verification_event_failed", status=status,
+                   episode=episode_id)
+    return event_id

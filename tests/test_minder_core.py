@@ -11,7 +11,7 @@ CORE_DIR = Path(minder_core.__file__).resolve().parent
 
 _ALLOWED = {"hashlib", "json", "re", "datetime",
            "pathlib", "fnmatch", "xml", "ast", "difflib", "io",
-           "sys", "tokenize"}
+           "sys", "tokenize", "shlex"}
 
 
 def _imports_of(path):
@@ -54,6 +54,13 @@ def test_reexported_names_are_the_same_objects():
     assert success_guard.result_signature is minder_core.result_signature
     assert benchmark.compare_reports is minder_core.compare_reports
     assert benchmark.VERDICT_FAIL is minder_core.VERDICT_FAIL
+    # verification has no historical location: minder_core.verification is
+    # its only home (C5), so the pin is that the package surface and the
+    # module are one object.
+    from minder_core import verification as _v
+
+    assert minder_core.test_runner is _v.test_runner
+    assert minder_core.run_is_clean is _v.run_is_clean
 
 
 def test_public_surface_documents_itself():
@@ -61,6 +68,7 @@ def test_public_surface_documents_itself():
         "action_fingerprint", "canonical_action", "compare_reports",
         "error_family", "failure_key", "MAX_COMPLETION_DROP",
         "MIN_COMPARABLE_RUNS", "normalize_output", "redact", "relpath_of",
-        "result_signature", "same_failure", "symbol_or_test_id",
-        "unchanged_retry", "VERDICT_FAIL", "VERDICT_INSUFFICIENT",
-        "VERDICT_NON_COMPARABLE", "VERDICT_PASS"}
+        "result_signature", "run_is_clean", "same_failure",
+        "symbol_or_test_id", "test_runner", "unchanged_retry",
+        "VERDICT_FAIL", "VERDICT_INSUFFICIENT", "VERDICT_NON_COMPARABLE",
+        "VERDICT_PASS"}
