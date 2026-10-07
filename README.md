@@ -148,6 +148,16 @@ minder-web --port 8765 --db ~/.local/state/minder/memory.sqlite
 # then open http://127.0.0.1:8765
 ```
 
+The landing page states how current its evidence is, and the
+`/domains` page answers, in plain words, what minder knows about your
+field: the active profile and its budgets, each eval suite with a
+verdict (pinned baseline, not yet comparable, or invalid), the
+provenance grade of every domain rule (primary means read from the
+authoritative source; secondary means re-verify before relying on it
+externally), and whether the difficulty router is actually changing
+requests or only logging. It is read-only - profiles are still set by
+hand in `minder.json`.
+
 `capture` and `scorecard` read dsh's own session store (`~/.dsh`, or
 `$MINDER_DSH_HOME`). dsh is one of the two assistant tools minder
 integrates with deeply (the other is zcode). dsh hooks run inside a

@@ -5,6 +5,22 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **Console reads better and shows the domain story (issue #8).** Every
+  user-visible console string now lives in one strings module (C3), the
+  stylesheet is token-based with a dark scheme, reduced-transparency
+  and increased-contrast variants, and a sticky translucent header. The
+  landing page states how current its evidence is ("evidence through
+  <date>") and warns when the newest stored event is over a day old.
+  A new read-only `/domains` page shows the active profile with its
+  effective budgets, each eval suite with a plain-language verdict
+  (pinned baseline / not comparable yet / manifest invalid), the
+  rulebook's primary/secondary provenance grades, and the
+  difficulty-router mode. Supporting fix: benchmark reports now carry
+  the suite id the graded cases actually pin (`legal-core-v1` and
+  `finance-core-v1` runs were mislabeled `domain-core-v1`, which would
+  have compared them against the wrong baseline); the `score` command
+  accepts `--suite-id` to override.
+
 - **Four-level automatic reasoning selection (issue #7).** Automatic
   mode (`effort_mode=auto`) now selects exactly `low` / `medium` /
   `high` / `xhigh` — never `off` or `minimal`. The deterministic
