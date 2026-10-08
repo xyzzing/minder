@@ -233,13 +233,14 @@ and promoting an episode with neither still fails with
 `rejected:no-verified-tests`. Recognition and the clean-run judgement
 live in `minder_core/verification.py`.
 - A verified close also finishes the frontier consult that was about it
-(issue #10). The panel records every consult against the episode it was
-asked about, so when that episode closes `verified` the consult is
-labelled `pass`/`helpful` from that close and its distilled actions
-become one **candidate** lesson. A consult with no episode, or one whose
-episode closes any other way, stays unclassified and yields nothing. The
-join is `minder_memory/frontier_link.py`, it runs once per consult, and
-the events ledger names what it did (`frontier_distilled`).
+(issue #10). The Warden names the open episode when it escalates, and the
+panel records every consult against it, so when that episode closes
+`verified` the consult is labelled `pass`/`helpful` from that close and its
+distilled actions become one **candidate** lesson. A consult with no
+episode, or one whose episode closes any other way, stays unclassified and
+yields nothing. The join is `minder_memory/frontier_link.py`, it runs once
+per consult, and the events ledger names what it did
+(`frontier_distilled`).
 - Reviewing that queue is one command:
 `minder-op lessons promote <lesson_id> --from-candidate --yes`. It adopts
 the candidate's own distilled text, or an edited one via

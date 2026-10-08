@@ -11,8 +11,8 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
   legacy un-governed traces, `frontier_evals` stayed empty, `helpfulness`
   was always NULL, `may_distill` never passed, and the candidate lesson
   queue could not move. `frontier.py` now records each consult through
-  `record_consult`, tagged with the episode it was asked about, and a close
-  that lands `verified` labels that episode's consults `pass` and distils
+  `record_consult`, tagged with the episode the Warden was watching when it
+  escalated, and a close that lands `verified` labels that episode's consults `pass` and distils
   their actions into one candidate lesson
   (`minder_memory/frontier_link.py`, once per consult). The label is
   structural - the episode they were about verified - which is why the
@@ -23,7 +23,9 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
   `--tests-passed` is refused there. The panel's prompts and its reading of
   an answer - what counts as an action, what counts as a cause - moved to a
   new stdlib-only `minder_core.panel_text` module, one contract in both
-  directions.
+  directions. Driving the real panel against a copy of the live store showed
+  the last gap: the Warden's consult payloads carried no `episode_id`, so
+  the traces were unadoptable and the queue stayed empty even wired up.
 
 - **Verified lessons can now happen (issue #9).** The lesson gate asked
   for `verification.tests_passed`, and nothing in minder ever set it, so
