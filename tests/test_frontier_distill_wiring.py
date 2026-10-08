@@ -32,6 +32,12 @@ CFG = {"frontier_providers": [
     {"name": "probe-a", "base_url": "http://probe/a", "model": "m-a",
      "key_env": "PROBE_A_KEY"},
 ]}
+TWO_PROVIDER_CFG = {"frontier_providers": [
+    {"name": "probe-a", "base_url": "http://probe/a", "model": "m-a",
+     "key_env": "PROBE_A_KEY"},
+    {"name": "probe-b", "base_url": "http://probe/b", "model": "m-b",
+     "key_env": "PROBE_B_KEY"},
+]}
 
 PANEL_ANSWER = (
     "PANEL CONSULT: probe-a \u2713\n"
@@ -176,6 +182,68 @@ def test_distilled_actions_extracted_from_panel_answer():
              "- run pytest tests/test_supplier.py\n---\n"
              "[probe-a] - run it again with -x\n")
     assert frontier.distill_actions(noted) == [
+        "run pytest tests/test_supplier.py"]
+
+
+def _notes_answer():
+    """A merged recommendation followed by the panel's per-consultant notes,
+    each consultant stating its own next action that the merge did not keep."""
+    return ("SYNTHESIS (merged, disagreements flagged):\n"
+            "Next action: run pytest tests/test_supplier.py\n---\n"
+            "[probe-a] Next action: run it again with -x\n")
+
+
+def test_panel_notes_do_not_reach_the_record(tmp_path):
+    """The record-level consequence of the reading rules: `run_panel` appends
+    each consultant's answer under a separator, so a note that reads as an
+    action must be filtered before `distilled_json` is written. Otherwise a
+    consultant's aside becomes lesson instruction through the governed path."""
+    dbp = tmp_path / "m.sqlite"
+    answer = _notes_answer()
+    trace_id = frontier_traces.record_consult(
+        {"failure_key": KEY, "episode_id": "ep_x", "local_attempts": 3,
+         "providers": [{"name": "probe-a"}], "prompt": "p", "response": answer,
+         "distilled": frontier.distill_actions(answer),
+         "trigger": frontier.CONSULT_TRIGGER}, db_path=str(dbp))
+    assert trace_id
+    consult = frontier_traces.get_consult(trace_id, db_path=str(dbp))
+    # get_consult decodes the json columns, so this asserts on the stored
+    # value as the distiller sees it, not on its wire form.
+    assert consult["distilled_json"] == ["run pytest tests/test_supplier.py"]
+
+
+def test_two_consultant_panel_distills_only_the_merged_action(monkeypatch,
+                                                               tmp_path):
+    """The production seam, with two consultants. `run_panel` synthesizes and
+    then appends each consultant's own answer to the text it returns, so the
+    distilled list is read out of that combined string. A consultant's aside
+    must not reach `distilled_json` alongside the merged recommendation."""
+    monkeypatch.setattr(frontier, "load_key_by_name", lambda name: "sk-" + name)
+    dbp = tmp_path / "m.sqlite"
+
+    def post(url, body, headers, timeout):
+        prompt = body["messages"][0]["content"]
+        if "Reconcile" in prompt:
+            return 200, {"choices": [{"message": {
+                "content": "1. The fixture never seeds supplier_id.\n"
+                           "Next action: run pytest tests/test_supplier.py"}}]}
+        answer = ("1. The cache answers first.\n"
+                  "Next action: run it again with -x" if "probe/a" in url
+                  else "1. The schema lacks the column.\n"
+                       "Next action: add a migration")
+        return 200, {"choices": [{"message": {"content": answer}}]}
+
+    answer = frontier.run_panel(
+        {"key": KEY, "attempts": 3, "error": FAIL_OUT, "episode_id": "ep_fd2"},
+        TWO_PROVIDER_CFG, post=post,
+        on_trace=frontier.trace_hook(TWO_PROVIDER_CFG, db_path=dbp))
+    assert "PANEL CONSULT" in answer and "[probe-a]" in answer
+    trace = frontier_traces.get_consult(_only_trace_id(dbp), db_path=dbp)
+    assert trace["distilled_json"] == ["run pytest tests/test_supplier.py"], (
+        "a consultant's own next action leaked into the record: the notes "
+        "appended after the merged answer are read as advice")
+    # Same answer, no panel round trip: the reading alone must drop the notes.
+    assert frontier.distill_actions(_notes_answer()) == [
         "run pytest tests/test_supplier.py"]
 
 
