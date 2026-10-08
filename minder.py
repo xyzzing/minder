@@ -409,6 +409,28 @@ def process(ev, c=None):
         return out
 
 
+def _open_episode_id(task):
+    """The open episode for this session, as the memory layer keyed it.
+
+    A consult is only evidence about something, and the episode is what the
+    distill join keys on: a trace with no episode_id can never be classified
+    by a verified close, so the governed lesson path stays empty no matter
+    how well the rest of it is wired. The hook records the episode before it
+    asks the Warden (hook.py, record then process), so by the time an
+    escalation fires the episode exists.
+
+    The import is a guarded local one for the same reason `_sink_client` is:
+    the Warden runs on machines with no memory layer installed, and a
+    consult that carries no episode is strictly better than no consult.
+    Never raises; '' means no link."""
+    try:
+        from minder_memory import store as _store
+        episode = _store.find_open_episode(task)
+    except Exception:
+        return ""
+    return (episode or {}).get("episode_id") or ""
+
+
 def _process(ev, c, out):
     c = c or cfg()
     task = session_key(ev)
@@ -442,7 +464,10 @@ def _process(ev, c, out):
                     "task": task, "kind": "verify", "key": key,
                     "attempts": rec["n"],
                     "error": rec.get("err_excerpt", ""),
-                    "resolution": str(text)[:800]}
+                    "resolution": str(text)[:800],
+                    # The episode that just resolved: the verify consult is
+                    # about it, and the distill join is keyed on it.
+                    "episode_id": _open_episode_id(task)}
         save_state(task, st)
         return out
 
@@ -509,7 +534,8 @@ def _process(ev, c, out):
             out["action"] = "frontier"
             out["level"] = 2
             out["frontier_payload"] = {"task": task, "key": key, "attempts": n,
-                                       "error": str(text)[:2000]}
+                                       "error": str(text)[:2000],
+                                       "episode_id": _open_episode_id(task)}
         elif not st["l3_fired"]:
             st["l3_fired"] = True
             out["action"] = "alarm"

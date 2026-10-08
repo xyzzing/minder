@@ -10,6 +10,7 @@ on persisted rows.
 import json
 import sqlite3
 
+import minder
 import frontier
 from minder_memory import (frontier_traces, from_hook, retrieval)
 
@@ -179,6 +180,86 @@ def test_distilled_actions_extracted_from_panel_answer():
 
 
 # --- the join's own preconditions ----------------------------------------
+
+# --- the production link: a warden escalation names its episode ----------
+
+def test_warden_escalation_payload_carries_the_open_episode(tmp_path,
+                                                            monkeypatch):
+    """The join is keyed on the episode, so a consult with no episode_id can
+    never be classified - not by this close, not by any later one. The hook
+    records the episode and then asks the Warden for the same event, in that
+    order, in one process. Without this link the path stays dead in
+    production no matter what else is wired."""
+    dbp = tmp_path / "m.sqlite"
+    monkeypatch.setenv("MINDER_STATE_DIR", str(tmp_path / "state"))
+    _point_db_at(monkeypatch, dbp)
+    struggle(dbp, session="wd-s1")
+    episode_id = _open_episode("wd-s1", dbp)
+
+    out = _warden_out("wd-s1", fail_event("wd-s1"))
+    assert out["action"] == "frontier", out
+    assert out["frontier_payload"]["episode_id"] == episode_id
+
+
+def test_warden_verify_payload_carries_the_open_episode(tmp_path,
+                                                        monkeypatch):
+    """The same link on the verify consult: it asks about a key that just
+    resolved, and the episode that resolved is its evidence."""
+    dbp = tmp_path / "m.sqlite"
+    monkeypatch.setenv("MINDER_STATE_DIR", str(tmp_path / "state"))
+    _point_db_at(monkeypatch, dbp)
+    struggle(dbp, session="wd-s2")
+    episode_id = _open_episode("wd-s2", dbp)
+    assert _warden_out("wd-s2", fail_event("wd-s2"))["action"] == "frontier"
+
+    out = _warden_out("wd-s2", pass_event("wd-s2"))
+    payload = out.get("verify_payload")
+    assert payload, out
+    assert payload["episode_id"] == episode_id
+
+
+def _point_db_at(monkeypatch, dbp):
+    """The memory layer honours MINDER_MEMORY_DB; minder.py has no such
+    switch and resolves its own default from minder.STATE_DIR."""
+    monkeypatch.setenv("MINDER_MEMORY_DB", str(dbp))
+    monkeypatch.setattr(minder, "STATE_DIR", tmp_path_of(dbp))
+
+
+def tmp_path_of(dbp):
+    from pathlib import Path
+    return Path(dbp).parent
+
+
+def _open_episode(session, dbp):
+    from minder_memory import store as mem_store
+    episode = mem_store.find_open_episode(session, db_path=dbp)
+    assert episode, "no open episode for " + session
+    return episode["episode_id"]
+
+
+def _warden_out(session, event):
+    """One Warden pass with the L2 budget reachable on the first failure."""
+    c = minder.cfg()
+    c.update({"fail_threshold": 1, "cooldown_turns": 0, "think_budget": 0,
+              "frontier_budget": 1})
+    out = {"action": None, "level": 0, "digest": None,
+           "frontier_payload": None}
+    minder._process(event, c, out)
+    return out
+
+
+def test_escalation_with_no_open_episode_still_consults(tmp_path,
+                                                        monkeypatch):
+    """No memory layer, no episode: the payload simply carries no link and
+    the consult still happens. A missing link must never cost the operator
+    the advice they escalated for."""
+    dbp = tmp_path / "m.sqlite"
+    monkeypatch.setenv("MINDER_STATE_DIR", str(tmp_path / "state"))
+    _point_db_at(monkeypatch, dbp)
+    out = _warden_out("wd-s3", fail_event("wd-s3"))
+    assert out["action"] == "frontier", out
+    assert out["frontier_payload"]["episode_id"] == ""
+
 
 def test_consult_without_distilled_actions_stays_unclassified(tmp_path):
     """The join's one precondition is action text to accept and to build an
