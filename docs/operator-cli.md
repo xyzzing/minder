@@ -241,6 +241,16 @@ episode, or one whose episode closes any other way, stays unclassified and
 yields nothing. The join is `minder_memory/frontier_link.py`, it runs once
 per consult, and the events ledger names what it did
 (`frontier_distilled`).
+- What reaches that queue is decided by the answer's own structure (issue
+#11). The ask demands ranked root causes and one labelled next action, and
+the reading keeps the labelled line as the action and treats everything else
+as a cause: a cause is never distilled as an instruction, whatever label
+precedes it, and the per-consultant notes appended after the merged answer
+are not distilled either. An answer that ignores the shape falls back to an
+imperative-verb test, which is why a lesson instruction can read like prose
+rather than a command. The contract is one constant,
+`minder_core/panel_text.py:ANSWER_SHAPE`; `minder_core/panel_answer.py`
+implements the reading.
 - Reviewing that queue is one command:
 `minder-op lessons promote <lesson_id> --from-candidate --yes`. It adopts
 the candidate's own distilled text, or an edited one via

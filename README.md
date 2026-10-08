@@ -365,8 +365,11 @@ library only, zero minder imports) and importable from `minder_core`:
 - **`minder_core.identity`**: canonical failure keys, action
   fingerprints, secret redaction, and result signatures, the exact
   functions minder's evidence log is keyed by.
-- **`minder_core.panel_text`**: the frontier panel's prompts and the rules
-  for reading an answer back - which lines are actions to act on, which are
+- **`minder_core.panel_text`**: the frontier panel's prompts and the one
+  answer shape they ask for, plus the egress redaction applied to what
+  leaves the machine.
+- **`minder_core.panel_answer`**: the reading half of that shape - which
+  lines of an answer are the action the answer itself named, which are only
   causes, which are another model's attribution.
 
 ```python

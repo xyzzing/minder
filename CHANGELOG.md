@@ -5,6 +5,24 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **A frontier answer's next action is what reaches the lesson queue (issue
+  #11).** The consult prompt asked for ranked root causes plus one labelled
+  `Next action:`, and the reading ignored both instructions: it tested each
+  line against a list of imperative verbs. A numbered cause opening with
+  "Test" became lesson instruction while the labelled action opening with
+  "inspect" was dropped, and a cause-only answer returned the same empty
+  result as an answer that carried nothing, so `distilled_json` stayed NULL
+  and the lesson was lost. `minder_core.panel_answer.read_answer` now returns
+  causes and actions separately, the answer's own labels decide which is
+  which, part headings ("2. Next action:") carry the command on the line
+  below, and the per-consultant notes after the merged answer are read but
+  never distilled. The verb list only decides for an answer that ignores the
+  shape. The ask and the reading name one constant, `ANSWER_SHAPE`; the
+  module that owned both was split into `panel_text` (the asks, the caps, the
+  egress redaction) and `panel_answer` (the reading). Driving the real panel
+  through the production path against a copy of the live store now records a
+  command, not a root cause, as the candidate instruction.
+
 - **The frontier consult path is now wired into the runtime (issue #10).**
   `record_consult`, `classify_consult` and `distill_lesson_from_consult`
   were complete and tested, and nothing ever called them: the panel wrote
