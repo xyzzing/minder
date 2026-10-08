@@ -14,10 +14,12 @@ Contents:
               bounded; fingerprint mismatch = NON_COMPARABLE)
 - verification  test/lint runner recognition and clean-run judgement — the
               local evidence minder's lesson gate requires
-- panel_text  the frontier panel's prompts and the rules for reading an
-              answer back (action vs cause vs attribution). Not re-exported
-              here: it is cited by module path, and `__all__` stays the
-              runtime's contract surface
+- panel_text  the frontier panel's asks and the redaction of what leaves the
+              machine, including the one answer shape both directions use.
+              Not re-exported here: it is cited by module path, and `__all__`
+              stays the runtime's contract surface
+- panel_answer  the reading half of that shape: which lines of an answer are
+              actions and which are only causes. Same citation
 """
 
 from .comparator import (MAX_COMPLETION_DROP, MIN_COMPARABLE_RUNS,

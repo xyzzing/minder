@@ -31,10 +31,12 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import minder  # noqa: E402  (config merge + STATE conventions)
 
-# The panel's text — the ask, the redaction of what leaves the machine, and
-# what in an answer is an action — is pure judgement, so it lives in
-# minder_core/panel_text.py next to the other evidence rules: no I/O, no
-# minder imports, and under the file-size law this file is close to (C2).
+# The panel's text is pure judgement, so it lives in minder_core next to the
+# other evidence rules: panel_text.py owns the asks and the redaction of what
+# leaves the machine, panel_answer.py owns what in an answer is an action and
+# what is only a cause. No I/O, no minder imports, and under the file-size law
+# this file is close to (C2).
+from minder_core import panel_answer as _answer  # noqa: E402
 from minder_core import panel_text as _panel  # noqa: E402
 
 MAX_ANSWER_CHARS = 4000
@@ -211,12 +213,12 @@ def ask(prompt, provider, api_key, post=None, get=None):
 
 def distill_actions(answer):
     """The actionable lines of a panel answer, deterministically (issue
-    #10). The reading rules are `minder_core.panel_text`'s: bullet and
-    numbered lines only, capped, and only lines that read as an action
-    rather than a root cause. A consult answer is untrusted input, so a
-    malformed one costs the record, never the panel."""
+    #10). The reading rules are `minder_core.panel_answer`'s: the action the
+    answer itself named is kept, the causes the ask also asks for are read but
+    never distilled, and the list is capped. A consult answer is untrusted
+    input, so a malformed one costs the record, never the panel."""
     try:
-        return _panel.action_lines(answer)
+        return _answer.action_lines(answer)
     except Exception:
         return []
 
@@ -365,7 +367,7 @@ def main():
             f"{names.replace(', ', '=… or ')}=… line in {_key_env_file()}\n")
         return 3
     answer = run_panel(payload, cfg, on_trace=trace_hook(cfg))
-    if answer.startswith(_panel.FAILURE_PREFIX):
+    if answer.startswith(_answer.FAILURE_PREFIX):
         sys.stderr.write(answer + "\n")
         return 4
     sys.stdout.write(answer)
