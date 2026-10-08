@@ -26,6 +26,7 @@ import time
 import minder
 from . import canonicalise as canon
 from . import from_hook
+from . import injections as ledger
 from . import plans
 from . import skill_load
 from . import store
@@ -35,6 +36,37 @@ from .retrieval import retrieve_lessons
 def _as_event(ev):
     """Single conversion path for raw hook payloads (PR 5 unification)."""
     return from_hook.to_event(ev)
+
+
+def _lesson_digest_line(lesson):
+    """The digest text a retrieved lesson contributes, or '' when there is
+    no lesson. Both injection sites build the same line, so the ledger's
+    chars_injected means the same thing for both."""
+    if not lesson:
+        return ""
+    line = (f"\n- VERIFIED LESSON from a past resolved episode: "
+            f"{lesson['instruction']}")
+    if lesson.get("anti_pattern"):
+        line += f"\n- Anti-pattern: {lesson['anti_pattern']}"
+    return line
+
+
+def _record_injection(ev, fkey, repo, lesson, line, assist_mode,
+                      db_path=None):
+    """Issue #13: record the injection decision, including the ones that
+    found nothing to inject. Ledger-only — it never changes the directive,
+    and a ledger failure never changes one either."""
+    try:
+        ledger.record_injection(
+            session_id=(ev.get("session_id") or ev.get("task_id")),
+            event_id=ev.get("event_id"), failure_key=fkey,
+            repo=repo or ev.get("repo") or "",
+            lesson_id=(lesson or {}).get("lesson_id"),
+            tier=ledger.tier_of(lesson, fkey),
+            chars_injected=len(line), assist_mode=assist_mode,
+            db_path=db_path)
+    except Exception:
+        pass
 
 
 DEFAULT_THRESHOLD = 2
@@ -144,11 +176,12 @@ def _retrieve_passthrough(event, warden_out, cfg=None, db_path=None,
         lessons = retrieve_lessons(repo or ev.get("repo") or "", fkey,
                                    db_path=db_path, limit=1)
         if not lessons:
+            _record_injection(ev, fkey, repo, None, "", ledger.MODE_RETRIEVE,
+                              db_path=db_path)
             return None
-        line = (f"\n- VERIFIED LESSON from a past resolved episode: "
-                f"{lessons[0]['instruction']}")
-        if lessons[0].get("anti_pattern"):
-            line += f"\n- Anti-pattern: {lessons[0]['anti_pattern']}"
+        line = _lesson_digest_line(lessons[0])
+        _record_injection(ev, fkey, repo, lessons[0], line,
+                          ledger.MODE_RETRIEVE, db_path=db_path)
         return {"action": (warden_out or {}).get("action"),
                 "level": (warden_out or {}).get("level"),
                 "digest": digest + line,
@@ -518,10 +551,10 @@ def _directive(ev, fkey, count, cfg, warden_out, repo=None, db_path=None):
         lessons = retrieve_lessons(repo or ev.get("repo") or "", fkey,
                                    db_path=db_path, limit=1)
         if lessons:
-            lesson_line = (f"\n- VERIFIED LESSON from a past resolved "
-                           f"episode: {lessons[0]['instruction']}")
-            if lessons[0].get("anti_pattern"):
-                lesson_line += f"\n- Anti-pattern: {lessons[0]['anti_pattern']}"
+            lesson_line = _lesson_digest_line(lessons[0])
+        _record_injection(ev, fkey, repo, (lessons[0] if lessons else None),
+                          lesson_line, ledger.MODE_BLOCK_DUPLICATE,
+                          db_path=db_path)
     except Exception:
         lesson_line = ""
     digest = (f"{minder.DIGEST_MARKERS[1]} — duplicate guard: this exact "

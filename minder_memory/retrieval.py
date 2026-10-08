@@ -10,8 +10,10 @@ import json
 from . import graph
 from . import db as _db
 
+# failure_key is part of the payload so the injection ledger (issue #13)
+# can name the tier that produced a lesson without a second query.
 _COMPACT_KEYS = ("lesson_id", "instruction", "anti_pattern", "verification",
-                 "status")
+                 "status", "failure_key")
 
 
 def retrieve_lessons(repo, failure_key, paths=None, limit=3, db_path=None,
