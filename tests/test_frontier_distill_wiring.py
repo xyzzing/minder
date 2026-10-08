@@ -65,14 +65,16 @@ def struggle(dbp, session="fd-s1", rounds=2):
 
 
 def consult_about(dbp, episode_id, failure_key, answer=PANEL_ANSWER):
-    """One governed consult recorded against this episode, the way
-    frontier.py's trace hook does it."""
+    """One governed consult recorded against this episode, exactly the way
+    frontier.py's trace hook does it: the distilled actions are read out of
+    the answer, never handed in separately. Passing an answer with no
+    actionable line is therefore how a consult with nothing to distil is
+    produced."""
     payload = {"failure_key": failure_key, "local_attempts": 2,
                "episode_id": episode_id, "trigger": "warden-l2",
                "prompt": f"fix KeyError in {REPO}, key {SECRET}",
                "response": answer, "providers": [{"name": "probe-a"}],
-               "distilled": ["use dict.setdefault for supplier_id",
-                             "add a test for the empty case per deepseek-v4-pro"]}
+               "distilled": frontier.distill_actions(answer)}
     trace_id = frontier_traces.record_consult(payload, db_path=dbp)
     assert trace_id
     return trace_id
@@ -174,6 +176,27 @@ def test_distilled_actions_extracted_from_panel_answer():
              "[probe-a] - run it again with -x\n")
     assert frontier.distill_actions(noted) == [
         "run pytest tests/test_supplier.py"]
+
+
+# --- the join's own preconditions ----------------------------------------
+
+def test_consult_without_distilled_actions_stays_unclassified(tmp_path):
+    """The join's one precondition is action text to accept and to build an
+    instruction from. A consult that recorded none is left unclassified
+    rather than labelled on nothing - inventing `helpful` for it would put
+    an empty lesson one operator click from retrieval."""
+    dbp = tmp_path / "m.sqlite"
+    ep_id = struggle(dbp)
+    key = _failure_key(dbp)
+    trace_id = consult_about(dbp, ep_id, key, answer=CAUSES_ONLY_ANSWER)
+    assert _one(dbp, "SELECT distilled_json AS d FROM frontier_evals"
+                     " WHERE trace_id = ?", (trace_id,))["d"] is None
+    assert _close(dbp)["closed"] == "verified"
+
+    row = _one(dbp, "SELECT helpfulness AS h, verification_status AS v"
+                    " FROM frontier_evals WHERE trace_id = ?", (trace_id,))
+    assert row["h"] is None and row["v"] is None
+    assert _rows(dbp, "SELECT 1 FROM lessons") == []
 
 
 # --- acceptance 2/3: a verified close classifies and distills ------------
