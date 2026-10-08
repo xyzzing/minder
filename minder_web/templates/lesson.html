@@ -12,4 +12,28 @@
   <tr><th>{{ S.lesson.col_valid_from }}</th><td>{{ lesson.valid_from or '-' }}</td></tr>
   <tr><th>{{ S.lesson.col_valid_to }}</th><td>{{ lesson.valid_to or '-' }}</td></tr>
 </table>
+<h2>{{ S.injections.title }}</h2>
+{% if not ledger_available %}
+<p class="na">{{ S.injections.not_available }}</p>
+{% elif not injections %}
+<p class="na">{{ S.injections.none }}</p>
+{% else %}
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.injections.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.injections.col_when }}</th><th scope="col">{{ S.injections.col_session }}</th><th scope="col">{{ S.injections.col_failure_key }}</th><th scope="col">{{ S.injections.col_tier }}</th><th scope="col">{{ S.injections.col_mode }}</th><th scope="col">{{ S.injections.col_chars }}</th></tr></thead>
+  <tbody>
+  {% for r in injections %}
+    <tr>
+      <td data-label="{{ S.injections.col_when }}">{{ r.ts | human_date }}<span class="row-key">{{ r.injection_id }}</span></td>
+      <td data-label="{{ S.injections.col_session }}">{{ r.session_id or S.common.na }}</td>
+      <td data-label="{{ S.injections.col_failure_key }}"><code>{{ r.failure_key }}</code></td>
+      <td data-label="{{ S.injections.col_tier }}">{{ r.tier }}</td>
+      <td data-label="{{ S.injections.col_mode }}">{{ r.assist_mode }}</td>
+      <td data-label="{{ S.injections.col_chars }}">{{ r.chars_injected }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">{{ S.injections.note }}</p>
+{% endif %}
 {% endblock %}

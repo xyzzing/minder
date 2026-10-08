@@ -60,6 +60,10 @@
       <td>{{ summary.lessons.created_in_window.get('verified', 0) }} /
           {{ summary.lessons.created_in_window.get('candidate', 0) }}</td></tr>
   <tr><th>{{ S.overview.open_gaps }}</th><td>{{ summary.gaps.open_now }}</td></tr>
+  <tr><th>{{ S.overview.injected }} <small>{{ S.overview.injected_gloss }}</small></th>
+      <td>{% if not summary.injections.available %}{{ S.common.na }}{% else %}{{ summary.injections.injected_in_window }} / {{ summary.injections.missed_total }}{% endif %}</td></tr>
+  <tr><th>{{ S.overview.unused_lessons }}</th>
+      <td>{% if not summary.injections.available %}{{ S.common.na }}{% else %}{{ summary.injections.unused_verified }}{% endif %}</td></tr>
   <tr><th>{{ S.overview.frontier_help }} <small>{{ S.overview.frontier_help_gloss }}</small></th>
       <td>{% for label, n in summary.consults.by_helpfulness | dictsort %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
   <tr><th>{{ S.overview.decisions }} <small>{{ S.overview.decisions_gloss }}</small></th>

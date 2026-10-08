@@ -33,6 +33,10 @@ python3 -m minder_op episodes ls [--repo R] [--status S] [--limit N]
 python3 -m minder_op episodes show EPISODE_ID
 python3 -m minder_op lessons ls [--status verified|candidate|invalidated]
 python3 -m minder_op lessons show LESSON_ID
+# also prints the lesson's five most recent injection-ledger rows: when,
+# which retrieval tier matched, which assist path carried it, chars
+# injected, session (issue #13). A store predating migration 015 prints
+# `injection ledger: not available` instead of an empty table.
 python3 -m minder_op lessons invalidate LESSON_ID --reason "..." --yes
 python3 -m minder_op lessons promote EPISODE_ID --instruction "..." \
 [--tests-passed] --yes # same gates as promote_lesson
@@ -281,6 +285,11 @@ legacy 003 integer. Benchmarks render "not available" when no suites exist. The
 "operator focus" block is a fixed-priority, max-three list of
 follow-up commands; `now=` injection keeps it deterministic in
 tests.
+- The `lesson injections` section separates the two numbers that make
+each other meaningful (issue #13): decisions that carried a lesson, and
+decisions that had none to offer. A verified lesson with no injection
+rows is a live lesson doing nothing, so it becomes a focus item; a store
+without the ledger table reports `not available`, never zeros.
 
 ## Deferred (+ — deliberately not built here)
 

@@ -20,6 +20,7 @@ S = {
         "not_available": NOT_AVAILABLE, "na": NA_LOWER,
         "unknown": UNKNOWN, "yes": "yes", "no": "no", "none": "none",
         "status": "status", "day": WINDOW_DAY, "week": WINDOW_WEEK,
+        "caption": "one row per {unit}, newest first",
     },
     "base": {
         "title": "minder operator console",
@@ -63,6 +64,10 @@ S = {
         "repeat_keys": "repeat failure keys",
         "repeat_keys_gloss": "(the same error coming back)",
         "lessons_created": "lessons created (verified / candidate)",
+        "injected": "lesson injections",
+        "injected_gloss": "(times a lesson reached an agent / decisions"
+                          " with no lesson to offer)",
+        "unused_lessons": "verified lessons never injected",
         "open_gaps": "open gaps", "frontier_help": "frontier helpfulness",
         "frontier_help_gloss": "(did the outside model help?)",
         "decisions": "decision traces / overrides",
@@ -222,6 +227,19 @@ S = {
         "col_verification": "verification",
         "col_source_episode": "source_episode",
         "col_valid_from": "valid_from", "col_valid_to": "valid_to",
+    },
+    "injections": {
+        "title": "injections",
+        "unit": "injection",
+        "col_when": "when", "col_session": "session",
+        "col_failure_key": "failure_key", "col_tier": "tier",
+        "col_mode": "path", "col_chars": "chars",
+        "none": "never injected - no lesson injection has carried this"
+                " lesson yet.",
+        "not_available": "not available - this store predates the"
+                         " injection ledger.",
+        "note": "one row per decision that considered this lesson; the"
+                " tier names how retrieval matched it.",
     },
     "gaps": {
         "title": "skill gaps", "gloss": "(open)", "col_id": "id",

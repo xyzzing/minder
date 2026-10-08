@@ -150,9 +150,23 @@ def lesson_detail(db_path, lesson_id):
     row = _try(queries.lesson, db_path, lesson_id, default=None)
     if not row:
         return None
+    # issue #13: an operator deciding whether to keep a lesson needs to
+    # know it still fires. An unavailable ledger is NOT_AVAILABLE, never a
+    # zero that reads as "unused".
+    injections = _try(queries.lesson_injections, db_path, lesson_id,
+                      default=None)
     return {"lesson": _safe_row(row, ("failure_key", "instruction",
                                       "anti_pattern",
-                                      "verification_json"))}
+                                      "verification_json")),
+            "injections": _safe_injection_rows(injections),
+            "ledger_available": injections is not None}
+
+
+def _safe_injection_rows(rows):
+    if rows is None:
+        return None
+    return [_safe_row(r, ("failure_key", "repo", "session_id"))
+            for r in rows]
 
 
 def gaps_page(db_path):

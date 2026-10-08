@@ -151,6 +151,16 @@ def lesson(path, lesson_id):
                 (lesson_id,))
 
 
+def lesson_injections(path, lesson_id, limit=20):
+    """Injection ledger for one lesson (issue #13): the newest decisions
+    that put this lesson in front of an agent."""
+    return _rows(path,
+                 "SELECT injection_id, ts, session_id, failure_key, repo,"
+                 " tier, digest_injected, chars_injected, assist_mode"
+                 " FROM learning_injections WHERE lesson_id = ?"
+                 " ORDER BY ts DESC LIMIT ?", (lesson_id, int(limit)))
+
+
 def gaps(path, status_filter="open", limit=100):
     sql = "SELECT * FROM skill_gaps WHERE 1=1"
     params = []

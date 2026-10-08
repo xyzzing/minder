@@ -66,14 +66,14 @@ curl -sS http://127.0.0.1:8765/healthz
 
 | Route | Shows |
 |---|---|
-| `/` | health, env flags (display only), **capture strip**, shared weekly summary, operator focus |
+| `/` | health, env flags (display only), **capture strip**, shared weekly summary (including the lesson-injection counts and the verified lessons that never fired, issue #13), operator focus |
 | `/capture` | hook coverage (invocations vs persisted records), store freshness, sink reachability, sandbox-mode mix |
 | `/sessions` | dsh sessions joined with their projection cache, workspace, tokens, sandbox mode and episode/event counts (`?q=`, `?sort=recent\|project\|tokens\|steps\|capture`) |
 | `/sessions/{id}` | one session: projections, log-derived tool/hook counters and hook p50, episodes and observed events |
 | `/scorecard` | the six improvement groups (capture, cost, failures, learning, context, hygiene) plus a 3-item focus list |
 | `/events` | raw observed events with type/tool/failure-key/session filters and a staleness banner |
 | `/episodes`, `/episodes/{id}` | episode list, timeline with redacted excerpts |
-| `/lessons`, `/lessons/{id}` | verified / candidate / invalidated — badges visibly differ; default view is live verified only. A candidate came from a frontier consult labelled by its episode's verified close; adopting one is a CLI write (`lessons promote <id> --from-candidate`), not a console action |
+| `/lessons`, `/lessons/{id}` | verified / candidate / invalidated — badges visibly differ; default view is live verified only. A candidate came from a frontier consult labelled by its episode's verified close; adopting one is a CLI write (`lessons promote <id> --from-candidate`), not a console action . The detail page carries the lesson's injection ledger (issue #13): the decisions that put it in front of an agent, with the tier that matched and the assist path that carried it. A lesson with no rows says "never injected"; a store predating the ledger says "not available" |
 | `/gaps` | open skill gaps |
 | `/consults`, `/consults/{id}` | frontier consult labels (`frontier_evals`, never the legacy 003 integer); hashes only, no raw prompt/response text |
 | `/decisions` | shadow decision traces: model recommendation vs policy decision |

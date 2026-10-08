@@ -5,6 +5,31 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **Every lesson injection is recorded, including the decisions that had
+  nothing to offer (issue #13).** Nothing answered "is this lesson still
+  doing anything?". Retrieval ran, a digest or a duplicate-block directive
+  went back to the agent, and the only trace was the lesson row itself -
+  so a verified lesson that never matched a failure, a lesson whose tier
+  kept missing, and a lesson doing real work all looked identical.
+  Migration `015_learning_injections.sql` adds the append-only
+  `learning_injections` ledger (UPDATE/DELETE blocked by triggers): one row
+  per decision that considered the lesson store, carrying the failure key,
+  the repo, the lesson it carried, the tier that matched, the chars
+  injected, the assist mode, and a `redaction_status`. `trigger_matched`
+  stays NULL until issue #15 gives lessons a trigger. `minder_memory/injections.py`
+  writes it; `policy.py` records at both call sites - the retrieve
+  passthrough (a miss is a row with `lesson_id` NULL, which is the
+  denominator every injection count needs) and the duplicate-skill
+  directive. The ledger is write-only: a ledger that raises cannot change
+  what a directive says, and the entry points stay fail-open. Read side:
+  `minder-op lessons show` lists a lesson's five most recent injections,
+  `weekly-summary` reports injected against decisions with no lesson to
+  offer and names verified lessons that never fired (a focus item), and
+  `/lessons/{id}` renders the history with the tier that produced each
+  injection. A store predating 015 reports `not available` at every
+  surface, never a zero that reads as "unused". Retrieved lesson payloads
+  now carry `failure_key` so the ledger names its own tier without a
+  second query.
 - **A frontier answer's next action is what reaches the lesson queue (issue
   #11).** The consult prompt asked for ranked root causes plus one labelled
   `Next action:`, and the reading ignored both instructions: it tested each

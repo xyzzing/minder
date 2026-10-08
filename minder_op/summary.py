@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from minder_memory.canonicalise import redact
 
 from minder_op import format as fmt
-from minder_op.queries import UNCLASSIFIED, _rows
+from minder_op.queries import UNCLASSIFIED, DBError, _rows
 
 NOTE = ("observed workflow evidence only; minder makes no productivity "
         "claim")
@@ -153,6 +153,12 @@ def build_weekly_summary(db_path, days=7, since=None, now=None):
                 db_path, "SELECT COUNT(*) AS n FROM lessons"
                 " WHERE status = 'candidate'", ()),
         },
+        # Issue #13, the injection ledger. `injected` alone is a vanity
+        # number; `missed` is the denominator that makes it mean
+        # something, and `unused_verified` names a lesson an operator
+        # promoted that never reached an agent. A store predating
+        # migration 015 degrades to available False, never to zeros.
+        "injections": _injection_section(db_path, win),
         "gaps": {
             "opened_in_window": _count(
                 db_path, "SELECT COUNT(*) AS n FROM skill_gaps"
@@ -187,6 +193,37 @@ def build_weekly_summary(db_path, days=7, since=None, now=None):
     report["domain"] = _domain_section(db_path, win, now)
     report["focus"] = _focus(report)
     return report
+
+
+def _injection_section(db_path, win):
+    """Injection-ledger counts (issue #13). Window-scoped like every other
+    number here. Degrades to available False on a store without the
+    ledger: the read-only summary never migrates a database, and a missing
+    table must not read as 'nothing was injected'."""
+    start, until = win
+    try:
+        rows = _rows(db_path,
+                     "SELECT SUM(CASE WHEN lesson_id IS NOT NULL THEN 1"
+                     " ELSE 0 END) AS injected, SUM(CASE WHEN lesson_id IS"
+                     " NULL THEN 1 ELSE 0 END) AS missed,"
+                     " SUM(CASE WHEN lesson_id IS NOT NULL AND ts >= ?"
+                     " AND ts < ? THEN 1 ELSE 0 END) AS injected_in_window"
+                     " FROM learning_injections", (start, until))
+        row = rows[0] if rows else {}
+        unused = _count(
+            db_path, "SELECT COUNT(*) AS n FROM lessons l WHERE"
+            " l.status = 'verified' AND l.valid_to IS NULL AND NOT EXISTS"
+            " (SELECT 1 FROM learning_injections i"
+            " WHERE i.lesson_id = l.lesson_id)", ())
+        return {"available": True,
+                "injected_total": int(row.get("injected") or 0),
+                "injected_in_window": int(row.get("injected_in_window") or 0),
+                "missed_total": int(row.get("missed") or 0),
+                "unused_verified": int(unused)}
+    except DBError:  # pre-015 store: degrade, don't crash
+        return {"available": False, "injected_total": None,
+                "injected_in_window": None, "missed_total": None,
+                "unused_verified": None}
 
 
 def _domain_section(db_path, win, now):
@@ -253,6 +290,10 @@ def _focus(report):
     if report["decisions"]["overrides"]:
         focus.append(f"review {report['decisions']['overrides']} "
                      "decision-gateway override(s): minder-op decisions ls")
+    inj = report.get("injections") or {}
+    if inj.get("available") and inj.get("unused_verified"):
+        focus.append(f"inspect {inj['unused_verified']} verified lesson(s)"
+                     " never injected: minder-op lessons ls")
     return focus[:3]
 
 
@@ -306,6 +347,16 @@ def render_text(report):
           for bucket in LESSON_BUCKETS],
         ("invalidated in window", report["lessons"]["invalidated_in_window"]),
         ("candidates open", report["lessons"]["candidates_open_total"])])
+
+    inj = report["injections"]
+    if not inj["available"]:
+        _section("lesson injections", [("status", "not available")])
+    else:
+        _section("lesson injections (ledger)", [
+            ("injected in window", inj["injected_in_window"]),
+            ("injected total", inj["injected_total"]),
+            ("decisions with no lesson to offer", inj["missed_total"]),
+            ("verified lessons never injected", inj["unused_verified"])])
 
     _section("skill gaps", [
         ("opened in window", report["gaps"]["opened_in_window"]),

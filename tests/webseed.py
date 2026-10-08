@@ -66,6 +66,22 @@ def add_lesson(dbp, lesson_id="les1", status="verified",
            valid_from, valid_to))
 
 
+def add_injection(dbp, injection_id="inj1", lesson_id="les1",
+                  ts=TS, tier="exact", chars=137, mode="block_duplicate",
+                  failure_key=f"bash|keyerror|{SECRET}|a.py"):
+    """One injection-ledger row (issue #13). lesson_id None is the miss
+    case: a decision that considered the lesson store and had nothing to
+    offer. failure_key carries the marker secret so redaction is
+    asserted on this surface too."""
+    _ins(dbp, "INSERT INTO learning_injections (injection_id, ts,"
+          " session_id, event_id, failure_key, repo, lesson_id, tier,"
+          " trigger_matched, digest_injected, chars_injected,"
+          " assist_mode, redaction_status)"
+          " VALUES (?, ?, 's1', 'ev1', ?, '/repo', ?, ?, NULL, 1, ?, ?,"
+          " 'redacted')",
+          (injection_id, ts, failure_key, lesson_id, tier, chars, mode))
+
+
 def add_gap(dbp, gap_id="gap1"):
     _ins(dbp, "INSERT INTO skill_gaps (gap_id, ts, repo, failure_key,"
           " gap_type, sample_error, status)"

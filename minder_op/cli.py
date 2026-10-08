@@ -673,6 +673,20 @@ def _cmd_lesson_show(args, path):
             ("verification", fmt.safe(row["verification_json"], 200)),
             ("source_episode", row["source_episode"]),
             ("valid_from", row["valid_from"]), ("valid_to", row["valid_to"])])
+    # Issue #13: is this lesson still doing anything? Read-only, and a
+    # store without the ledger says so instead of printing a zero.
+    try:
+        injections = queries.lesson_injections(path, args.id, limit=5)
+    except queries.DBError:
+        print("\ninjection ledger: not available")
+        return EXIT_OK
+    print("\ninjections (most recent first)")
+    fmt.table([{"when": r["ts"], "tier": r["tier"],
+                "path": r["assist_mode"], "chars": r["chars_injected"],
+                "session": fmt.safe(r["session_id"], 40)}
+               for r in injections],
+              [("when", "when"), ("tier", "tier"), ("path", "path"),
+               ("chars", "chars"), ("session", "session")])
     return EXIT_OK
 
 
