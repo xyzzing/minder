@@ -125,7 +125,12 @@ honest — before it, a host running both hook points always read 100 %
 and the floor could not fire. The line says `partial view` when the log
 scan hit its caps (`coverage.complete` is false): the invocation count
 is then a floor, not a measurement, and 100 % does not mean nothing was
-lost.
+lost. The store side is reported separately as
+`coverage.persisted_db`, with `coverage.db_measured` saying whether that
+number was measured at all.
+An unreadable store gives `db_measured: false` and no count, never a 0,
+because 0 is the value that fails the floor and sends you to fix hooks
+that are working.
 - The `laya-worker` line reports the isolated decision worker (issue
 #7): `ok` when a worker is answering on its socket, `info` when none
 is live (it spawns on the first router-eligible request), and `warn`
