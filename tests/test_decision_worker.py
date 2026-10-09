@@ -28,12 +28,21 @@ CFG = {"laya_min_confidence": 0.7}
 def _reset_worker_cooldown():
     """Each test starts with the client's spawn cooldown cleared, and with
     the once-per-process client-log marks cleared so each reason can be
-    asserted as written."""
-    worker_mod._COOLDOWN["until"] = 0.0
-    worker_mod._reset_client_log_marks()
+    asserted as written.
+
+    getattr, not a direct call: the proven-red gate runs this file against
+    pre-change code, and a missing seam there would error out every test in
+    the file and hide which assertions actually catch the bug."""
+    reset = getattr(worker_mod, "_reset_client_log_marks", None)
+
+    def _clear():
+        worker_mod._COOLDOWN["until"] = 0.0
+        if reset is not None:
+            reset()
+
+    _clear()
     yield
-    worker_mod._COOLDOWN["until"] = 0.0
-    worker_mod._reset_client_log_marks()
+    _clear()
 
 
 def _contract():
@@ -275,12 +284,45 @@ def test_protocol_mismatch_gets_an_error_reply(tmp_path):
 
 
 def test_worker_error_reaches_the_client_log(tmp_path):
-    """Every client-side failure names itself in laya-worker.log; today
-    system_one returns None and the operator has no record at all."""
-    sock = tmp_path / "silent.sock"
-    # no worker anywhere: the dial is refused and no spawn is attempted
+    """Every client-side failure names itself in laya-worker.log; before this
+    change system_one returned None and the operator had no record at all.
+
+    The interesting case is a worker that is up but answers ok:false — the
+    live install's laya-worker.log holds two bare "unsupported protocol
+    version" lines and the client recorded nothing about any of them. The
+    client is pointed at a socket held by a server that answers ok:false, so
+    no real worker is needed and the answer is deterministic."""
+    sock = tmp_path / "laya-worker.sock"
+    log_path = sock.with_name("laya-worker.log")
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(str(sock))
+    srv.listen(4)
+
+    def _serve_once():
+        conn = None
+        try:
+            conn, _ = srv.accept()
+            conn.recv(65536)  # the request, whose content does not matter
+            conn.sendall((json.dumps(
+                {"ok": False,
+                 "error": "ValueError('unsupported protocol version')"})
+                + "\n").encode())
+        except OSError:
+            pass
+        finally:
+            if conn is not None:
+                conn.close()
+
+    serve = threading.Thread(target=_serve_once, daemon=True)
+    serve.start()
     client = worker_mod.WorkerDifficultyClient(spawn=False, path=sock)
-    assert client.system_one({"task": "refactor"}, _contract().questions,
+    assert client.system_one({"task": "x"}, _contract().questions,
                              contract=_contract()) is None
-    log = (tmp_path / "laya-worker.log").read_text()
-    assert "dial_refused" in log
+    serve.join(timeout=10)
+    srv.close()
+    assert log_path.exists(), "a client that got nothing wrote no record"
+    log = log_path.read_text()
+    assert "worker_error" in log, (
+        "the worker's ok:false answer left no client-side record")
+    assert "unsupported protocol version" in log, (
+        "the worker's own error text never reached the client log")
