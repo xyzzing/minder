@@ -90,9 +90,30 @@ def answer_for(template, ctx):
         return _rows_answer({"rows": ctx.get("suites")
                              if isinstance(ctx.get("suites"), list) else [],
                              "actions": ()})
+    if template == "engine":
+        return _engine_answer(ctx)
     if template in strings_copy.LIST_ANSWER_KEYS:
         return _rows_answer(ctx)
     return None
+
+
+def _engine_answer(ctx):
+    """Which engine is answering, and which configured engine is not.
+    An unhealthy engine is not an emergency today - the active one may be
+    perfectly fine - but it is the one that will fail requests the moment
+    it is switched to, so the page says so before the table."""
+    rows = ctx.get("rows") or ()
+    if not rows:
+        return _text("engine_none", {"count": 0}, _LEVEL_WARN)
+    active = next((r for r in rows if r.get("active")), None)
+    broken = [str(r.get("name") or "?") for r in rows if not r.get("healthy")]
+    name = str((active or {}).get("name") or strings_base.UNKNOWN)
+    if broken:
+        return _text("engine_unhealthy",
+                     {"name": name, "count": len(rows),
+                      "names": ", ".join(broken)}, _LEVEL_WARN)
+    return _text("engine_active", {"name": name, "count": len(rows)},
+                 _LEVEL_OK)
 
 
 def _capture_is_down(capture):

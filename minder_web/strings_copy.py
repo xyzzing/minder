@@ -46,6 +46,12 @@ ANSWER = {
     "difficulty_none": "no difficulty-router events in the proxy ledger.",
     "difficulty_rows": "{count} difficulty-router event(s) in the proxy "
                        "ledger.",
+    "engine_active": "running on {name}; {count} engine(s) configured.",
+    "engine_unhealthy": "running on {name}, but {names} is configured and "
+                        "not answering - that engine will fail requests "
+                        "if it is switched to.",
+    "engine_none": "no engine registry configured, so nothing decides "
+                   "which upstream a request goes to.",
 }
 
 # minder_web.page_actions composes these with a count: the one thing a
