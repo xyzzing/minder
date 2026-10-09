@@ -15,6 +15,12 @@ commit hash behind it; the instruction gate checks the hash exists.
 - The dsh web host reads `dsh/hooks.json` once at startup; flag changes
   in the staged file need a dsh host restart before any session picks
   them up. (07dbfc2)
+- The laya decision worker is not a unit: the client spawns it with
+  `sys.executable -m minder_decision.worker` and a `PYTHONPATH` derived
+  from the importing package's parent, so it runs the share the *proxy*
+  process imported. Re-staging the share does not replace a worker
+  already listening on the socket - restart the proxy service and the
+  next spawn picks up the new code. (e8e4d06)
 - `install.sh` resolves the hooks.json guard mode through
   `dsh/dsh_install.py guard-default`: the `MINDER_SUCCESS_GUARD` env
   value, else the mode the live hooks.json already declares, else the
