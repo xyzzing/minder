@@ -75,6 +75,11 @@ S = {
         "injected_gloss": "(times a lesson reached an agent / decisions"
                           " with no lesson to offer)",
         "unused_lessons": "verified lessons never injected",
+        "hit_rate": "retrieval hit rate",
+        "hit_rate_gloss": "(of the decisions that asked for a lesson, how"
+                          " many got one)",
+        "hit_rate_value": "{hits} of {asked} asked ({rate})",
+        "hit_rate_misses": "{missed} missed",
         "open_gaps": "open gaps", "frontier_help": "frontier helpfulness",
         "frontier_help_gloss": "(did the outside model help?)",
         "decisions": "decision traces / overrides",

@@ -238,6 +238,17 @@ commit hash behind it; the instruction gate checks the hash exists.
   whose limit silently truncates it; and a "could not measure" state
   needs its own field (`db_measured`), never the same value a zero
   produces. (32b4c4b)
+- **A ledger nobody reads back is a ledger nobody acts on.** Migration
+  015 wrote a row for every injection decision, including the
+  `lesson_id IS NULL` ones, precisely so retrieval could be measured. The
+  write side was right and the read side was missing: no command, panel
+  or summary divided hits by decisions, so the learning plane's only
+  question had no number. Two related traps showed up building it. The
+  `lesson_id IS NULL` bucket renders as a lesson with an empty id unless
+  it is counted and labelled as a miss, and `injection_counts` returned
+  `[]` for both "no rows" and "no table" — the same `None` vs zero mistake
+  as #31's `persisted_db`. A read helper that degrades must distinguish
+  "nothing" from "cannot say" in its return shape. (8f39374)
 
 ## Platform quirks
 

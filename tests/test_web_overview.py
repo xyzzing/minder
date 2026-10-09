@@ -3,6 +3,7 @@ shared weekly-summary headings and operator focus, no raw secret
 fixture, JSON healthz; a missing DB renders 'not available', never a
 500."""
 import webseed
+from minder_memory import db as _db
 from webseed import SECRET, new_db
 
 
@@ -62,6 +63,54 @@ def test_nav_groups_links_behind_advanced_drawer(tmp_path, monkeypatch):
     # plain-language glosses on the landing page
     assert "tool calls saved" in text
     assert "save path ready" in text
+
+
+def _seed_injections(dbp, lessons=(None, "L1", None, "L2", None)):
+    """Rows straight into the ledger: a miss is a row with no lesson_id,
+    exactly as policy.py writes one."""
+    conn = _db.connect(dbp)
+    try:
+        for i, lesson in enumerate(lessons):
+            _db.write(
+                conn,
+                "INSERT INTO learning_injections (injection_id, ts,"
+                " session_id, failure_key, lesson_id, tier,"
+                " digest_injected, chars_injected, assist_mode)"
+                " VALUES (?, '2026-10-01T00:00:00+00:00', 's1', 'k1', ?, ?,"
+                " 1, ?, 'retrieve')",
+                (f"inj_{i}", lesson, "n/a" if lesson is None else "exact",
+                 0 if lesson is None else 240))
+    finally:
+        conn.close()
+
+
+def test_learning_panel_shows_the_retrieval_hit_rate(tmp_path, monkeypatch):
+    """Issue #20 acceptance 3: the learning panel states the plane-level
+    hit rate - of the decisions that asked for a lesson, how many got one
+    - and names the misses, so a per-lesson impact split has a base rate
+    to be read against."""
+    dbp = new_db(tmp_path)
+    _seed_injections(dbp)
+    text = webseed.client_for(dbp, monkeypatch).get("/").text
+    assert "retrieval hit rate" in text
+    assert "2 of 5 asked" in text
+    assert "40.0%" in text
+    assert "3 missed" in text
+
+
+def test_learning_panel_says_not_available_without_the_ledger(
+        tmp_path, monkeypatch):
+    """A store predating migration 015 gets the same words the CLI uses,
+    never a 0 % that reads as a retrieval failure."""
+    dbp = new_db(tmp_path)
+    conn = _db.connect(dbp)
+    conn.execute("DROP TABLE learning_injections")
+    conn.commit()
+    conn.close()
+    text = webseed.client_for(dbp, monkeypatch).get("/").text
+    assert "retrieval hit rate" in text
+    assert "not available" in text
+    assert "0 of 0 asked" not in text
 
 
 def test_overview_glosses_weekly_jargon(tmp_path, monkeypatch):

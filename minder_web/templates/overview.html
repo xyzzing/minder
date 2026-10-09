@@ -63,6 +63,8 @@
   <tr><th>{{ S.overview.open_gaps }}</th><td>{{ summary.gaps.open_now }}</td></tr>
   <tr><th>{{ S.overview.injected }} <small>{{ S.overview.injected_gloss }}</small></th>
       <td>{% if not summary.injections.available %}{{ S.common.na }}{% else %}{{ summary.injections.injected_in_window }} / {{ summary.injections.missed_total }}{% endif %}</td></tr>
+  <tr><th>{{ S.overview.hit_rate }} <small>{{ S.overview.hit_rate_gloss }}</small></th>
+      <td>{% if not summary.injections.available %}{{ S.common.na }}{% else %}{{ S.overview.hit_rate_value.format(hits=summary.injections.injected_total, asked=summary.injections.asked_total, rate=("%.1f%%" % (summary.injections.hit_rate * 100)) if summary.injections.hit_rate is not none else S.common.na) }} · {{ S.overview.hit_rate_misses.format(missed=summary.injections.missed_total) }}{% endif %}</td></tr>
   <tr><th>{{ S.overview.unused_lessons }}</th>
       <td>{% if not summary.injections.available %}{{ S.common.na }}{% else %}{{ summary.injections.unused_verified }}{% endif %}</td></tr>
   <tr><th>{{ S.overview.frontier_help }} <small>{{ S.overview.frontier_help_gloss }}</small></th>

@@ -14,11 +14,9 @@ from pathlib import Path
 
 from minder_memory import db as _db
 
+from minder_op.errors import DBError
+
 UNCLASSIFIED = "(unclassified)"
-
-
-class DBError(Exception):
-    """Missing or unreadable/corrupt DB."""
 
 
 def resolve_path(path_arg):
@@ -79,6 +77,12 @@ def _rows(path, sql, params=()):
         raise DBError(str(exc)) from exc
 
 
+def _count(path, sql, params=()):
+    """A single COUNT(*) as an int, 0 when the query returns no row."""
+    rows = _rows(path, sql, params)
+    return rows[0]["n"] if rows else 0
+
+
 def _one(path, sql, params=()):
     rows = _rows(path, sql, params)
     return rows[0] if rows else None
@@ -119,6 +123,7 @@ def status(path):
             "SELECT COUNT(*) AS n FROM classifier_shadow"),
         "decision_traces_rows": count(
             "SELECT COUNT(*) AS n FROM decision_traces"),
+        "retrieval": retrieval_hit_rate(path),
     }
 
 
@@ -173,16 +178,6 @@ def lessons(path, status_filter=None, failure_key=None, repo=None,
 def lesson(path, lesson_id):
     return _one(path, "SELECT * FROM lessons WHERE lesson_id = ?",
                 (lesson_id,))
-
-
-def lesson_injections(path, lesson_id, limit=20):
-    """Injection ledger for one lesson (issue #13): the newest decisions
-    that put this lesson in front of an agent."""
-    return _rows(path,
-                 "SELECT injection_id, ts, session_id, failure_key, repo,"
-                 " tier, digest_injected, chars_injected, assist_mode"
-                 " FROM learning_injections WHERE lesson_id = ?"
-                 " ORDER BY ts DESC LIMIT ?", (lesson_id, int(limit)))
 
 
 def lesson_decisions(path, lesson_id, limit=20):
@@ -386,3 +381,12 @@ def event_filter_values(path):
                                      " ORDER BY failure_key LIMIT 100")],
     }
 
+
+# The injection-ledger reads live in minder_op/injections.py (issue #20:
+# that module is why this file is back inside the C2 line). Re-exported
+# here so the one sanctioned read surface stays the import every caller
+# already uses. Imported at the bottom because the ledger module reads
+# through _one/_rows defined above - importing it at the top would be a
+# cycle.
+from minder_op.injections import (  # noqa: E402, F401
+    lesson_injections, retrieval_hit_rate)

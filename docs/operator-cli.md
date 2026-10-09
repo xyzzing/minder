@@ -46,6 +46,12 @@ python3 -m minder_op lessons invalidate LESSON_ID --reason "..." \
 --yes # the diagnosis names what went wrong; the reason stays the note
 python3 -m minder_op lessons reject LESSON_ID --code generic \
 [--note "..."] --yes # refuse a frontier candidate with a closed reason code
+python3 -m minder_op lessons injections [--limit N]
+# per-lesson injection counts, busiest first, plus `misses: N` on its own
+# line: the decisions the store had no lesson to offer. They are counted
+# separately because they are the denominator of the hit rate, not a
+# lesson with an empty id (issue #20). A store predating migration 015
+# prints `injection ledger: not available`, never zeros.
 python3 -m minder_op lessons decisions [--id LESSON_ID] [--limit N]
 # no --id: decisions per (action, code) straight off the ledger; with
 # --id: that lesson's decision history, newest first (issue #14). A store
@@ -82,6 +88,14 @@ Exit codes: `0` ok, `1` usage / not found, `2` DB missing or unreadable.
 
 Schema currency:
 
+- `status` prints the learning plane's retrieval hit rate as four named
+numbers: `retrieval_asked`, `retrieval_hits`, `retrieval_misses` and
+`retrieval_hit_rate` (issue #20). The misses are printed rather than
+left to be subtracted, because the split is the whole point of the
+ledger: a rate alone cannot tell an operator whether learning is
+under-retrieving or under-populated. A store predating migration 015
+prints `not available` for all four; an empty ledger prints `0` asked
+and no rate at all, which are different facts.
 - `status` prints `schema_version` (what the store has applied),
 `schema_latest` (what the running code can apply) and
 `schema_installed` (what the installed share staged at install time).
@@ -391,6 +405,14 @@ each other meaningful (issue #13): decisions that carried a lesson, and
 decisions that had none to offer. A verified lesson with no injection
 rows is a live lesson doing nothing, so it becomes a focus item; a store
 without the ledger table reports `not available`, never zeros.
+- Issue #20 states the ratio those counts imply instead of leaving it to
+be computed at read time: `retrieval hit rate`, in the same words, on
+`minder-op status`, `minder-op lessons injections`, the weekly summary,
+`minder-op scorecard`'s learning group and the console overview. It is a
+plane-level number, so it belongs where the plane is read; the per-lesson
+impact split issue #16 added has no base rate to be read against without
+it. No retrieval behaviour changed: the same lesson that fired before
+this change fires now.
 
 ## Deferred (+ — deliberately not built here)
 

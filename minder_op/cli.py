@@ -37,6 +37,10 @@ DEFERRED = ("deferred (8D/8E+): controlled local benchmark runner, web "
 
 FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
              "MINDER_SUCCESS_GUARD")
+# The wording for a number this store cannot produce (issue #20). Same
+# phrase the web console uses, so a read surface never answers "0" when
+# the honest answer is "no table to count".
+NOT_AVAILABLE = "not available"
 
 
 class OpParser(argparse.ArgumentParser):
@@ -321,6 +325,10 @@ def build_parser():
                                " and counts per reason code (issue #14)")
     le_dec.add_argument("--id", help="one lesson's decisions, newest first")
     le_dec.add_argument("--limit", type=int, default=20)
+    le_inj = le_sub.add_parser("injections", help="injection ledger:"
+                               " per-lesson counts with the misses named"
+                               " as misses (issue #20)")
+    le_inj.add_argument("--limit", type=int, default=50)
     le_promote = le_sub.add_parser("promote")
     le_promote.add_argument("episode_id", nargs="?",
                             help="episode to promote from, or the candidate "
@@ -544,6 +552,8 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_lessons_reject(args, path)
     if command == "lessons" and sub == "decisions":
         return _cmd_lessons_decisions(args, path)
+    if command == "lessons" and sub == "injections":
+        return _cmd_lessons_injections(args, path)
     if command == "lessons" and sub == "promote":
         return _cmd_lessons_promote(args, path)
     if command == "gaps" and sub == "ls":
@@ -596,12 +606,30 @@ def _cmd_status(path):
         lines.append((f"consults[{label}]", n))
     lines += [("classifier_shadow_rows", info["classifier_shadow_rows"]),
               ("decision_traces_rows", info["decision_traces_rows"])]
+    lines += _retrieval_lines(info["retrieval"])
     for var in FLAG_VARS:
         lines.append((f"env:{var}", os.environ.get(var) or "(unset)"))
     kv(lines)
     print()
     print(DEFERRED)
     return EXIT_OK
+
+
+def _retrieval_lines(retrieval):
+    """Issue #20: the hit rate as named numbers, not a percentage a reader
+    has to reverse-engineer, and never a 0 for a store that predates the
+    injection ledger."""
+    if not retrieval["available"]:
+        return [("retrieval_asked", NOT_AVAILABLE),
+                ("retrieval_hits", NOT_AVAILABLE),
+                ("retrieval_misses", NOT_AVAILABLE),
+                ("retrieval_hit_rate", NOT_AVAILABLE)]
+    rate = retrieval["rate"]
+    return [("retrieval_asked", retrieval["asked"]),
+            ("retrieval_hits", retrieval["hits"]),
+            ("retrieval_misses", retrieval["misses"]),
+            ("retrieval_hit_rate",
+             NOT_AVAILABLE if rate is None else f"{rate * 100:.1f}%")]
 
 
 def _cmd_migrate(path):
@@ -1492,6 +1520,26 @@ def _cmd_lessons_decisions(args, path):
     fmt.table([{"action": r["action"], "code": r["code"], "n": r["n"]}
                for r in rows],
               [("action", "action"), ("code", "code"), ("n", "n")])
+    return EXIT_OK
+
+
+def _cmd_lessons_injections(args, path):
+    """Issue #20: the ledger read side. Misses are their own labelled
+    line, never a bucket that reads as a lesson with an empty id, and a
+    store without the table says so instead of printing a zero rate."""
+    from minder_memory import injections as ledger
+    counts = ledger.injection_counts(db_path=path, limit=args.limit)
+    if counts["misses"] is None:
+        print("injection ledger: not available")
+        return EXIT_OK
+    fmt.table([{"lesson": r["lesson_id"], "injections": r["injections"],
+                "last": r["last_ts"]} for r in counts["lessons"]],
+              [("lesson", "lesson"), ("injections", "injections"),
+               ("last", "last")])
+    # The nothing case, spelled out: these rows are why the hit rate is
+    # below 100%, and there is no lesson id to act on.
+    print(f"\nmisses: {counts['misses']} (decisions that had no lesson to"
+          " offer; not a lesson)")
     return EXIT_OK
 
 

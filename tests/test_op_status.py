@@ -47,6 +47,45 @@ def test_empty_migrated_db_reports_zeros(tmp_path, capsys, monkeypatch):
     assert "MINDER_ASSIST" in out and "(unset)" in out
 
 
+def test_status_names_the_retrieval_hit_rate(tmp_path, capsys):
+    """Issue #20 acceptance 1: the plane-level question - of the failure
+    events that asked for a lesson, how many got one - has to be readable
+    somewhere, and the miss count has to be named rather than inferred
+    from a subtraction."""
+    dbp = tmp_path / "m.sqlite"
+    conn = _db.connect(dbp)
+    for i, lesson in enumerate((None, "L1", "L2", None)):
+        _db.write(
+            conn,
+            "INSERT INTO learning_injections (injection_id, ts,"
+            " session_id, failure_key, lesson_id, tier, digest_injected,"
+            " chars_injected, assist_mode) VALUES (?, '2026-10-01T00:00:00"
+            "+00:00', 's1', 'k1', ?, ?, 1, ?, 'retrieve')",
+            (f"inj_{i}", lesson, "n/a" if lesson is None else "exact",
+             0 if lesson is None else 240))
+    conn.close()
+    main(["--db", str(dbp), "status"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "retrieval_asked : 4" in out
+    assert "retrieval_hits : 2" in out
+    assert "retrieval_misses : 2" in out
+
+
+def test_status_says_not_available_without_the_ledger(tmp_path, capsys):
+    """A store predating migration 015 has no rows to count. Printing a
+    0 % hit rate would read as a retrieval failure; the line has to say
+    the number does not exist."""
+    dbp = tmp_path / "m.sqlite"
+    conn = _db.connect(dbp)
+    conn.execute("DROP TABLE learning_injections")
+    conn.commit()
+    conn.close()
+    main(["--db", str(dbp), "status"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "retrieval_asked : not available" in out
+    assert "retrieval_asked : 0" not in out
+
+
 def test_status_shows_env_flags(tmp_path, capsys, monkeypatch):
     dbp = tmp_path / "m.sqlite"
     _db.connect(dbp).close()

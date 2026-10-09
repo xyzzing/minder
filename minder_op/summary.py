@@ -16,7 +16,8 @@ from datetime import datetime, timedelta, timezone
 from minder_memory.canonicalise import redact
 
 from minder_op import format as fmt
-from minder_op.queries import UNCLASSIFIED, DBError, _rows
+from minder_op import domains, injections
+from minder_op.queries import UNCLASSIFIED, _count, _rows
 
 NOTE = ("observed workflow evidence only; minder makes no productivity "
         "claim")
@@ -61,11 +62,6 @@ def _window(days, since, now):
         raise ValueError("--days must be an integer >= 1 (or use --since)")
     start = until - timedelta(days=days)
     return start.isoformat(), until.isoformat(), days
-
-
-def _count(path, sql, params):
-    rows = _rows(path, sql, params)
-    return rows[0]["n"] if rows else 0
 
 
 def _bucketed(path, sql, params, known):
@@ -158,7 +154,7 @@ def build_weekly_summary(db_path, days=7, since=None, now=None):
         # something, and `unused_verified` names a lesson an operator
         # promoted that never reached an agent. A store predating
         # migration 015 degrades to available False, never to zeros.
-        "injections": _injection_section(db_path, win),
+        "injections": injections.injection_section(db_path, win),
         "gaps": {
             "opened_in_window": _count(
                 db_path, "SELECT COUNT(*) AS n FROM skill_gaps"
@@ -190,82 +186,9 @@ def build_weekly_summary(db_path, days=7, since=None, now=None):
         "benchmarks": {"status": "not available"},
         "note": NOTE,
     }
-    report["domain"] = _domain_section(db_path, win, now)
+    report["domain"] = domains.domain_section(db_path, win, now)
     report["focus"] = _focus(report)
     return report
-
-
-def _injection_section(db_path, win):
-    """Injection-ledger counts (issue #13). Window-scoped like every other
-    number here. Degrades to available False on a store without the
-    ledger: the read-only summary never migrates a database, and a missing
-    table must not read as 'nothing was injected'."""
-    start, until = win
-    try:
-        rows = _rows(db_path,
-                     "SELECT SUM(CASE WHEN lesson_id IS NOT NULL THEN 1"
-                     " ELSE 0 END) AS injected, SUM(CASE WHEN lesson_id IS"
-                     " NULL THEN 1 ELSE 0 END) AS missed,"
-                     " SUM(CASE WHEN lesson_id IS NOT NULL AND ts >= ?"
-                     " AND ts < ? THEN 1 ELSE 0 END) AS injected_in_window"
-                     " FROM learning_injections", (start, until))
-        row = rows[0] if rows else {}
-        unused = _count(
-            db_path, "SELECT COUNT(*) AS n FROM lessons l WHERE"
-            " l.status = 'verified' AND l.valid_to IS NULL AND NOT EXISTS"
-            " (SELECT 1 FROM learning_injections i"
-            " WHERE i.lesson_id = l.lesson_id)", ())
-        return {"available": True,
-                "injected_total": int(row.get("injected") or 0),
-                "injected_in_window": int(row.get("injected_in_window") or 0),
-                "missed_total": int(row.get("missed") or 0),
-                "unused_verified": int(unused)}
-    except DBError:  # pre-015 store: degrade, don't crash
-        return {"available": False, "injected_total": None,
-                "injected_in_window": None, "missed_total": None,
-                "unused_verified": None}
-
-
-def _domain_section(db_path, win, now):
-    """Domain-layer counts (Phase 1). Degrades to zeros + available
-    False on stores predating migration 011 — the read-only summary
-    never migrates a database."""
-    start, until = win
-    try:
-        declared = _count(
-            db_path, "SELECT COUNT(*) AS n FROM task_contexts"
-            " WHERE opened_at >= ? AND opened_at < ?", (start, until))
-        traces = _count(
-            db_path, "SELECT COUNT(*) AS n FROM route_traces"
-            " WHERE ts >= ? AND ts < ?", (start, until))
-        agreements = _count(
-            db_path, "SELECT COUNT(*) AS n FROM route_traces"
-            " WHERE ts >= ? AND ts < ? AND provenance = 'declared'"
-            " AND validation_result = 'approved'"
-            " AND candidate_domain = declared_domain", (start, until))
-        abstentions = _count(
-            db_path, "SELECT COUNT(*) AS n FROM route_traces"
-            " WHERE ts >= ? AND ts < ? AND abstained = 1", (start, until))
-        expiring_horizon = (datetime.fromisoformat(until)
-                            + timedelta(days=7)).isoformat()
-        expiring = _count(
-            db_path, "SELECT COUNT(*) AS n FROM application_intents"
-            " WHERE status = 'active' AND expires_at >= ?"
-            " AND expires_at < ?",
-            (until, expiring_horizon))
-        advisories = _count(
-            db_path, "SELECT COUNT(*) AS n FROM success_observations"
-            " WHERE advisory = 1 AND ts >= ? AND ts < ?", (start, until))
-        return {"available": True, "declared_boundaries": declared,
-                "route_traces": traces, "route_agreements": agreements,
-                "route_abstentions": abstentions,
-                "resume_intents_expiring_7d": expiring,
-                "success_advisories": advisories}
-    except Exception:  # noqa: BLE001 — pre-011 store: degrade, don't crash
-        return {"available": False, "declared_boundaries": 0,
-                "route_traces": 0, "route_agreements": 0,
-                "route_abstentions": 0, "resume_intents_expiring_7d": 0,
-                "success_advisories": 0}
 
 
 def _focus(report):
@@ -356,6 +279,13 @@ def render_text(report):
             ("injected in window", inj["injected_in_window"]),
             ("injected total", inj["injected_total"]),
             ("decisions with no lesson to offer", inj["missed_total"]),
+            # Issue #20: the base rate every per-lesson impact split is
+            # read against. `asked` is named so a reader never subtracts
+            # to find the denominator.
+            ("retrieval hit rate",
+             "n/a (no decisions recorded)" if inj["hit_rate"] is None
+             else f"{inj['injected_total']} of {inj['asked_total']} asked"
+                  f" ({inj['hit_rate'] * 100:.1f}%)"),
             ("verified lessons never injected", inj["unused_verified"])])
 
     _section("skill gaps", [

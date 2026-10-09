@@ -95,7 +95,14 @@ def injections_for_lesson(lesson_id, db_path=None, limit=50):
 
 def injection_counts(db_path=None, limit=50):
     """Per-lesson injection counts, busiest first: how often each lesson
-    was injected and when it last fired. [] on any problem."""
+    was injected and when it last fired.
+
+    Issue #20: the `lesson_id IS NULL` rows - the decisions that had
+    nothing to offer - are counted and named as `misses` instead of being
+    dropped. They are the denominator of every retrieval question, and a
+    caller that has to subtract to find them will present them as
+    nothing. `None` for every number when the store predates migration
+    015, so "this store cannot say" never renders as a zero rate."""
     try:
         conn = _db.connect(db_path)
         try:
@@ -105,11 +112,15 @@ def injection_counts(db_path=None, limit=50):
                 " WHERE lesson_id IS NOT NULL"
                 " GROUP BY lesson_id ORDER BY injections DESC, last_ts DESC"
                 " LIMIT ?", (int(limit),)).fetchall()
-            return [dict(r) for r in rows]
+            missed = conn.execute(
+                "SELECT COUNT(*) AS n FROM learning_injections"
+                " WHERE lesson_id IS NULL").fetchone()
+            return {"lessons": [dict(r) for r in rows],
+                    "misses": int(missed["n"]) if missed else 0}
         finally:
             conn.close()
-    except Exception:
-        return []
+    except Exception:  # noqa: BLE001 - pre-015 store: cannot say, not zero
+        return {"lessons": None, "misses": None}
 
 
 def injection_miss_count(db_path=None):

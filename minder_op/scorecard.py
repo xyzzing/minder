@@ -73,6 +73,7 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=24):
 
     # --- failures, learning, context ------------------------------------
     report["scores"]["failures"] = _failure_scores(db_path, since)
+    retrieval = _retrieval_stats(db_path)
     report["scores"]["learning"] = {
         "skill_gaps_open": _count_scoped(db_path, "skill_gaps", since,
                                          status="open"),
@@ -83,6 +84,14 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=24):
         "decision_traces": _count_since(db_path, "decision_traces", since),
         "classifier_shadow": _count_since(db_path, "classifier_shadow",
                                           since),
+        # Issue #20: over the whole ledger, not the window. A windowed
+        # denominator on a low-traffic plane turns one miss into a 50 %
+        # swing, so the scorecard carries the same lifetime numbers
+        # `minder-op status` prints and the trend stays comparable.
+        "retrieval_asked": retrieval["asked"],
+        "retrieval_hits": retrieval["hits"],
+        "retrieval_misses": retrieval["misses"],
+        "retrieval_hit_rate": retrieval["rate"],
     }
 
     # --- context --------------------------------------------------------
@@ -155,6 +164,30 @@ def _failure_scores(db_path, since):
     except Exception:
         pass
     return out
+
+
+def _rate_text(learning):
+    """Text for the learning line: the counts first, the ratio they imply
+    second, and `not available` when the store has no ledger (issue #20)."""
+    if learning["retrieval_asked"] is None:
+        return "not available"
+    rate = learning["retrieval_hit_rate"]
+    shown = "n/a" if rate is None else f"{rate * 100:.1f}%"
+    return (f"{learning['retrieval_hits']} / "
+            f"{learning['retrieval_asked']} asked ({shown})")
+
+
+def _retrieval_stats(db_path):
+    """The injection ledger's hit rate, or the not-available shape. The
+    queries helper already distinguishes a store that predates migration
+    015 from one with no rows; the scorecard must not flatten that into a
+    0 (issue #20)."""
+    from minder_op import queries
+    try:
+        return queries.retrieval_hit_rate(db_path)
+    except Exception:
+        return {"available": False, "asked": None, "hits": None,
+                "misses": None, "rate": None}
 
 
 def _count_scoped(db_path, table, since, status=None):
@@ -284,6 +317,7 @@ def render_text(report):
     lines.append(f"  lessons v/c         {learning['lessons_verified']} / "
                  f"{learning['lessons_candidate']}")
     lines.append(f"  decision traces     {learning['decision_traces']}")
+    lines.append(f"  retrieval hit rate  {_rate_text(learning)}")
     context = report["scores"]["context"]
     lines.append("context")
     lines.append(f"  sessions            {context['sessions']} "

@@ -86,7 +86,7 @@ curl -sS http://127.0.0.1:8765/healthz
 
 | Route | Shows |
 |---|---|
-| `/` | health, env flags (display only), **capture strip**, shared weekly summary (including the lesson-injection counts and the verified lessons that never fired, issue #13), operator focus |
+| `/` | health, env flags (display only), **capture strip**, shared weekly summary (including the lesson-injection counts, the retrieval hit rate with its misses named — issue #20 — and the verified lessons that never fired, issue #13), operator focus |
 | `/capture` | hook coverage (invocations vs persisted records), store freshness, sink reachability, sandbox-mode mix |
 | `/sessions` | dsh sessions joined with their projection cache, workspace, tokens, sandbox mode and episode/event counts (`?q=`, `?sort=recent\|project\|tokens\|steps\|capture`) |
 | `/sessions/{id}` | one session: projections, log-derived tool/hook counters and hook p50, episodes and observed events |

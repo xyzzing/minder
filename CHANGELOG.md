@@ -5,6 +5,19 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The learning plane now states its own hit rate (issue #20).**
+  `minder-op status` prints `retrieval_asked`, `retrieval_hits`,
+  `retrieval_misses` and `retrieval_hit_rate`; `minder-op lessons
+  injections` lists the per-lesson counts with `misses: N` on its own line
+  instead of a row that reads as a lesson with an empty id; the weekly
+  summary, `minder-op scorecard`'s learning group and the console overview
+  carry the same number. Issue #13 put the `lesson_id IS NULL` rows in the
+  ledger so retrieval could be measured at all, but nothing read them, so
+  the one question the learning plane answers — of the decisions that asked
+  for a lesson, how many got one — had no number anywhere. A store
+  predating migration 015 says `not available`; an empty ledger says 0
+  asked and no rate. No retrieval behaviour changed.
+
 - **Coverage's store-side count is a number now (issue #31).**
   `coverage.persisted_db` was `None` on every real install: `_db_event_count`
   passed `limit=queries.MAX_LIMIT`, a name that exists only in
