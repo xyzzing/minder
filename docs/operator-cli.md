@@ -123,6 +123,12 @@ is live (it spawns on the first router-eligible request), and `warn`
 with the last recorded failure when the client-side log holds one —
 that last case means the difficulty router is failing open, so
 `difficulty_router` is costing nothing but achieving nothing either.
+The log has no timestamps and rolls only at 1 MB, so a `warn` can name
+a defect that is already fixed: confirm with a direct call before
+acting, and move the log aside (`mv ~/.local/state/minder/laya-worker.log
+{,.old}`) to clear the evidence. The worker is spawned by the proxy, so
+it runs the staged share the proxy imported — after `install.sh`, restart
+the proxy service or an already-listening worker keeps the old code.
 - The router's own modes (`~/.config/minder/minder.json`,
 `difficulty_router`): `shadow` consults and records without acting,
 `active` may move effort in either direction, `lower` consults and

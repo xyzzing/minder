@@ -21,6 +21,18 @@ commit hash behind it; the instruction gate checks the hash exists.
   process imported. Re-staging the share does not replace a worker
   already listening on the socket - restart the proxy service and the
   next spawn picks up the new code. (e8e4d06)
+- `doctor`'s `laya-worker` check reads the last non-empty line of
+  `laya-worker.log`, and that log is append-only with no timestamp. A
+  fixed defect still warns forever until the log rolls (the worker
+  rotates it at 1 MB, or an operator can move it aside). Confirm with a
+  direct client call - `WorkerDifficultyClient().system_one({...})` -
+  and treat a warn whose line predates the fix as stale evidence, not a
+  live failure. (#28)
+- `difficulty_skipped reason=client_effort` on every request is the
+  approved precedence working, not the router being broken: the dsh
+  profile declares `reasoningEfforts` for `qwen-auto`, so the client
+  sends an effort and outranks laya. The router only runs for clients
+  that send none. (e8e4d06)
 - `install.sh` resolves the hooks.json guard mode through
   `dsh/dsh_install.py guard-default`: the `MINDER_SUCCESS_GUARD` env
   value, else the mode the live hooks.json already declares, else the
