@@ -607,23 +607,38 @@ def _cmd_status(path):
 def _cmd_migrate(path):
     """Issue #26: close the gap the status screen just named. The plan
     is printed before and after, so an operator sees which versions
-    landed rather than trusting a silent exit code."""
+    landed rather than trusting a silent exit code.
+
+    A store ahead of the answering runtime is refused rather than
+    pushed: this process can only apply the migrations beside its own
+    copy of minder, and writing objects it has no files for would leave
+    the store stamped at a version its own runtime cannot reproduce."""
     from minder_op.format import kv
     from minder_op import schema as schema_mod
-    before, applied, after, latest = schema_mod.repair(path)
+    before, latest = schema_mod.schema_state(path)
+    installed = schema_mod.installed_version()
+    if before > latest:
+        print(f"error: the store is at v{before}, ahead of the migrations "
+              f"this runtime ships (v{latest}). Nothing here can bring it "
+              "up to date: point minder-op at the runtime that wrote those "
+              "migrations (the installed share: "
+              f"{schema_mod.share_dir()})", file=sys.stderr)
+        return EXIT_USAGE
+    _before, applied, after, latest = schema_mod.repair(path)
     kv([("db_path", str(path)),
         ("schema_before", before),
         ("schema_applied", ", ".join(f"v{v}" for v in applied) or "none"),
         ("schema_version", after),
-        ("schema_latest", latest)])
+        ("schema_latest", latest),
+        ("schema_installed", installed)])
     if not applied:
-        print("\\nno pending migration: the store is already current "
+        print("\nno pending migration: the store is already current "
               "for the migrations this runtime ships")
-    if after < latest:
-        print(f"\\nstill behind: the installed share "
-              f"({schema_mod.migrations_dir()}) ships v{latest} but "
-              f"only up to v{after} was applied here - re-run "
-              "install.sh to refresh the staged files", file=sys.stderr)
+    if installed and after > installed:
+        print(f"\nstale staged files: the store is now at v{after}, but "
+              f"the installed share ({schema_mod.migrations_dir()}) ships "
+              f"only v{installed} - re-run install.sh so the deployed "
+              "runtimes have the same migrations", file=sys.stderr)
     return EXIT_OK
 
 

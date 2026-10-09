@@ -223,6 +223,57 @@ def test_migrate_closes_a_real_gap(tmp_path, capsys, monkeypatch):
     assert "schema_behind : no" in out
 
 
+def test_migrate_refuses_a_store_ahead_of_the_answering_runtime(
+        tmp_path, capsys, monkeypatch):
+    """The live install's real shape, and the trap the obvious
+    implementation walks into. The store reached v16 through the checkout;
+    the installed share stopped at v14. Running the installed `migrate`
+    must not stamp that store with migrations its own runtime has no files
+    for - the store would then claim a version the deployed code cannot
+    reproduce, and the next read would be a missing table dressed up as
+    corruption. The refusal names which runtime can do the work.
+
+    The store here is a real v16 store whose recorded version is then
+    pushed above this runtime's ceiling; a store stamped high with no
+    tables behind it would test the version number, not the state."""
+    _head_share(tmp_path, monkeypatch)
+    dbp = tmp_path / "m.sqlite"
+    _db.connect(dbp).close()
+    conn = sqlite3.connect(str(dbp))
+    try:
+        conn.execute(f"PRAGMA user_version = {ABOVE}")
+        conn.commit()
+    finally:
+        conn.close()
+    monkeypatch.setenv("MINDER_SHARE", str(_share(tmp_path, [1, 2, HEAD - 3])))
+    assert main(["--db", str(dbp), "migrate"]) == 1
+    err = " ".join(capsys.readouterr().err.split())
+    assert "ahead of the migrations this runtime ships" in err
+    assert f"v{ABOVE}" in err and f"v{HEAD}" in err
+    # The store is untouched: a refusal writes nothing.
+    assert sqlite3.connect(str(dbp)).execute(
+        "PRAGMA user_version").fetchone()[0] == ABOVE
+
+
+def test_migrate_names_stale_staged_files(tmp_path, capsys, monkeypatch):
+    """The other half of the same install: the runtime answering is newer
+    than the installed share, so a successful migrate leaves the deployed
+    runtimes behind. Applying what this runtime has is right, and saying
+    the staged files need a refresh is part of the same answer."""
+    _install_share(tmp_path, monkeypatch, [1, 2, HEAD - 3])
+    dbp = _stamped(tmp_path, 1)
+    assert main(["--db", str(dbp), "migrate"]) == EXIT_OK
+    # One readouterr() per call: it drains, so a second read returns ''.
+    captured = capsys.readouterr()
+    out = " ".join(captured.out.split())
+    assert f"schema_version : {HEAD}" in out
+    assert f"schema_installed : {HEAD - 3}" in out
+    # The store passed the installed share's ceiling on the way up, so the
+    # same run that applied the migrations also names the stale files.
+    err = " ".join(captured.err.split())
+    assert "stale staged files" in err and "install.sh" in err
+
+
 def test_unreadable_db_is_not_reported_as_corrupt(tmp_path, capsys):
     """Corruption and unreadability need different sentences: the first
     sends the operator to a backup, the second to permissions."""
