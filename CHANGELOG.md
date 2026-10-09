@@ -5,6 +5,17 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The installed hooks file now always carries a real guard mode (issue #29).**
+  `install.sh` filled two of the three placeholders in `dsh/hooks.json`, so the
+  installed hook commands ran with `MINDER_SUCCESS_GUARD=__MINDER_SUCCESS_GUARD__`.
+  `guard_mode()` maps any unrecognised value to `off`, so the success-loop stop was
+  inert on the live install while `minder-op doctor` reported the flag as present.
+  The template pins `advisory`, `install.sh` delegates the render to
+  `dsh_install.py render-hooks` (one guard rule for both render paths: env value,
+  else the live file's mode, else the template), staging no longer overwrites the
+  installed hooks.json before that mode is read, and a render that would emit a
+  placeholder guard refuses to write the file.
+
 - **An operator's decline stops being counted as a broken command (issue #27).**
   The harness writes a plan-review dismissal as `Error: The user dismissed the
   plan review to speak instead`, and the shared `error:` fail sign read that as

@@ -15,9 +15,12 @@ commit hash behind it; the instruction gate checks the hash exists.
 - The dsh web host reads `dsh/hooks.json` once at startup; flag changes
   in the staged file need a dsh host restart before any session picks
   them up. (07dbfc2)
-- Run `install.sh` with `MINDER_SUCCESS_GUARD=block`; without the env it
-  renders the live hooks.json guard as advisory - a silent downgrade of
-  the verified operator setting. (fd57ddc)
+- `install.sh` resolves the hooks.json guard mode through
+  `dsh/dsh_install.py guard-default`: the `MINDER_SUCCESS_GUARD` env
+  value, else the mode the live hooks.json already declares, else the
+  template's pinned `advisory`. Passing the env is still the way to set
+  `block` on a fresh install; omitting it now preserves the live mode
+  instead of downgrading it. (fd57ddc, e8e4d06)
 - Inside the zcode harness, run Python as `env -u LD_LIBRARY_PATH
   python3 ...`; the appimage library path poisons subprocess Python
   (GUI launches instead of pytest). (1aad390)
@@ -171,6 +174,18 @@ commit hash behind it; the instruction gate checks the hash exists.
   treating a decline as success erases the evidence of a loop that is
   still running. The two-way `if not is_failure(...)` shape is the bug;
   three outcomes need three branches. (#27)
+- A rendered file can carry a flag name and still be unconfigured.
+  `install.sh` filled two of the three placeholders in `dsh/hooks.json`,
+  so every hook command shipped `MINDER_SUCCESS_GUARD=__MINDER_
+  SUCCESS_GUARD__`, and `guard_mode()` maps any unrecognised value to
+  `off`. The loop stop was inert while `doctor` reported the flag as
+  present. Two rules follow: a mode belongs in the template as a real
+  value, never as a placeholder awaiting substitution; and one render
+  path must not hand-roll `sed` for a field another module owns -
+  `install.sh` now calls `dsh_install render-hooks` so both paths share
+  the guard rule and the refuse-to-write check. Staging also has to keep
+  the installed hooks.json, or the live mode is gone before the render
+  can read it. (#29)
 ## Platform quirks
 
 - SQLite WAL allows a plain read on a second connection while a write
