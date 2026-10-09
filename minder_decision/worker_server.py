@@ -19,7 +19,7 @@ import threading
 import time
 
 from .worker import (DEFAULT_DEADLINE_MS, DEFAULT_IDLE_S, MAX_DEADLINE_MS,
-                     _dial, _readline, socket_path)
+                     PROTOCOL_VERSION, _dial, _readline, socket_path)
 
 
 class _StubAgent:
@@ -91,8 +91,17 @@ def _handle(conn, state):
     if not isinstance(req, dict):
         raise ValueError("request is not an object")
     rid = req.get("id")
-    if req.get("v") != 1:
-        raise ValueError("unsupported protocol version")
+    if req.get("v") != PROTOCOL_VERSION:
+        # Answer, never drop: a client on another protocol version has to
+        # see the version it sent, or both halves fail open with nothing
+        # to compare. The client turns ok:false into a clean fallback.
+        seen = repr(req.get("v"))
+        msg = (f"unsupported protocol version {seen} "
+               f"(expected {PROTOCOL_VERSION})")
+        print(f"minder-decision-worker: {msg}", file=sys.stderr, flush=True)
+        _reply(conn, {"v": PROTOCOL_VERSION, "id": rid, "ok": False,
+                      "error": msg})
+        return
     try:
         deadline = int(req.get("deadline_ms") or DEFAULT_DEADLINE_MS)
     except (TypeError, ValueError):

@@ -41,6 +41,9 @@ MAX_DEADLINE_MS = 5000
 DEFAULT_DEADLINE_MS = 1500
 SPAWN_COOLDOWN_S = 30.0
 DEFAULT_IDLE_S = 1800.0
+# Single source for both halves of the socket pair. A mismatch used to be
+# a bare exception on the server and a closed connection on the client.
+PROTOCOL_VERSION = 1
 
 
 def _state_dir():
@@ -195,10 +198,49 @@ def _spawn_worker(path):
                 pass
 
 
+_CLIENT_LOGGED: dict = {}
+
+
+def _client_fail(path, reason, detail=""):
+    """Name a client-side failure in the worker's log file.
+
+    The client is fail-open by contract (Law #2) and returns None, which
+    is why the live router produced zero events and zero explanation:
+    every failure looked identical. One line per reason per process, so
+    a permanently dead worker cannot flood the log while still naming
+    itself once. Never raises - a failed diagnostic must not change the
+    fail-open path."""
+    line = f"minder-decision-worker-client: {reason}"
+    if detail:
+        line += f": {detail}"
+    if _CLIENT_LOGGED.get(reason):
+        return
+    _CLIENT_LOGGED[reason] = True
+    try:
+        log_path = Path(path).with_name("laya-worker.log")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "ab") as fh:
+            fh.write((line + "\n").encode())
+    except OSError:
+        pass
+
+
+def _reset_client_log_marks():
+    """Test seam: let a test assert each reason is written once."""
+    _CLIENT_LOGGED.clear()
+    _LIVE_NOTED.clear()
+
+
+_LIVE_NOTED: dict = {}
+# Module level, not per instance: the process-wide client is a singleton, and
+# a per-instance dict would let each new client re-report one dead worker.
+
+
 class WorkerDifficultyClient:
     """SystemOneClient over the isolated worker. Returns None on any
     failure (the router's deterministic fallback takes over); never
-    raises for ordinary inputs."""
+    raises for ordinary inputs. Each failure names itself once in
+    laya-worker.log (`_client_fail`)."""
 
     model_version = "laya-worker"
 
@@ -217,49 +259,72 @@ class WorkerDifficultyClient:
             ms = DEFAULT_DEADLINE_MS
         return max(50, min(MAX_DEADLINE_MS, ms)) / 1000.0
 
-    def _connect(self, deadline):
-        path = self._path or socket_path()
+    def _connect(self, deadline, path=None):
+        path = path or self._path or socket_path()
         if _in_cooldown():
             conn = _dial(path, 0.02)  # cheap liveness check only
             if conn is not None:
                 _clear_cooldown()
+            elif not _LIVE_NOTED["dial_refused"]:
+                _LIVE_NOTED["dial_refused"] = True
+                _client_fail(path, "dial_refused",
+                            f"cooldown, no worker at {path}")
             return conn
         conn = _dial(path, min(deadline, 0.25))
         if conn is not None:
             return conn
         if not self._spawn:
+            _client_fail(path, "dial_refused", f"no worker at {path}")
             return None
         _spawn_worker(path)
         conn = _dial(path, 0.5)
         if conn is None:
             _note_failure()
+            _client_fail(path, "spawn_failed",
+                         f"no worker after spawn at {path}")
         return conn
 
     def system_one(self, state, questions=None, model=None, contract=None):
         try:
             return self._decide(state)
-        except Exception:
+        except Exception as err:
+            # Law #2: never raise at the caller. Name it in the log first.
+            _client_fail(self._path or socket_path(), "client_error",
+                         repr(err))
             return None
 
     def _decide(self, state):
         deadline = self._deadline()
-        conn = self._connect(deadline)
+        path = self._path or socket_path()
+        conn = self._connect(deadline, path=path)
         if conn is None:
             return None
         try:
-            req = {"v": 1, "id": next(_IDS),
+            req = {"v": PROTOCOL_VERSION, "id": next(_IDS),
                    "deadline_ms": int(deadline * 1000),
                    "state": state}  # the server rejects a non-object
             conn.sendall((json.dumps(req) + "\n").encode())
             conn.settimeout(deadline)
             line = _readline(conn)
             if not line:
+                _client_fail(path, "no_reply", "worker closed the socket")
                 return None
             reply = json.loads(line.decode("utf-8", "replace"))
-            if not isinstance(reply, dict) or not reply.get("ok"):
+            if not isinstance(reply, dict):
+                _client_fail(path, "bad_reply", "reply is not an object")
                 return None
-            return _response_from_dict(reply.get("response"))
-        except (OSError, ValueError):
+            if not reply.get("ok"):
+                # the worker named its own failure; carry it to the log
+                _client_fail(path, "worker_error",
+                             str(reply.get("error") or "?")[:200])
+                return None
+            resp = _response_from_dict(reply.get("response"))
+            if resp is None:
+                _client_fail(path, "bad_reply", "malformed response")
+            return resp
+        except (OSError, ValueError) as err:
+            _client_fail(path, "deadline" if isinstance(err, OSError)
+                         else "bad_reply", repr(err))
             return None
         finally:
             try:

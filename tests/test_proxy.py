@@ -995,3 +995,206 @@ def test_t17_deescalation_audit(proxy_over_mock, tmp_path, monkeypatch):
     finally:
         clear_caps()
         stop(mock, srv)
+
+
+# ---------------------------------------------------------------------------
+# issue #28: the router names why it abstained, and `lower` mode may only
+# lower effort. The live install runs shadow and records no difficulty
+# event at all, so an inert router and a working one look identical.
+# ---------------------------------------------------------------------------
+
+def test_r1_client_effort_records_skipped_reason(proxy_over_mock, tmp_path,
+                                                 monkeypatch):
+    """A client-declared effort outranks laya by design, but the router's
+    denominator has to be queryable: the request is recorded, not dropped."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort_levels=["low", "medium", "xhigh"])
+        _difficulty_cfg(tmp_path, "active", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "xhigh",
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_skipped" in ledger
+        assert '"reason": "client_effort"' in ledger
+        # the client pick still wins
+        assert mock.last_body["chat_template_kwargs"]["reasoning_effort"] \
+            == "xhigh"
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r2_router_off_stays_silent(proxy_over_mock, tmp_path, monkeypatch):
+    """A disabled router must not add ledger noise - the off path is a
+    zero-behavior-change path (test_t10 pins the request body)."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort_levels=["low", "medium", "xhigh"])
+        _difficulty_cfg(tmp_path, "off", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "xhigh",
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_skipped" not in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r3_no_client_records_reason(proxy_over_mock, tmp_path, monkeypatch):
+    """The live failure: get_difficulty_client() returns None and today
+    nothing is logged, so the router looks merely unused."""
+    import minder_decision.client as decision_client
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "shadow", monkeypatch)
+        monkeypatch.setattr(decision_client, "get_difficulty_client",
+                            lambda: None)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [{"role": "user",
+                                         "content": "refactor this module"}]})
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_skipped" in ledger
+        assert '"reason": "no_client"' in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r4_low_confidence_records_reason(proxy_over_mock, tmp_path,
+                                          monkeypatch):
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "shadow", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0, confidence=0.4)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "messages": [{"role": "user",
+                                         "content": "refactor this module"}]})
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_skipped" in ledger
+        assert '"reason": "below_confidence"' in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r5_shadow_records_direction(proxy_over_mock, tmp_path, monkeypatch):
+    """Shadow evidence has to say whether the band would have lowered or
+    raised effort, or the two-week shadow period answers the wrong
+    question."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "shadow", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [{"role": "user",
+                                         "content": "refactor this module"}]})
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_shadow" in ledger
+        assert '"direction": "up"' in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r6_lower_mode_lowers_effort(proxy_over_mock, tmp_path, monkeypatch):
+    """`lower` mode: a mechanical answer on traffic the scheduler would
+    have sent at high goes out at low. This is the speed win."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "lower", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "mechanical", 0.2)
+        # heavy tool activity → the scheduler would pick high
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [
+                               {"role": "user", "content": "run the suite"},
+                               msg_tool_call("shell"),
+                               msg_tool_result("x" * 4000)]})
+        body = mock.last_body
+        assert body["chat_template_kwargs"] == {
+            "enable_thinking": True, "reasoning_effort": "low"}
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_routed" in ledger
+        assert '"direction": "down"' in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r7_lower_mode_never_raises(proxy_over_mock, tmp_path, monkeypatch):
+    """`lower` mode must not spend more: an expert answer on traffic the
+    scheduler sends at low leaves effort alone and says so."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "lower", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "expert_or_ambiguous", 3.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32768,
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        body = mock.last_body
+        assert body["chat_template_kwargs"]["reasoning_effort"] == "low"
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_no_upgrade" in ledger
+        assert "difficulty_routed" not in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r8_lower_mode_honours_client_effort(proxy_over_mock, tmp_path,
+                                             monkeypatch):
+    """A client or UI that names an effort keeps it in every router mode."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort_levels=["low", "medium", "xhigh"])
+        _difficulty_cfg(tmp_path, "lower", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "mechanical", 0.2)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "xhigh",
+                           "messages": [{"role": "user",
+                                         "content": "what is 2+2?"}]})
+        assert mock.last_body["chat_template_kwargs"]["reasoning_effort"] \
+            == "xhigh"
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_routed" not in ledger
+        assert '"reason": "client_effort"' in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r9_router_exception_is_recorded(proxy_over_mock, tmp_path,
+                                         monkeypatch):
+    """The router fails open by contract, but a fail-open that swallows
+    the exception leaves no trace. The request must still succeed."""
+    import minder_decision.client as decision_client
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs")
+        _difficulty_cfg(tmp_path, "active", monkeypatch)
+
+        def boom():
+            raise RuntimeError("laya exploded")
+        monkeypatch.setattr(decision_client, "get_difficulty_client", boom)
+        resp = chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                                  "messages": [{"role": "user",
+                                                "content": "hi"}]})
+        assert resp[0] == 200
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_error" in ledger
+        assert "RuntimeError" in ledger
+        # and the request still got its deterministic effort
+        assert "auto_effort" in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)

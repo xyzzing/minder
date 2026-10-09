@@ -26,10 +26,14 @@ CFG = {"laya_min_confidence": 0.7}
 
 @pytest.fixture(autouse=True)
 def _reset_worker_cooldown():
-    """Each test starts with the client's spawn cooldown cleared."""
+    """Each test starts with the client's spawn cooldown cleared, and with
+    the once-per-process client-log marks cleared so each reason can be
+    asserted as written."""
     worker_mod._COOLDOWN["until"] = 0.0
+    worker_mod._reset_client_log_marks()
     yield
     worker_mod._COOLDOWN["until"] = 0.0
+    worker_mod._reset_client_log_marks()
 
 
 def _contract():
@@ -229,3 +233,54 @@ def test_no_worker_is_none_and_quick(tmp_path):
     assert client.system_one({"task": "x"}, _contract().questions,
                              contract=_contract()) is None
     assert time.monotonic() - t0 < 2.0
+
+
+# ---------------------------------------------------------------------------
+# issue #28: a protocol mismatch must be answerable, not a dropped socket.
+# The live laya-worker.log holds two bare "unsupported protocol version"
+# lines with no version and no client-side record of what happened.
+# ---------------------------------------------------------------------------
+
+def test_protocol_mismatch_gets_an_error_reply(tmp_path):
+    """A pre-v1 client gets ok:false naming the version it sent, so both
+    halves of the pair are diagnosable instead of one seeing a closed
+    connection."""
+    proc, sock = _spawn_worker(
+        tmp_path, {"difficulty": "routine", "difficulty_score": 1.0})
+    try:
+        conn = None
+        waited = 0.0
+        while conn is None and waited < 20.0:
+            conn = worker_mod._dial(sock, 0.5)
+            if conn is None:
+                time.sleep(0.1)
+                waited += 0.1
+        assert conn is not None, "worker never bound its socket"
+        try:
+            conn.sendall((json.dumps({"v": 0, "id": 7,
+                                      "state": {"task": "x"}}) + "\n")
+                         .encode())
+            conn.settimeout(5.0)
+            line = worker_mod._readline(conn)
+        finally:
+            conn.close()
+        assert line, "the worker dropped the connection with no reply"
+        reply = json.loads(line.decode("utf-8", "replace"))
+        assert reply.get("ok") is False
+        assert "unsupported protocol version" in str(reply.get("error"))
+        assert "0" in str(reply.get("error"))
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+
+
+def test_worker_error_reaches_the_client_log(tmp_path):
+    """Every client-side failure names itself in laya-worker.log; today
+    system_one returns None and the operator has no record at all."""
+    sock = tmp_path / "silent.sock"
+    # no worker anywhere: the dial is refused and no spawn is attempted
+    client = worker_mod.WorkerDifficultyClient(spawn=False, path=sock)
+    assert client.system_one({"task": "refactor"}, _contract().questions,
+                             contract=_contract()) is None
+    log = (tmp_path / "laya-worker.log").read_text()
+    assert "dial_refused" in log

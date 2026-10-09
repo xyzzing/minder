@@ -25,6 +25,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adapter
 import minder
+from minder_decision import router as decision_router
+
+_KNOWN_EFFORTS = set(decision_router.KNOWN_EFFORTS)
 
 UPSTREAM = os.environ.get("MINDER_UPSTREAM", "http://127.0.0.1:8080")
 PORT = int(os.environ.get("MINDER_PORT", "8390"))
@@ -48,10 +51,6 @@ LEVEL_BUDGET = {1: 2048, 2: 10240}
 # (cache-stable prefixes matter more than per-mode temperature).
 MODE_EFFORT = {"direct": "off", "lean": "low", "deep": "high"}
 MODE_BUDGET = {"lean": 1024, "deep": 4096}
-# Semantic effort names the qwen-auto channel may honor from a client/UI
-# request; values outside this set (or the CAP-measured vocabulary) are
-# ignored and the activity scheduler decides.
-_KNOWN_EFFORTS = {"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 SINTER_STATE = os.environ.get(
     "MINDER_SINTER_STATE",
     os.path.expanduser("~/.local/state/sinter/instance.json"))
@@ -386,55 +385,11 @@ def _note_escalation(session_fp, level):
         pass
 
 
-def _difficulty_state(req):
-    """The task text laya sees: the first user message, redacted and
-    truncated. Never the full conversation — the rubric grades required
-    reasoning, not task length."""
-    for m in req.get("messages") or []:
-        if m.get("role") == "user":
-            try:
-                from minder_memory.canonicalise import redact
-            except Exception:
-                def redact(s):
-                    return s
-            return {"task": redact(str(m.get("content", "")))[:500],
-                    "turn": len(req.get("messages") or [])}
-    return {"task": "", "turn": len(req.get("messages") or [])}
-
-
-def _difficulty_opinion(req, session_fp, cfg, level, client_effort):
-    """Laya fast decision layer: task difficulty prior (never a solver).
-    Returns (label, band) for an active opinion, or None — None means no
-    opinion (off, shadow-logged, or fail-open) and the caller falls through
-    to mode/scheduler. Precedence: this is only consulted when neither the
-    escalation marker nor a client effort is present, so its opinion is
-    always the one that lands (or is shadow-logged)."""
-    try:
-        router = (cfg.get("difficulty_router") or "off").strip().lower()
-        if router not in ("shadow", "active") or level or client_effort:
-            return None
-        from minder_decision.contracts import task_difficulty_contract
-        from minder_decision.difficulty import resolve_difficulty
-        from minder_decision.client import get_difficulty_client
-        client = get_difficulty_client()
-        if client is None:
-            return None
-        contract = task_difficulty_contract()
-        state = _difficulty_state(req)
-        response = client.system_one(state, contract.questions,
-                                     contract=contract)
-        resolved = resolve_difficulty(response, contract, cfg)
-        if resolved is None:
-            return None
-        label, band = resolved
-        if router == "shadow":
-            minder.log(session_fp, "difficulty_shadow", label=label,
-                       score=response.score_values.get("difficulty_score"),
-                       confidence=response.confidence, band=band["label"])
-            return None
-        return label, band
-    except Exception:
-        return None  # fail-open: the request proceeds unchanged (Law #2)
+def _routed_direction(band, req):
+    """Direction of an applied band, for the difficulty_routed ledger line."""
+    from minder_decision.difficulty import effort_rank
+    return decision_router.band_direction(band, req.get("messages"),
+                                          effort_rank)
 
 
 def _level_budget(level, cfg):
@@ -531,9 +486,12 @@ def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None,
         effort = client_effort
         minder.log(session_fp, "auto_effort", effort=effort,
                    escalated=False, source="client")
+        # the router was outranked, not unused: record it so the shadow
+        # period's denominator counts this request instead of missing it
+        decision_router.record_client_skipped(session_fp, cfg)
     else:
-        opinion = _difficulty_opinion(req, session_fp, cfg, level,
-                                       client_effort)
+        opinion = decision_router.opinion(
+            req, session_fp, cfg, level, client_effort, caps)
         if opinion is not None:
             label, band = opinion
             # spending guardrail: a session over its thinking-token cap is
@@ -551,7 +509,8 @@ def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None,
             minder.log(session_fp, "difficulty_routed", label=label,
                        band=band["label"], effort=effort, budget=budget,
                        max_tokens=applied["max_tokens"],
-                       guardrail=guardrail)
+                       guardrail=guardrail,
+                       direction=_routed_direction(band, req))
         elif mode in MODE_EFFORT:
             effort = MODE_EFFORT[mode]
             minder.log(session_fp, "auto_effort", effort=effort,
