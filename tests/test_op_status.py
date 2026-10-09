@@ -23,8 +23,12 @@ def test_corrupt_db_exits_2(tmp_path, capsys):
     bad.write_bytes(b"this is not a sqlite database" * 40)
     code = main(["--db", str(bad), "status"])
     assert code == 2
-    assert "corrupt" in capsys.readouterr().err or "error" in \
-        capsys.readouterr().err
+    # Exit code 2 is the contract; the sentence is issue #26's business
+    # and now says "not readable as a sqlite database" rather than
+    # blaming corruption for a file that may only be unreadable.
+    err = capsys.readouterr().err
+    assert "error" in err.lower()
+    assert "sqlite" in err
 
 
 def test_empty_migrated_db_reports_zeros(tmp_path, capsys, monkeypatch):

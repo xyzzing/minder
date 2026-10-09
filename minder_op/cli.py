@@ -298,7 +298,29 @@ def build_parser():
     le_inv = le_sub.add_parser("invalidate")
     le_inv.add_argument("id")
     le_inv.add_argument("--reason", required=True)
+    # The closed lists come from minder_memory.lesson_decisions (C4); the
+    # parser reuses them so a code the memory layer would refuse never
+    # reaches it, and argparse prints the whole taxonomy on a typo.
+    from minder_memory import lesson_decisions as _ld
+    le_inv.add_argument("--diagnosis", choices=list(_ld.DIAGNOSES),
+                       default=_ld.DEFAULT_DIAGNOSIS,
+                       help="what went wrong with this lesson (issue #14;"
+                            " the default names no mechanism)")
     le_inv.add_argument("--yes", action="store_true")
+    le_rej = le_sub.add_parser("reject")
+    le_rej.add_argument("id", help="candidate lesson id, from `lessons ls"
+                                   " --status candidate`")
+    le_rej.add_argument("--code", required=True,
+                       choices=[c for c in _ld.DECISION_CODES
+                                if c != "grounded_useful"],
+                       help="why this distillation is not a lesson"
+                            " (issue #14)")
+    le_rej.add_argument("--note", default="")
+    le_rej.add_argument("--yes", action="store_true")
+    le_dec = le_sub.add_parser("decisions", help="lesson decision ledger"
+                               " and counts per reason code (issue #14)")
+    le_dec.add_argument("--id", help="one lesson's decisions, newest first")
+    le_dec.add_argument("--limit", type=int, default=20)
     le_promote = le_sub.add_parser("promote")
     le_promote.add_argument("episode_id", nargs="?",
                             help="episode to promote from, or the candidate "
@@ -412,6 +434,14 @@ def build_parser():
     bm_create.add_argument("--yes", action="store_true",
                            help="required; a baseline is never created "
                                 "automatically")
+    # The one deliberate schema write (issue #26). No --yes: migrations
+    # are additive DDL, idempotent, and already wrapped per file by the
+    # runtime's own migrate(); requiring a flag here would only train the
+    # operator to type it without reading the plan the command prints.
+    sub.add_parser("migrate", help=(
+        "apply pending schema migrations to the memory db (idempotent; "
+        "the runtime does this on connect, but a store can sit behind "
+        "if nothing has reconnected since an upgrade)"))
     return parser
 
 
@@ -436,6 +466,8 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
     command, sub = args.command, getattr(args, "subcommand", None)
     if command == "status":
         return _cmd_status(path)
+    if command == "migrate":
+        return _cmd_migrate(path)
     if command == "flags":
         return _cmd_flags()
     if command == "engine" and sub == "status":
@@ -508,6 +540,10 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_lesson_show(args, path)
     if command == "lessons" and sub == "invalidate":
         return _cmd_lessons_invalidate(args, path)
+    if command == "lessons" and sub == "reject":
+        return _cmd_lessons_reject(args, path)
+    if command == "lessons" and sub == "decisions":
+        return _cmd_lessons_decisions(args, path)
     if command == "lessons" and sub == "promote":
         return _cmd_lessons_promote(args, path)
     if command == "gaps" and sub == "ls":
@@ -528,10 +564,13 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_export_stats(args)
     if command == "weekly-summary":
         return _cmd_weekly_summary(args, path)
-    if command == "benchmark":
-        return _cmd_benchmark(args)
-    if command == "quality":
-        return _cmd_quality(args)
+    if command in ("benchmark", "quality"):
+        # 8C lives in its own module: cli.py had crossed the C2 line and
+        # this block is a self-contained command table (issue #26).
+        from minder_op import benchmark_cli
+        if command == "benchmark":
+            return benchmark_cli.cmd_benchmark(args)
+        return benchmark_cli.cmd_quality(args)
     return EXIT_USAGE
 
 
@@ -540,9 +579,14 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
 
 def _cmd_status(path):
     from minder_op.format import kv
+    from minder_op import schema as schema_mod
     info = queries.status(path)
+    applied, latest = schema_mod.schema_state(path)
     lines = [("db_path", str(path)),
-             ("schema_version", info["schema_version"])]
+             ("schema_version", info["schema_version"]),
+             ("schema_latest", latest),
+             ("schema_installed", schema_mod.installed_version()),
+             ("schema_behind", "yes" if applied < latest else "no")]
     lines += [("episodes", info["episodes"]),
               ("lessons_verified", info["lessons_verified"]),
               ("lessons_candidate", info["lessons_candidate"]),
@@ -557,6 +601,29 @@ def _cmd_status(path):
     kv(lines)
     print()
     print(DEFERRED)
+    return EXIT_OK
+
+
+def _cmd_migrate(path):
+    """Issue #26: close the gap the status screen just named. The plan
+    is printed before and after, so an operator sees which versions
+    landed rather than trusting a silent exit code."""
+    from minder_op.format import kv
+    from minder_op import schema as schema_mod
+    before, applied, after, latest = schema_mod.repair(path)
+    kv([("db_path", str(path)),
+        ("schema_before", before),
+        ("schema_applied", ", ".join(f"v{v}" for v in applied) or "none"),
+        ("schema_version", after),
+        ("schema_latest", latest)])
+    if not applied:
+        print("\\nno pending migration: the store is already current "
+              "for the migrations this runtime ships")
+    if after < latest:
+        print(f"\\nstill behind: the installed share "
+              f"({schema_mod.migrations_dir()}) ships v{latest} but "
+              f"only up to v{after} was applied here - re-run "
+              "install.sh to refresh the staged files", file=sys.stderr)
     return EXIT_OK
 
 
@@ -1157,7 +1224,8 @@ def _cmd_routes_replay(args, path):
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
     if args.out:
-        _write_json_file(args.out, report)
+        from minder_op import benchmark_cli
+        benchmark_cli.write_json_file(args.out, report)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
@@ -1339,245 +1407,7 @@ def _cmd_success_loops_ls(args, path):
     return EXIT_OK
 
 
-# --- 8C: benchmark foundation (manifests/reports/comparator; no run) -----
-
-
-
-
-def _cmd_quality(args):
-    """quality assess / quality adapters ls (PRD v0.9 9D, 6.8)."""
-    from minder_quality import adapters as adapters_mod
-    from minder_core import diffmetrics
-
-    if getattr(args, "quality_command", "") == "adapters":
-        for adapter in adapters_mod.load().values():
-            _version, status = adapters_mod.probe(adapter)
-            print(f"{adapter['id']:12s} {status:28s} "
-                  f"pin={adapter.get('pin', '*')}")
-        return 0
-
-    record = diffmetrics.measure(args.pre, args.post,
-                                 allowed_paths=args.allowed or None)
-    pre_files = diffmetrics._py_files(args.pre)
-    post_files = diffmetrics._py_files(args.post)
-    touched_set = set(record["diff"]["scope_violations"])
-    for rel in set(pre_files) | set(post_files):
-        pre_text = pre_files[rel].read_text(errors="replace") \
-            if rel in pre_files else ""
-        post_text = post_files[rel].read_text(errors="replace") \
-            if rel in post_files else ""
-        if pre_text != post_text:
-            touched_set.add(rel)
-    adapter_findings, statuses = adapters_mod.assess_touched(
-        args.pre, args.post, sorted(touched_set))
-    record["new_findings"] += adapter_findings
-    record["counts"]["blocking"] += sum(
-        1 for f in adapter_findings if f["severity"] == "blocking")
-    record["counts"]["advisory"] += sum(
-        1 for f in adapter_findings if f["severity"] == "advisory")
-    record["analyzers"].update(statuses)
-
-    if getattr(args, "json", False):
-        print(json.dumps(record, indent=2))
-        return 0
-    diff = record["diff"]
-    print(f"quality: {args.pre} -> {args.post}")
-    print(f"  files +{diff['files_added']}/-{diff['files_deleted']} "
-          f"touched {diff['files_touched']}, lines +{diff['lines_added']}"
-          f"/-{diff['lines_removed']} (net {diff['net_lines']})")
-    if diff["scope_violations"]:
-        print(f"  scope violations: {', '.join(diff['scope_violations'])}")
-    for finding in record["new_findings"]:
-        print(f"  [{finding['severity']}] {finding['rule']} "
-              f"{finding['path']}:{finding['line']} "
-              f"({finding['source']})")
-    for name, status in sorted(record["analyzers"].items()):
-        print(f"  analyzer {name}: {status}")
-    print(f"  blocking {record['counts']['blocking']}, "
-          f"advisory {record['counts']['advisory']}")
-    return 0
-
-
-def _cmd_benchmark(args):
-    from minder_op import benchmark as bench
-    try:
-        if args.bench_command == "list":
-            return _bench_list(bench)
-        if args.bench_command == "validate":
-            return _bench_validate(bench, args.suite)
-        if args.bench_command == "run":
-            return _bench_run(bench, args)
-        if args.bench_command == "compare":
-            return _bench_compare(bench, args.baseline, args.candidate,
-                                  args.json)
-        if args.bench_command == "baseline" and \
-                args.bench_subcommand == "create":
-            return _bench_baseline_create(bench, args.report, args.out,
-                                          args.yes)
-    except bench.BenchmarkError as exc:  # load/validate refused
-        print(f"error: {exc}", file=sys.stderr)
-        return EXIT_USAGE
-    return EXIT_USAGE
-
-
-def _bench_list(bench):
-    fmt.table([{"suite": r["suite_id"], "ver": r["manifest_version"],
-                "tasks": r["tasks"], "fp": r["fingerprint"],
-                "status": r["status"]} for r in bench.list_suites()],
-              [("suite", "suite"), ("ver", "ver"), ("tasks", "tasks"),
-               ("fp", "fp"), ("status", "status")])
-    print()
-    print("8C foundation: manifests + schemas + comparator; execution "
-          "arrives with the 8D controlled local runner")
-    return EXIT_OK
-
-
-def _bench_validate(bench, suite_id):
-    manifest = bench.read_manifest(suite_id)
-    errors = bench.validate_manifest(manifest, bench.suite_dir(suite_id))
-    print(f"suite {suite_id}: fingerprint "
-          f"{bench.manifest_fingerprint(manifest)}")
-    if errors:
-        for error in errors:
-            print(f"  invalid: {error}")
-        return EXIT_USAGE
-    print("  ok")
-    return EXIT_OK
-
-
-def _bench_run(bench, args):
-    execute = args.execute or args.i_understand_this_runs_local_agent_tasks
-    if execute and args.dry_run:
-        print("error: --dry-run and --execute are mutually exclusive",
-              file=sys.stderr)
-        return EXIT_USAGE
-    if execute:
-        if not (args.execute and
-                args.i_understand_this_runs_local_agent_tasks):
-            from minder_op import runner
-            print(f"error: {runner.REQUIRED_FLAGS_MSG}", file=sys.stderr)
-            return EXIT_USAGE
-        return _bench_execute(bench, args)
-    if not args.dry_run:
-        from minder_op import runner
-        print(f"error: {runner.REQUIRED_FLAGS_MSG}", file=sys.stderr)
-        return EXIT_USAGE
-    manifest = _bench_validate_suite(bench, args.suite)
-    print(json.dumps(bench.dry_run_plan(manifest), indent=2,
-                     sort_keys=True))
-    return EXIT_OK
-
-
-def _bench_validate_suite(bench, suite_id):
-    """Load + validate a suite manifest; exit cleanly with reasons."""
-    manifest = bench.read_manifest(suite_id)
-    errors = bench.validate_manifest(manifest, bench.suite_dir(suite_id))
-    if errors:
-        for error in errors:
-            print(f"invalid: {error}", file=sys.stderr)
-        raise bench.BenchmarkError(f"suite {suite_id} failed validation")
-    return manifest
-
-
-def _bench_execute(bench, args):
-    from minder_op import runner
-    manifest = _bench_validate_suite(bench, args.suite)
-    if args.timeout < 1:
-        print("error: --timeout must be >= 1 second", file=sys.stderr)
-        return EXIT_USAGE
-    if args.overlay and not os.path.isdir(args.overlay):
-        print(f"error: overlay dir not found: {args.overlay}",
-              file=sys.stderr)
-        return EXIT_USAGE
-    tasks = runner.select_tasks(manifest, args.task)
-    suite_path = bench.suite_dir(args.suite)
-    entries = []
-    kept = None
-    for task in tasks:
-        entry, workspace = runner.execute_task(
-            suite_path, task, overlay=args.overlay, timeout=args.timeout,
-            keep_workspace=args.keep_workspace)
-        entries.append(entry)
-        kept = workspace or kept
-    report = runner.build_report(manifest, entries, timeout=args.timeout,
-                                 workspace=kept)
-    if args.out:
-        _write_json_file(args.out, report)
-    if any(entry["status"] == "timeout" for entry in entries):
-        # a killed run must leave a failed report behind, not just
-        # terminal scrollback
-        failed_path = args.out or bench.default_failed_report_path(
-            report["suite_id"])
-        _write_json_file(failed_path, report)
-        print(f"failed report written: {failed_path}", file=sys.stderr)
-    if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
-    else:
-        fmt.table([{"task": e["task_id"], "status": e["status"],
-                    "exit": e["exit_code"],
-                    "ms": e["duration_ms"]} for e in entries],
-                  [("task", "task"), ("status", "status"),
-                   ("exit", "exit"), ("ms", "ms")])
-        print()
-        fmt.kv(list(report["metrics"].items()))
-        if kept:
-            print(f"workspace kept: {kept}")
-        if args.out:
-            print(f"report written: {args.out}")
-    if any(entry["status"] == "timeout" for entry in entries):
-        return EXIT_USAGE  # the run itself did not complete
-    return EXIT_OK
-
-
-def _write_json_file(path, obj):
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w") as fh:
-        json.dump(obj, fh, indent=2, sort_keys=True)
-        fh.write("\n")
-
-
-def _bench_compare(bench, baseline_path, candidate_path, as_json):
-    baseline = bench.read_report(baseline_path)
-    candidate = bench.read_report(candidate_path)
-    verdict = bench.compare_reports(baseline, candidate)
-    if as_json:
-        print(json.dumps(verdict, indent=2, sort_keys=True))
-    else:
-        print(f"verdict: {verdict['verdict']}")
-        for reason in verdict["reasons"]:
-            print(f"  - {reason}")
-        print("baseline is first, candidate second; protected rules: "
-              "unsafe/harmful/egress > 0, completion drop > 5pp, "
-              "<20 runs, fingerprint mismatch")
-    return EXIT_OK if verdict["verdict"] == bench.VERDICT_PASS \
-        else EXIT_USAGE
-
-
-def _bench_baseline_create(bench, report_path, out_arg, yes):
-    report = bench.read_report(report_path)
-    out = (os.path.abspath(out_arg) if out_arg
-           else bench.default_baseline_path(report["suite_id"]))
-    plan = (f"baseline create {report_path} -> {out} "
-            f"(suite {report['suite_id']}, fingerprint "
-            f"{report['suite_fingerprint'][:12]})")
-    if not yes:
-        print("PLAN (dry — nothing written):")
-        print(f"  {plan}")
-        print("re-run with --yes to pin the baseline")
-        return EXIT_USAGE
-    if os.path.exists(out):
-        print(f"error: pinned baseline exists, move it aside first: "
-              f"{out}", file=sys.stderr)
-        return EXIT_USAGE
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    with open(out, "w") as fh:
-        json.dump(report, fh, indent=2, sort_keys=True)
-        fh.write("\n")
-    fmt.kv([("baseline", out), ("suite_id", report["suite_id"]),
-            ("fingerprint", report["suite_fingerprint"]),
-            ("note", "pinned — compare candidates with: minder-op "
-                     "benchmark compare <baseline> <candidate>")])
-    return EXIT_OK
+# --- 8C: benchmark and quality -> minder_op/benchmark_cli.py ---
 
 
 # --- 8B: explicit writes (always through memory APIs, always --yes) ------
@@ -1595,16 +1425,58 @@ def _refuse_without_yes(args, plan):
 def _cmd_lessons_invalidate(args, path):
     from minder_memory import lessons as memory_lessons
     if _refuse_without_yes(
-            args, f"lessons invalidate {args.id} reason={args.reason!r}"):
+            args, f"lessons invalidate {args.id} reason={args.reason!r}"
+            f" diagnosis={args.diagnosis}"):
         return EXIT_USAGE
-    row, status = memory_lessons.invalidate_lesson(args.id, args.reason,
-                                                   db_path=path)
+    row, status = memory_lessons.invalidate_lesson(
+        args.id, args.reason, diagnosis=args.diagnosis, db_path=path)
     if not row:
         print(f"error: {status}", file=sys.stderr)
         return EXIT_USAGE
     fmt.kv([("lesson_id", row["lesson_id"]), ("status", status),
             ("invalidated", row["valid_to"]),
+            ("diagnosis", fmt.safe(row.get("invalidated_diagnosis"), 40)),
             ("reason", fmt.safe(args.reason, 200))])
+    return EXIT_OK
+
+
+def _cmd_lessons_reject(args, path):
+    from minder_memory import lessons as memory_lessons
+    if _refuse_without_yes(
+            args, f"lessons reject {args.id} code={args.code}"
+            f" note={args.note!r}"):
+        return EXIT_USAGE
+    row, status = memory_lessons.reject_candidate_lesson(
+        args.id, args.code, note=args.note, db_path=path)
+    if not row:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("lesson_id", row["lesson_id"]), ("status", status),
+            ("code", args.code), ("note", fmt.safe(args.note, 200))])
+    return EXIT_OK
+
+
+def _cmd_lessons_decisions(args, path):
+    """Issue #14: the queue's history by reason code. Read-only, and a
+    store predating migration 016 says so instead of printing zeros."""
+    try:
+        if args.id:
+            rows = queries.lesson_decisions(path, args.id, limit=args.limit)
+        else:
+            rows = queries.decision_counts(path)
+    except queries.DBError:
+        print("decision ledger: not available")
+        return EXIT_OK
+    if args.id:
+        fmt.table([{"when": r["ts"], "action": r["action"],
+                    "code": r["code"], "actor": r["actor"],
+                    "note": fmt.safe(r["note"], 60)} for r in rows],
+                  [("when", "when"), ("action", "action"),
+                   ("code", "code"), ("actor", "actor"), ("note", "note")])
+        return EXIT_OK
+    fmt.table([{"action": r["action"], "code": r["code"], "n": r["n"]}
+               for r in rows],
+              [("action", "action"), ("code", "code"), ("n", "n")])
     return EXIT_OK
 
 
@@ -1695,9 +1567,12 @@ def main(argv=None):
         parser.print_usage(sys.stderr)
         return EXIT_USAGE
     path = _resolve_db(args)
-    needs_db = args.command not in ("flags", "export-stats", "benchmark", "quality",
-                                    "doctor", "capture", "scorecard",
-                                    "trace", "engine")
+    # migrate is absent: creating or advancing the store is the whole
+    # point of the command, so guarding on an existing readable schema
+    # would refuse the one case it exists for.
+    needs_db = args.command not in ("flags", "export-stats", "benchmark",
+                                    "quality", "doctor", "capture",
+                                    "scorecard", "trace", "engine")
     if needs_db:
         code = _guard_db(path)
         if code != EXIT_OK:

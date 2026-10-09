@@ -2,8 +2,10 @@
 
 Labels for consults come from `frontier_evals` (migration 007) — the
 frontier_traces INTEGER helpfulness column (003) is legacy and is never
-read as a classified label. Every function raises DBError on missing or
-corrupt storage; the CLI maps that to exit code 2.
+read as a classified label. Every function raises DBError on missing,
+unreadable, or corrupt storage; the CLI maps that to exit code 2. The
+three get different messages, because they send the operator to
+different repairs.
 """
 import json
 import sqlite3
@@ -40,13 +42,35 @@ def _connect(path):
         raise DBError(f"cannot open {path}: {exc}") from exc
 
 
+def _unreadable(exc):
+    """The message for a store that is not a database, as opposed to one
+    that is.
+
+    The live incident: `minder-op status` printed "db corrupt or wrong
+    schema: unable to open database file" about a database that was
+    intact and merely behind on its migrations. Corruption sends an
+    operator to a backup; an unreadable file sends them to the path and
+    the permissions. One message for both sends them to neither."""
+    text = str(exc)
+    if "unable to open database file" in text \
+            or "file is not a database" in text:
+        return f"memory db not readable as a sqlite database: {text}"
+    return None
+
+
 def _rows(path, sql, params=()):
     conn = _connect(path)
     try:
         try:
             return [dict(r) for r in conn.execute(sql, params).fetchall()]
+        except sqlite3.OperationalError as exc:
+            # A missing table or column is a schema gap, not damage: it
+            # says "this store predates a migration", and the repair is
+            # `minder-op migrate`, not a restore.
+            raise DBError(f"db schema is missing an object: {exc}") from exc
         except sqlite3.DatabaseError as exc:
-            raise DBError(f"db corrupt or wrong schema: {exc}") from exc
+            raise DBError(_unreadable(exc)
+                          or f"db corrupt or wrong schema: {exc}") from exc
         finally:
             conn.close()
     except DBError:
@@ -159,6 +183,24 @@ def lesson_injections(path, lesson_id, limit=20):
                  " tier, digest_injected, chars_injected, assist_mode"
                  " FROM learning_injections WHERE lesson_id = ?"
                  " ORDER BY ts DESC LIMIT ?", (lesson_id, int(limit)))
+
+
+def lesson_decisions(path, lesson_id, limit=20):
+    """Decision ledger for one lesson (issue #14): the closed reason code
+    and note behind every invalidate / reject / adopt."""
+    return _rows(path,
+                 "SELECT decision_id, ts, action, code, note, actor"
+                 " FROM lesson_decisions WHERE lesson_id = ?"
+                 " ORDER BY ts DESC LIMIT ?", (lesson_id, int(limit)))
+
+
+def decision_counts(path):
+    """Decisions per (action, code), straight off the ledger (issue #14).
+    The whole point of the taxonomy: these counts come from stored rows,
+    never from parsing a free-text reason."""
+    return _rows(path,
+                 "SELECT action, code, COUNT(*) AS n FROM lesson_decisions"
+                 " GROUP BY action, code ORDER BY action, code")
 
 
 def gaps(path, status_filter="open", limit=100):

@@ -41,14 +41,10 @@ DEFAULT_ZCODE_CONFIG = Path.home() / ".zcode" / "cli" / "config.json"
 
 
 def _latest_schema():
-    from minder_memory import db as _db
-    nums = []
-    for path in _db.MIGRATIONS_DIR.glob("*.sql"):
-        try:
-            nums.append(int(path.name.split("_", 1)[0]))
-        except ValueError:
-            continue
-    return max(nums) if nums else 0
+    """The highest migration version this runtime's own migration set
+    ships."""
+    from minder_op import schema as schema_mod
+    return schema_mod.latest_version()
 
 
 def _age_text(secs):
@@ -95,6 +91,7 @@ def run_checks(db_path, probe=True, now=None):
 
     db_ok = True
     version = None
+    from minder_op import schema as schema_mod
     try:
         version = queries.schema_version(db_path)
         add("db", "ok", f"memory db present ({db_path})")
@@ -106,13 +103,14 @@ def run_checks(db_path, probe=True, now=None):
         for cid in ("schema", "flags", "events"):
             add(cid, "info", f"skipped: {cid} needs a readable db")
     else:
-        latest = _latest_schema()
-        if version < latest:
-            add("schema", "warn",
-                f"schema v{version}, latest v{latest} - restart the "
-                "hook (or run any minder runtime command) to migrate")
-        else:
-            add("schema", "ok", f"schema v{version} (latest v{latest})")
+        # One sentence from `schema.describe`, so status and doctor can
+        # never disagree about which of the three numbers is wrong or
+        # what to do about it. The live store sat at v14 while the
+        # installed share shipped 015, and doctor called that `ok`
+        # because its denominator was the checkout, not the install (M2).
+        detail = schema_mod.describe(db_path)
+        add("schema", "ok" if detail.endswith(f"(latest v{version})")
+            else "warn", detail)
 
         parts = []
         bad = None
@@ -331,6 +329,34 @@ def run_checks(db_path, probe=True, now=None):
     except Exception as exc:  # never let a health check crash doctor
         add("engine", "info", f"engine registry unavailable: {exc}")
 
+    # The isolated laya decision worker (issue #7). It is spawn-on-demand
+    # and exits when idle, so "no socket" is normal here — what is never
+    # normal is a worker that answered and failed, and only its log says
+    # so. Without this line the router's silence looked like a config
+    # problem (issue #28 diagnosed exactly that).
+    try:
+        from minder_decision import worker as worker_mod
+        sock = worker_mod.socket_path()
+        log = sock.with_name("laya-worker.log")
+        reason = ""
+        if log.is_file():
+            lines = [ln for ln in log.read_text(errors="replace").splitlines()
+                     if ln.strip()]
+            if lines:
+                reason = lines[-1]
+        if reason:
+            add("laya-worker", "warn",
+                f"{sock.name} log: {reason[:160]} - the decision router "
+                "is failing open; see docs/operator-cli.md")
+        elif sock.is_file():
+            add("laya-worker", "ok", f"worker answering at {sock}")
+        else:
+            add("laya-worker", "info",
+                f"no live worker at {sock} (spawn-on-demand; the first "
+                "router-eligible request starts it)")
+    except Exception as exc:  # never let a health check crash doctor
+        add("laya-worker", "info", f"worker state unavailable: {exc}")
+
     return {
         "healthy": not any(c["status"] == "fail" for c in checks),
         "checks": checks,
@@ -347,7 +373,7 @@ def share_path_referenced(config_path, share_str):
 
 def render(report):
     for check in report["checks"]:
-        print(f"{check['status']:<5} {check['id']:<10} {check['detail']}")
+        print(f"{check['status']:<5} {check['id']:<11} {check['detail']}")
     verdict = "healthy" if report["healthy"] else "NOT healthy"
     print()
     print(f"verdict: {verdict} "
