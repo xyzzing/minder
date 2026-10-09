@@ -249,20 +249,32 @@ def zstd_available():
     return _decompressor() is not None
 
 
-def read_log_records(path, max_bytes=None):
-    """Yield decoded JSON records from one session log (never raises)."""
+def read_log_blob(path, max_bytes=None, tail=False):
+    """Decompressed session log bytes as `(blob, truncated)`.
+
+    `tail` keeps the end of the log. A time-windowed scan needs that:
+    session logs are append-only, so a head cap keeps the oldest records
+    and makes a busy session look idle."""
     reader = _decompressor()
     if reader is None or not path:
-        return
+        return b"", False
     try:
         blob = reader(str(path))
     except Exception:
-        return
+        return b"", False
     if not blob:
-        return
+        return b"", False
     if max_bytes is not None and len(blob) > max_bytes:
-        blob = blob[:max_bytes]
-    for line in blob.split(b"\n"):
+        return (blob[-max_bytes:] if tail else blob[:max_bytes]), True
+    return blob, False
+
+
+def _iter_log_records(blob, drop_first=False):
+    lines = blob.split(b"\n")
+    if drop_first and lines:
+        # The tail cap started mid-record, so the first line is partial.
+        lines = lines[1:]
+    for line in lines:
         line = line.strip()
         if not line:
             continue
@@ -272,6 +284,21 @@ def read_log_records(path, max_bytes=None):
             continue
         if isinstance(record, dict):
             yield record
+
+
+def log_scan(path, max_bytes=None, tail=False):
+    """`(records, truncated)` for one session log (never raises).
+
+    `truncated` is True when `max_bytes` cut the log, so a caller can
+    report that its counts are a partial view instead of implying they
+    are complete."""
+    blob, truncated = read_log_blob(path, max_bytes, tail)
+    return _iter_log_records(blob, drop_first=truncated and tail), truncated
+
+
+def read_log_records(path, max_bytes=None):
+    """Yield decoded JSON records from one session log (never raises)."""
+    yield from log_scan(path, max_bytes)[0]
 
 
 def log_stats(path, max_bytes=None):

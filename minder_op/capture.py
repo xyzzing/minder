@@ -16,16 +16,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from minder_op import dsh_sessions
+# The log-scan bounds live in the module that applies them; this report
+# imports the session limit so its warning can name the limit it hit.
+from minder_op import capture_ground, dsh_sessions
+from minder_op.capture_ground import SCAN_LIMIT, SCAN_MAX_BYTES
 
 FRESH_SECS = 3600          # a store touched within the hour is live
 WARN_SECS = 24 * 3600      # older than a day: the operator should look
 # Coverage below this over a live window means capture is broken.
 MIN_COVERAGE = 0.95
-# Bound the log scan: only recent sessions can be "live", and the scan
-# decompresses real session logs.
-SCAN_LIMIT = 8
-SCAN_MAX_BYTES = 8 * 1024 * 1024
 
 
 def _state_dir():
@@ -159,32 +158,12 @@ def _db_event_count(db_path, since_iso):
 def _live_hook_invocations(dsh_root, since, scan_limit=SCAN_LIMIT,
                            now=None):
     """PostToolUse hook invocations recorded in dsh's own session logs
-    within the window. This is the ground truth the watchdog must keep up
-    with - and the number that was invisible while capture was broken."""
-    now = now if now is not None else _now()
-    candidates = []
-    for entry in dsh_sessions.session_dirs(dsh_root):
-        if not entry.get("log_path") or not entry.get("mtime"):
-            continue
-        if entry["mtime"] < since:
-            continue
-        candidates.append(entry)
-    candidates.sort(key=lambda e: e["mtime"], reverse=True)
-    sessions, total = [], 0
-    for entry in candidates[:scan_limit]:
-        stats = dsh_sessions.log_stats(entry["log_path"],
-                                       max_bytes=SCAN_MAX_BYTES)
-        point = stats["hook_points"].get("PostToolUse", 0)
-        total += point
-        sessions.append({"session_id": entry["session_id"],
-                         "invocations": point,
-                         "hook_p50_ms": dsh_sessions.hook_duration_stats(
-                             stats["hook_ms"])["p50_ms"]})
-    return {"total": total, "sessions": sessions,
-            "scanned": len(candidates[:scan_limit]),
-            "truncated": len(candidates) > scan_limit,
-            "window_s": int(now - since)}
-
+    within the window - the ground truth the watchdog must keep up with,
+    and the number that was invisible while capture was broken. The
+    counting itself is `minder_op.capture_ground`; the scan cap is passed
+    here so a test can lower it through this module."""
+    return capture_ground.window_invocations(dsh_root, since, scan_limit,
+                                             now, SCAN_MAX_BYTES)
 
 def build(db_path=None, dsh_root=None, now=None, window_hours=1):
     """One read-only capture-health report.
@@ -266,6 +245,8 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
         "sessions": ground["sessions"],
         "scanned": ground["scanned"],
         "truncated": ground["truncated"],
+        # A partial view is not a measured one: say which one this is.
+        "complete": not ground["truncated"],
         "window_hours": window_hours,
     }
 
@@ -314,6 +295,13 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
             "startup - restart it to load the hook command; if it has "
             "already restarted, check the MINDER_SINK_URL in hooks.json "
             "and `systemctl --user status minder-sink`.")
+    if cov["invocations"] > 0 and cov["truncated"]:
+        report["warnings"].append(
+            f"coverage for the last {window_hours}h was measured on a "
+            f"partial view: {cov['scanned']} session log(s) were cut by "
+            "the scan cap or there were more live sessions than the scan "
+            f"limit ({SCAN_LIMIT}), so the {cov['invocations']} "
+            "invocations counted are a floor, not the total.")
     for store in report["stores"]:
         if store["status"] == "stale":
             report["warnings"].append(

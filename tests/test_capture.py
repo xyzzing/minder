@@ -129,6 +129,94 @@ def test_slow_hooks_are_flagged(tmp_path, monkeypatch):
     assert report["coverage"]["sessions"][0]["hook_p50_ms"] == 5500.0
 
 
+def test_window_boundary_does_not_count_lost_invocations(tmp_path,
+                                                         monkeypatch):
+    """The live false alarm: a session older than the window.
+
+    The denominator used to count every `hook/invoked` record in the
+    session log while the numerator filtered the ledger by `ts`, so a
+    session spanning the window boundary was charged for invocations that
+    happened hours before it. Every in-window hook persisted, and the
+    floor still failed (issue #30)."""
+    root, sid = _home(tmp_path, monkeypatch, hooks=0)
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("MINDER_STATE_DIR", str(state))
+    directory = (root / "sessions" / dshseed.project_dir_for("/home/dev/proj")
+                 / sid)
+    records = []
+    for index in range(10):
+        when = (NOW - 60) if index < 9 else (NOW - 7200)
+        records.append({"type": "hook/invoked", "seq": index,
+                        "time": int(when * 1000),
+                        "data": {"point": "PostToolUse"}})
+    blob = b"".join((json.dumps(r) + "\n").encode() for r in records)
+    packed = dshseed.zstd_compress(blob)
+    if packed is None:
+        import pytest
+        pytest.skip("no zstd available")
+    log = directory / "session.v4.jsonl.zstd"
+    log.write_bytes(packed)
+    import os
+    os.utime(log, (NOW, NOW))
+    with (state / "events.jsonl").open("w") as fh:
+        for _ in range(9):  # every in-window invocation reached the ledger
+            fh.write(json.dumps({"ts": NOW - 60, "task": sid,
+                                 "event": "hook_timing"}) + "\n")
+    report = capture.build(tmp_path / "m.sqlite", now=NOW)
+    cov = report["coverage"]
+    assert cov["invocations"] == 9, cov
+    assert cov["persisted"] == 9, cov
+    assert cov["ratio"] == 1.0, cov
+    assert not any("coverage" in w for w in report["warnings"])
+
+
+def test_a_real_gap_still_fails_the_floor(tmp_path, monkeypatch):
+    """The fix must not hide the fault capture health exists for: an
+    in-window invocation with no persisted record."""
+    _home(tmp_path, monkeypatch, hooks=2)
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("MINDER_STATE_DIR", str(state))
+    with (state / "events.jsonl").open("w") as fh:
+        fh.write(json.dumps({"ts": NOW - 30, "task": "session-aaaa-bbbb",
+                             "event": "hook_timing"}) + "\n")
+    report = capture.build(tmp_path / "m.sqlite", now=NOW)
+    cov = report["coverage"]
+    assert cov["invocations"] == 2, cov
+    assert cov["ratio"] == 0.5, cov
+    assert report["ok"] is False
+    assert any("coverage" in w for w in report["warnings"])
+
+
+def test_a_log_cut_short_by_the_scan_cap_is_reported(tmp_path, monkeypatch):
+    """SCAN_MAX_BYTES decompresses a cap, not the log, so the count can
+    silently miss invocations. The report says when it happened."""
+    root, sid = _home(tmp_path, monkeypatch, hooks=0)
+    monkeypatch.setenv("MINDER_STATE_DIR", str(tmp_path / "state"))
+    directory = (root / "sessions" / dshseed.project_dir_for("/home/dev/proj")
+                 / sid)
+    records = [{"type": "hook/invoked", "seq": index, "time": int(NOW * 1000),
+                "data": {"point": "PostToolUse",
+                         "pad": "x" * 200}} for index in range(60)]
+    blob = b"".join((json.dumps(r) + "\n").encode() for r in records)
+    packed = dshseed.zstd_compress(blob)
+    if packed is None:
+        import pytest
+        pytest.skip("no zstd available")
+    log = directory / "session.v4.jsonl.zstd"
+    log.write_bytes(packed)
+    import os
+    os.utime(log, (NOW, NOW))
+    monkeypatch.setattr(capture, "SCAN_MAX_BYTES", 1024)
+    report = capture.build(tmp_path / "m.sqlite", now=NOW)
+    cov = report["coverage"]
+    assert cov["truncated"], cov
+    assert cov["complete"] is False, cov
+    assert 0 < cov["invocations"] < 60, cov
+    assert any("partial view" in w for w in report["warnings"])
+
+
 def test_report_never_raises_on_a_hostile_home(tmp_path, monkeypatch):
     root = tmp_path / "dsh"
     (root / "sessions").mkdir(parents=True)
