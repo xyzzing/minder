@@ -196,6 +196,45 @@ def test_generic_install_touches_no_harness_or_systemd(tmp_path):
     assert "harness base URL" in r.stdout
 
 
+def test_hooks_json_never_ships_an_unfilled_guard_placeholder(tmp_path):
+    """install.sh renders the hooks template itself, and for a while it
+    filled only two of the three placeholders. `__MINDER_SUCCESS_GUARD__`
+    reached the live hook command, `guard_mode()` reads any unknown value
+    as off, and the loop stop was inert while `doctor` still reported the
+    flags as wired."""
+    with MockUpstream("default") as mock:
+        home = scratch_home(tmp_path)
+        r = run_installer(home, mock.url, "--skip-dsh")
+    assert r.returncode == 0, r.stdout + r.stderr
+    hooks = (home / ".local" / "share" / "minder" / "dsh" / "hooks.json")
+    text = hooks.read_text()
+    assert "__MINDER_SUCCESS_GUARD__" not in text
+    assert "__MINDER_" not in text
+    assert "MINDER_SUCCESS_GUARD=advisory" in text
+
+
+def test_installer_preserves_the_operators_guard_mode(tmp_path):
+    """Reinstall must not switch `block` back to `advisory` behind the
+    operator's back — the same silent-downgrade rule dsh_install applies
+    when it renders the same template."""
+    with MockUpstream("default") as mock:
+        home = scratch_home(tmp_path)
+        share = home / ".local" / "share" / "minder"
+        (share / "dsh").mkdir(parents=True)
+        # a real installed file from a previous run: install.sh stages the
+        # package dirs before resolving the mode, so a stub the staging
+        # step would overwrite proves nothing
+        (share / "dsh" / "hooks.json").write_text(
+            (REPO / "dsh" / "hooks.json").read_text()
+            .replace("__MINDER_SHARE__", str(share))
+            .replace("MINDER_SUCCESS_GUARD=advisory", "MINDER_SUCCESS_GUARD=block"))
+        r = run_installer(home, mock.url, "--skip-dsh")
+    assert r.returncode == 0, r.stdout + r.stderr
+    text = (share / "dsh" / "hooks.json").read_text()
+    assert "MINDER_SUCCESS_GUARD=block" in text
+    assert "__MINDER_SUCCESS_GUARD__" not in text
+
+
 def test_engine_registry_flag_writes_config(tmp_path):
     """--engine NAME=URL[,UNIT] (repeatable) + --active-engine merge the
     dual-engine registry into minder.json (issue #3); explicit user values

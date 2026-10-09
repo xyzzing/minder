@@ -13,6 +13,7 @@ with automatic rollback on any anomaly.
 import argparse
 import json
 import pathlib
+import re
 import shutil
 import sys
 import time
@@ -443,8 +444,9 @@ def existing_success_guard(path):
     2026-09-25 live install ran `block` while the template pinned
     `advisory`, so the next reinstall would have switched the loop stop
     off without touching a single line of repo code."""
-    import re
     try:
+        if path is None:
+            return None
         match = re.search(r"MINDER_SUCCESS_GUARD=(\S+)",
                           pathlib.Path(path).read_text())
         if not match:
@@ -456,12 +458,22 @@ def existing_success_guard(path):
         return None
 
 
+def template_success_guard(template=None):
+    """The guard mode the template itself pins, or None when it carries a
+    placeholder. install.sh and write_hooks_json share this fallback so
+    the two render paths cannot disagree about the default."""
+    path = pathlib.Path(template) if template else repo_hooks_template()
+    match = re.search(r"MINDER_SUCCESS_GUARD=(\S+)", path.read_text())
+    value = match.group(1).strip("\"'") if match else None
+    return value if value in GUARD_VALUES else None
+
+
 def render_hooks_json(share, sink_url, template=None, success_guard=None):
     """The hook command carries the production flag set (the bridge reads
     this file once at host start, so this is the only place the runtime
     flags are declared for dsh) plus the sink URL the confined hook needs
-    to persist anything at all. `success_guard` fills the guard mode
-    placeholder; the caller (write_hooks_json) decides preserve-vs-default."""
+    to persist anything at all. `success_guard` rewrites the guard mode
+    the template pins; the caller (write_hooks_json) decides which mode."""
     text = (template or repo_hooks_template()).read_text()
     if "__MINDER_SHARE__" not in text:
         raise SystemExit(
@@ -469,8 +481,19 @@ def render_hooks_json(share, sink_url, template=None, success_guard=None):
             "hooks template (no __MINDER_SHARE__ placeholder) — refusing to "
             "guess.")
     rendered = (text.replace("__MINDER_SHARE__", str(share))
-                .replace("__MINDER_SINK_URL__", str(sink_url))
-                .replace("__MINDER_SUCCESS_GUARD__", str(success_guard)))
+                .replace("__MINDER_SINK_URL__", str(sink_url)))
+    if success_guard is not None:
+        # The template pins a mode, so a rewrite has to replace it rather
+        # than only fill a placeholder: an unfilled placeholder is how the
+        # loop stop went inert on the 2026-10-10 live install.
+        rendered = re.sub(r"MINDER_SUCCESS_GUARD=\S+",
+                          f"MINDER_SUCCESS_GUARD={success_guard}", rendered)
+    if "MINDER_SUCCESS_GUARD" in rendered and re.search(
+            r'MINDER_SUCCESS_GUARD="?(?:"|[A-Za-z]*__[A-Za-z_]*)', rendered):
+        raise SystemExit(
+            "FAIL: hooks template still carries an unfilled "
+            "__MINDER_SUCCESS_GUARD__ placeholder — refusing to write a "
+            "guard mode the runtime would read as off.")
     if "__MINDER_" in rendered:
         raise SystemExit(
             "FAIL: hooks template still carries an unfilled __MINDER_* "
@@ -487,7 +510,8 @@ def write_hooks_json(path, share, sink_url, template=None, success_guard=None):
             "silently disable the loop stop.")
     # Explicit wins; otherwise keep whatever mode the live file already
     # declares (reinstall is an upgrade, never a downgrade); else advisory.
-    guard = success_guard or existing_success_guard(path) or "advisory"
+    guard = (success_guard or existing_success_guard(path)
+               or template_success_guard(template) or "advisory")
     path = pathlib.Path(path)
     text = render_hooks_json(share, sink_url, template, success_guard=guard)
     json.loads(text)  # fail before writing anything
@@ -572,8 +596,7 @@ def check_profile(dsh_home, profile, share, sink_url, hooks_json=None):
         # The value matters as much as the name: guard_mode() reads any
         # unknown value as "off", so a typo'd or placeholder guard is an
         # inert loop stop that still looks wired.
-        import re as _re
-        guard_match = _re.search(r"MINDER_SUCCESS_GUARD=(\S+)", text)
+        guard_match = re.search(r"MINDER_SUCCESS_GUARD=(\S+)", text)
         guard_value = guard_match.group(1).strip("\"'") \
             if guard_match else None
         guard_ok = guard_value in GUARD_VALUES
@@ -616,7 +639,13 @@ def apply_profile(dsh_home, profile, share, sink_url, hooks_json=None,
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["apply", "remove", "check",
-                                    "profile-apply", "profile-check"])
+                                    "profile-apply", "profile-check",
+                                    "guard-default", "render-hooks"])
+    ap.add_argument("--guard-env", default=None,
+                    help="guard-default: the operator's MINDER_SUCCESS_GUARD, "
+                         "if set")
+    ap.add_argument("--live-hooks", default=None,
+                    help="guard-default: the currently installed hooks.json")
     ap.add_argument("--settings", default=None,
                     help="legacy ~/.dsh/settings.yaml (optional: modern dsh "
                          "has no such file)")
@@ -641,6 +670,31 @@ def main():
                          "skip (Law #9: nothing assumed)")
     args = ap.parse_args()
     auto_efforts = [e.strip() for e in args.efforts.split(",") if e.strip()]
+
+    if args.cmd == "render-hooks":
+        # install.sh stages the hooks template into the share before any
+        # dsh profile wiring runs, and `--skip-dsh` skips that wiring
+        # entirely — so this is the only render path for a share-only
+        # install, and it must apply the same guard rules as the profile
+        # path instead of a sed substitution that can miss the mode.
+        if not args.hooks_json:
+            print("FAIL: render-hooks needs --hooks-json", file=sys.stderr)
+            return 2
+        print(write_hooks_json(pathlib.Path(args.hooks_json),
+                               pathlib.Path(args.share), args.sink_url,
+                               success_guard=args.success_guard))
+        return 0
+
+    if args.cmd == "guard-default":
+        # install.sh stages hooks.json before the [7a] profile render, and
+        # `--skip-dsh` skips that render entirely, so this path needs the
+        # same precedence write_hooks_json uses: env, then the live file,
+        # then the template. Prints empty and exits 1 when nothing legal.
+        guard = (args.guard_env
+                 or existing_success_guard(args.live_hooks)
+                 or template_success_guard())
+        print(guard or "")
+        return 0 if guard else 1
 
     if args.cmd in ("profile-apply", "profile-check"):
         profile = args.profile or discover_profile(args.dsh_home)

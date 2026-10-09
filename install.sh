@@ -61,7 +61,18 @@ cp -f "$SRC/minder.py" "$SRC/adapter.py" "$SRC/proxy.py" "$SRC/hook.py" \
       "$SRC/frontier.py" "$SRC/reflex.py" "$SRC/probe_dialect.py" "$SRC/sink.py" "$SHARE/"
 cp -R "$SRC/presets" "$SHARE/"
 cp -R "$SRC/zcode" "$SHARE/"
+# hooks.json is the one file in dsh/ the operator edits through the
+# installer rather than the repo: it carries the live guard mode, and
+# overwriting it before the render below would erase the very value the
+# render is meant to preserve.
+if [ -d "$SHARE/dsh" ]; then
+  mv "$SHARE/dsh/hooks.json" "$SHARE/dsh/hooks.json.preserved" \
+    2>/dev/null || true
+fi
 cp -R "$SRC/dsh" "$SHARE/"
+if [ -f "$SHARE/dsh/hooks.json.preserved" ]; then
+  mv "$SHARE/dsh/hooks.json.preserved" "$SHARE/dsh/hooks.json"
+fi
 cp -R "$SRC/minder_memory" "$SHARE/"
 cp -R "$SRC/minder_decision" "$SHARE/"
 cp -R "$SRC/minder_core" "$SHARE/"
@@ -78,9 +89,23 @@ chmod +x "$SHARE/proxy.py" "$SHARE/hook.py" "$SHARE/frontier.py" \
 # only place the runtime flags are declared for dsh — and because the
 # bridge reads this file once at host start, a flags-only change needs a
 # dsh host restart to take effect.
-sed -e "s|__MINDER_SHARE__|$SHARE|g" \
-    -e "s|__MINDER_SINK_URL__|http://127.0.0.1:$SINK_PORT|g" \
-    "$SRC/dsh/hooks.json" > "$SHARE/dsh/hooks.json"
+# The guard placeholder has to be filled here too. An unfilled
+# __MINDER_SUCCESS_GUARD__ reaches the hook command as an unknown value,
+# guard_mode() reads any unknown value as "off", and the loop stop is
+# inert while the wiring still looks complete (2026-10-10 live install:
+# `doctor` flagged exactly this, and the [7a] render below is skipped by
+# --skip-dsh, so nothing else ever filled it). Precedence matches
+# dsh_install.write_hooks_json: an explicit env value, else whatever the
+# live file already declares (reinstall never downgrades block to
+# advisory), else the template default.
+GUARD_VALUE="$(python3 "$SRC/dsh/dsh_install.py" guard-default \
+  --guard-env "${MINDER_SUCCESS_GUARD:-}" \
+  --live-hooks "$SHARE/dsh/hooks.json")"
+[ -n "$GUARD_VALUE" ] || fail "could not resolve a MINDER_SUCCESS_GUARD mode (advisory|block)"
+python3 "$SRC/dsh/dsh_install.py" render-hooks \
+  --share "$SHARE" --sink-url "http://127.0.0.1:$SINK_PORT" \
+  --hooks-json "$SHARE/dsh/hooks.json" --success-guard "$GUARD_VALUE" \
+  || fail "hooks.json render failed"
 say "[1] code staged at $SHARE"
 
 # --- [2] locate integration targets -----------------------------------------
