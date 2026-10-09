@@ -62,7 +62,8 @@ def test_ledger_records_raise_coverage(tmp_path, monkeypatch):
     with (state / "events.jsonl").open("w") as fh:
         for _ in range(4):
             fh.write(json.dumps({"ts": NOW - 60, "task": sid,
-                                 "event": "hook_timing"}) + "\n")
+                                 "event": "hook_timing",
+                                 "hook_event": "PostToolUse"}) + "\n")
     report = capture.build(tmp_path / "m.sqlite", now=NOW)
     assert report["coverage"]["persisted_ledger"] == 4
     assert report["coverage"]["persisted_unattributed"] == 0
@@ -81,7 +82,8 @@ def test_records_for_unknown_sessions_do_not_count_as_capture(
     with (state / "events.jsonl").open("w") as fh:
         for task in ("session-test", "session-probe", sid):
             fh.write(json.dumps({"ts": NOW - 60, "task": task,
-                                 "event": "hook_timing"}) + "\n")
+                                 "event": "hook_timing",
+                                 "hook_event": "PostToolUse"}) + "\n")
     report = capture.build(tmp_path / "m.sqlite", now=NOW)
     assert report["coverage"]["persisted_ledger"] == 1
     assert report["coverage"]["persisted_unattributed"] == 2
@@ -95,7 +97,8 @@ def test_records_outside_the_window_do_not_count(tmp_path, monkeypatch):
     monkeypatch.setenv("MINDER_STATE_DIR", str(state))
     with (state / "events.jsonl").open("w") as fh:
         fh.write(json.dumps({"ts": NOW - 7200, "task": "t",
-                             "event": "hook_timing"}) + "\n")
+                             "event": "hook_timing",
+                                 "hook_event": "PostToolUse"}) + "\n")
     report = capture.build(tmp_path / "m.sqlite", now=NOW, window_hours=1)
     assert report["coverage"]["persisted"] == 0
     assert report["coverage"]["ratio"] == 0.0
@@ -162,7 +165,8 @@ def test_window_boundary_does_not_count_lost_invocations(tmp_path,
     with (state / "events.jsonl").open("w") as fh:
         for _ in range(9):  # every in-window invocation reached the ledger
             fh.write(json.dumps({"ts": NOW - 60, "task": sid,
-                                 "event": "hook_timing"}) + "\n")
+                                 "event": "hook_timing",
+                                 "hook_event": "PostToolUse"}) + "\n")
     report = capture.build(tmp_path / "m.sqlite", now=NOW)
     cov = report["coverage"]
     assert cov["invocations"] == 9, cov
@@ -180,7 +184,8 @@ def test_a_real_gap_still_fails_the_floor(tmp_path, monkeypatch):
     monkeypatch.setenv("MINDER_STATE_DIR", str(state))
     with (state / "events.jsonl").open("w") as fh:
         fh.write(json.dumps({"ts": NOW - 30, "task": "session-aaaa-bbbb",
-                             "event": "hook_timing"}) + "\n")
+                             "event": "hook_timing",
+                                 "hook_event": "PostToolUse"}) + "\n")
     report = capture.build(tmp_path / "m.sqlite", now=NOW)
     cov = report["coverage"]
     assert cov["invocations"] == 2, cov
@@ -215,6 +220,62 @@ def test_a_log_cut_short_by_the_scan_cap_is_reported(tmp_path, monkeypatch):
     assert cov["complete"] is False, cov
     assert 0 < cov["invocations"] < 60, cov
     assert any("partial view" in w for w in report["warnings"])
+
+
+def test_pretooluse_timings_do_not_count_as_capture(tmp_path, monkeypatch):
+    """The 100% that was not a measurement.
+
+    Both sides of the ratio must count the same unit of work: one
+    PostToolUse hook. The live host reported 830 persisted over 414
+    invocations, and the extra records were the PreToolUse timings - the
+    numerator counted every `hook_timing` row in the window while the
+    denominator counted PostToolUse invocations only, so the ratio was
+    pinned at 1.0 by construction and the floor could never fail.
+    `hook_event` says which point wrote the row."""
+    root, sid = _home(tmp_path, monkeypatch, hooks=0)
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("MINDER_STATE_DIR", str(state))
+    directory = (root / "sessions" / dshseed.project_dir_for("/home/dev/proj")
+                 / sid)
+    records = []
+    for index in range(4):
+        # Two calls sit wholly inside the window. Two were invoked just
+        # before it and only their results landed inside, so they are not
+        # work the watchdog owed in this window.
+        invoked = (NOW - 60) if index < 2 else (NOW - 7200)
+        handler = f"h{index}"
+        records.append({"type": "hook/invoked", "seq": index * 2,
+                        "time": int(invoked * 1000),
+                        "data": {"point": "PostToolUse",
+                                 "handlerId": handler}})
+        records.append({"type": "hook/result", "seq": index * 2 + 1,
+                        "time": int((NOW - 30) * 1000),
+                        "data": {"point": "PostToolUse", "handlerId": handler,
+                                 "durationMs": 5500.0, "exitCode": 0}})
+    blob = b"".join((json.dumps(r) + "\n").encode() for r in records)
+    packed = dshseed.zstd_compress(blob)
+    if packed is None:
+        import pytest
+        pytest.skip("no zstd available")
+    log = directory / "session.v4.jsonl.zstd"
+    log.write_bytes(packed)
+    import os
+    os.utime(log, (NOW, NOW))
+    with (state / "events.jsonl").open("w") as fh:
+        # Two PostToolUse timings, plus the PreToolUse timings the same
+        # tool calls produced. Only the first two are capture of the
+        # invocations the denominator counted.
+        for point in ("PostToolUse", "PostToolUse", "PreToolUse",
+                      "PreToolUse"):
+            fh.write(json.dumps({"ts": NOW - 30, "task": sid,
+                                 "event": "hook_timing",
+                                 "hook_event": point}) + "\n")
+    cov = capture.build(tmp_path / "m.sqlite", now=NOW)["coverage"]
+    assert cov["invocations"] == 2, cov
+    assert cov["persisted"] == 2, cov
+    assert cov["ratio"] == 1.0, cov
+    assert cov["sessions"][0]["hook_p50_ms"] == 5500.0, cov
 
 
 def test_report_never_raises_on_a_hostile_home(tmp_path, monkeypatch):
@@ -308,7 +369,8 @@ def test_declared_but_never_called_names_the_restart(tmp_path, monkeypatch):
     with (state / "events.jsonl").open("a") as fh:
         for _ in range(2):
             fh.write(json.dumps({"ts": NOW - 30, "task": "session-aaaa-bbbb",
-                                 "event": "hook_timing"}) + "\n")
+                                 "event": "hook_timing",
+                                 "hook_event": "PostToolUse"}) + "\n")
     monkeypatch.setattr(capture, "_sink_report", lambda _state: {
         "configured": True, "url": "http://127.0.0.1:8392",
         "source": "env", "declared": "http://127.0.0.1:8392",

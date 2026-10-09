@@ -111,13 +111,19 @@ def _newest_file_mtime(directory, pattern):
     return newest
 
 
-def _count_jsonl_since(path, event, since, field="event", known=None):
+def _count_jsonl_since(path, event, since, known=None, where=None):
     """Split ledger records of one event type newer than `since` into
     (attributable to a known dsh session, everything else).
 
     The split is what keeps coverage honest: a record written for a
     session the store does not know (a synthetic probe, a deleted
-    session, another harness) must not inflate "capture works"."""
+    session, another harness) must not inflate "capture works".
+
+    `where(record)` narrows the count further. Coverage needs it because
+    a `hook_timing` record is written for every hook point - PreToolUse
+    included - while the denominator counts PostToolUse invocations
+    only. Counting all of them made the ratio 2.0 on the live host and
+    the floor could never fail (issue #30)."""
     known_n = other_n = 0
     try:
         with open(path) as fh:
@@ -129,7 +135,9 @@ def _count_jsonl_since(path, event, since, field="event", known=None):
                     record = json.loads(line)
                 except ValueError:
                     continue
-                if record.get(field) != event:
+                if record.get("event") != event:
+                    continue
+                if where is not None and not where(record):
                     continue
                 value = record.get("ts")
                 if isinstance(value, (int, float)) and value < since:
@@ -143,14 +151,22 @@ def _count_jsonl_since(path, event, since, field="event", known=None):
     return known_n, other_n
 
 
-def _db_event_count(db_path, since_iso):
+def _is_post_tool_use(record):
+    """True for a ledger record written by the PostToolUse hook."""
+    return record.get("hook_event") == "PostToolUse"
+
+
+def _db_event_count(db_path, since_iso, event_type=None, where=None):
     try:
         from minder_op import queries
-        rows = queries.events(db_path, limit=queries.MAX_LIMIT)
+        rows = queries.events(db_path, event_type=event_type,
+                              limit=queries.MAX_LIMIT)
     except Exception:
         return None
     try:
-        return sum(1 for r in rows if str(r.get("ts") or "") >= since_iso)
+        return sum(1 for r in rows
+                   if str(r.get("ts") or "") >= since_iso
+                   and (where is None or where(r)))
     except Exception:
         return None
 
@@ -224,12 +240,14 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
     known_sessions = {entry["session_id"]
                       for entry in dsh_sessions.session_dirs(dsh_root)}
     ground = _live_hook_invocations(dsh_root, since, now=now)
+    # Both sides of the ratio must count the same unit of work: one
+    # PostToolUse hook. The ledger record carries which point it was.
     persisted_ledger, persisted_other = _count_jsonl_since(
-        events_ledger, "hook_timing", since, field="event",
-        known=known_sessions)
-    persisted_db = _db_event_count(db_path,
-                                   datetime.fromtimestamp(
-                                       since, timezone.utc).isoformat())
+        events_ledger, "hook_timing", since, known=known_sessions,
+        where=_is_post_tool_use)
+    persisted_db = _db_event_count(
+        db_path, datetime.fromtimestamp(since, timezone.utc).isoformat(),
+        event_type="hook_timing", where=_is_post_tool_use)
     persisted = max(persisted_ledger, persisted_db or 0)
     ratio = None
     if ground["total"] > 0:

@@ -81,7 +81,8 @@ def test_focus_quiet_when_capture_is_healthy(tmp_path, monkeypatch):
     with (state / "events.jsonl").open("w") as fh:
         for _ in range(2):
             fh.write(json.dumps({"ts": NOW - 60, "task": sid,
-                                 "event": "hook_timing"}) + "\n")
+                                 "event": "hook_timing",
+                                 "hook_event": "PostToolUse"}) + "\n")
     report = scorecard.build(tmp_path / "m.sqlite", now=NOW)
     focus = " | ".join(report["focus"])
     assert "coverage" not in focus

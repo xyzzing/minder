@@ -33,7 +33,15 @@ def _hook_records(path, since, max_bytes):
     it dropped were the recent ones.
 
     Durations come from `hook/result` records - the harness logs the cost
-    there, not on the invocation - so both record types are read."""
+    there, not on the invocation - so both record types are read, and a
+    result only counts when it answers an invocation that is itself in
+    the window. Otherwise a hook that straddled the boundary contributed
+    to the numerator but not the denominator, and the live host reported
+    830 persisted over 414 invocations while the scan cap hid the rest.
+    `handlerId` names one call on both record types, so it is the join.
+    A result whose invocation the cap dropped is left unpaired: it cannot
+    inflate the ratio, and the truncation flag says the view is partial."""
+    counts = {}
     total = 0
     durations = []
     records, truncated = dsh_sessions.log_scan(path, max_bytes=max_bytes,
@@ -42,18 +50,24 @@ def _hook_records(path, since, max_bytes):
         kind = record.get("type")
         if kind not in ("hook/invoked", "hook/result"):
             continue
-        when = record.get("time")
-        if not isinstance(when, (int, float)) or when / 1000.0 < since:
-            continue
         data = record.get("data") or {}
         if data.get("point") != "PostToolUse":
             continue
+        when = record.get("time")
+        if not isinstance(when, (int, float)) or when / 1000.0 < since:
+            continue
+        handler = str(data.get("handlerId") or "")
         if kind == "hook/invoked":
+            counts[handler] = counts.get(handler, 0) + 1
             total += 1
-        else:
+        elif counts.get(handler):
+            counts[handler] -= 1
             ms = data.get("durationMs")
             if isinstance(ms, (int, float)):
                 durations.append(float(ms))
+    # `counts` is the pairing book: a result only contributes when it
+    # answers an invocation already counted in this window, so a hook
+    # that straddled the window edge cannot inflate the ratio.
     return total, durations, truncated
 
 
