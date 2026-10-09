@@ -157,6 +157,20 @@ commit hash behind it; the instruction gate checks the hash exists.
   reads it, which is how a stale protocol-version error from an
   un-restarted worker became visible without touching the request path.
   (#28)
+- The harness prefixes an operator decline with `Error: ` — a dismissed
+  plan review arrives as `Error: The user dismissed the plan review to
+  speak instead`. Any consumer of the shared `error:` fail sign therefore
+  reads a deliberate decision as a command failure, and two of them
+  escalated with a retry instruction. `is_failure` is the wrong predicate
+  wherever the ladder counts: use `classify_outcome`, which tests
+  `DECLINE_SIGNS` first. `is_failure` itself still answers yes for a
+  decline on purpose, because the memory store's event vocabulary has no
+  third value and a decline is not a verified success. (#27)
+- A decline must not take the success branch either. That branch pops the
+  key's failure record and refunds the think/frontier budget it spent, so
+  treating a decline as success erases the evidence of a loop that is
+  still running. The two-way `if not is_failure(...)` shape is the bug;
+  three outcomes need three branches. (#27)
 ## Platform quirks
 
 - SQLite WAL allows a plain read on a second connection while a write

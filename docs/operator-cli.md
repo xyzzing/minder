@@ -136,6 +136,18 @@ first to see whether any request was eligible. When it has been,
 (`client_effort`, `escalation_marker`, `no_client`,
 `below_confidence`, `malformed_response`) rather than leaving the
 operator to guess between "never ran" and "ran and did nothing".
+- `minder-op events ls --type declined` counts the actions the operator
+declined (issue #27). A decline is a third outcome, not a failure: the
+harness writes `Error: The user dismissed the plan review to speak
+instead`, the shared `error:` fail sign made that a command failure, and
+two dismissals of one tool produced an L1 directive telling the agent to
+retry with a regenerated anchor. `minder.classify_outcome` checks the
+named `DECLINE_SIGNS` first and returns `failed`, `declined` or `success`;
+the ladder records a decline and changes nothing else — it neither raises
+a level nor refunds the budget of a loop that is still there. `is_failure`
+still answers yes, deliberately: the memory store's event vocabulary is
+`tool_failure|tool_success|verification`, and a decline is closer to
+needing a lesson than to a verified success.
 - Verdict semantics: `fail` -> exit 1 (broken); `warn` -> exit 0 but
 look (missing wiring, silent-for-a-week hook); `info` -> context
 only (proxy not running, no baseline pinned).

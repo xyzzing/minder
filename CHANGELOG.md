@@ -5,6 +5,20 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **An operator's decline stops being counted as a broken command (issue #27).**
+  The harness writes a plan-review dismissal as `Error: The user dismissed the
+  plan review to speak instead`, and the shared `error:` fail sign read that as
+  a command failure — twice in one session, each time injecting `FAILED 2x:
+  exit_plan_mode — Prior attempts are VOID` with an instruction to retry with a
+  regenerated anchor. `minder.classify_outcome` now names three outcomes
+  (`failed`, `declined`, `success`) against a new `DECLINE_SIGNS` constant
+  checked before the fail signs, and the ladder treats a decline as neither a
+  failure nor a success: no escalation level, but also no cleared record or
+  refunded budget for a loop that is still there. Each decline is ledgered as
+  `declined`, so `minder-op events ls --type declined` counts them, and the
+  failure-oriented memory policy pass no longer spends ~1 s of inference on a
+  declined action.
+
 - **The console answers first and shows its evidence second (issue #12).**
   Both readers were reading the same wall of tables: a person trying to
   improve what the agents produce and the operator debugging capture got
