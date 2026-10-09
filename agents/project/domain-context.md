@@ -114,6 +114,49 @@ commit hash behind it; the instruction gate checks the hash exists.
   contributes its own `sqlite_autoindex_*` with `unique = 1`, so an
   assertion over unique indexes passes when the declared pair index is
   dropped. (#16)
+- `capsys.readouterr()` drains. A test that reads `.out` and then calls
+  `readouterr()` again for `.err` sees the empty string and concludes the
+  code never wrote to stderr. One `readouterr()` per call under test, both
+  streams read off the returned object. (#26)
+- Migration files are bare `CREATE TABLE`, not `IF NOT EXISTS`, so a store
+  whose `PRAGMA user_version` sits below the tables it already holds cannot
+  be migrated at all — the replay raises mid-file and rolls back whole.
+  The repair is the number (`PRAGMA user_version = N`), never deleting the
+  store. Two fixture shapes follow, and they are not interchangeable:
+  `_stamped(n)` builds a store whose tables *and* version stop at n (the
+  genuine behind case, migratable), while stamping a full store to a
+  higher version builds the ahead case (refused). Building the second with
+  the first helper yields a store with no tables and a high version, which
+  tests a number instead of a state. (#26)
+- Which runtime answers a schema question decides what it can apply:
+  `minder_memory.db.MIGRATIONS_DIR` is the imported copy's own directory,
+  so `migrate` can only ever apply the migrations beside the code that ran
+  it. The installed share's files are a separate denominator (`MINDER_SHARE`
+  / `MINDER_SHARE_DIR`), and on the live install the store had outgrown it —
+  a store ahead of the staged share means the staged files are stale, and
+  no migration can or should fix that. Tests that name a version must pin
+  the share, or the denominator is whatever the developer's own
+  `~/.local/share/minder` happens to ship. (#26)
+- A `WEAK` proven-red verdict has more than one cause: a top-level import
+  of a new module, and an autouse fixture that calls a new symbol — the
+  whole file then errors at collection. Reach a new symbol through
+  `getattr(mod, "_new_hook", None)` in an autouse fixture, and keep a
+  fixture that only *redirects* the environment rather than one that
+  asserts, or the file goes red for the wrong reason. (#28)
+- The difficulty router only runs for presets marked `"class": "auto"`,
+  and `difficulty_router` defaults to `shadow`, so a store with zero
+  `difficulty_*` events is not evidence the router is broken — first check
+  whether any request was eligible (`auto_effort` events). Before the
+  abstention ledger, "consulted and did nothing" and "never consulted"
+  were the same silence. (#28)
+- The isolated decision worker keeps a client-side log
+  (`laya-worker.log` beside the socket) because a spawn or dial failure
+  inside the request path cannot be surfaced any other way: it is
+  fail-open by design. One line per distinct reason per process, so a
+  broken worker cannot fill the state dir. `doctor`'s `laya-worker` check
+  reads it, which is how a stale protocol-version error from an
+  un-restarted worker became visible without touching the request path.
+  (#28)
 ## Platform quirks
 
 - SQLite WAL allows a plain read on a second connection while a write

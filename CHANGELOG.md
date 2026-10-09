@@ -36,6 +36,57 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
   swallowed `except: pass` around the overview ledger write now names its
   failure on stderr.
 
+- **The operator plane names a schema gap instead of calling it
+  corruption, and can close it (issue #26).** `minder-op status` died with
+  `db corrupt or wrong schema: unable to open database file` on a machine
+  whose database was fine. Four different failures shared that one
+  message - an absent path, a file that is not sqlite, a missing table, a
+  genuinely wrong schema - and each needs a different repair, so the
+  message sent the operator to a backup when the answer was a permission.
+  `minder_op/queries.py` now separates them: `memory db not found`,
+  `memory db not readable as a sqlite database`, `db schema is missing an
+  object`, `db corrupt or wrong schema`. The real gap underneath was
+  currency: the store sat at `PRAGMA user_version` 14 while the runtime
+  shipped 015 and 016, so the tables the new code reads did not exist.
+  `minder_op/schema.py` answers the three questions the CLI could not, and
+  keeps the denominators apart on purpose - `schema_version` (the store),
+  `schema_latest` (the migrations the answering runtime ships),
+  `schema_installed` (what the installed share staged). `status` prints all
+  three plus `schema_behind`; `doctor`'s `schema` line carries one sentence
+  from `schema.describe`, which names the repair for whichever number
+  disagrees. `minder-op migrate` is new: it calls the runtime's own
+  `minder_memory.db.migrate`, never a hand-rolled copy, prints the versions
+  it landed, and is idempotent. It refuses a store above its own migration
+  ceiling rather than stamping it with migrations the deployed code has no
+  files for, and it says when a successful run leaves the staged files
+  stale. Migration files are bare `CREATE TABLE`, so a store whose recorded
+  version sits below the tables it holds cannot be migrated; that state is
+  named, `PRAGMA user_version = N` is quoted, and the message says not to
+  delete the store.
+
+- **Every difficulty-router abstention is recorded with its reason, and a
+  lower-only mode exists (issues #28, #7).** `difficulty_router: shadow`
+  produced no evidence at all: the router consulted laya, then returned
+  nothing for most requests through paths that logged nothing, so the
+  shadow period could not say whether the router was wrong or simply never
+  reached the decision. Each abstention now writes a
+  `difficulty_skipped` event naming its reason - `client_effort`,
+  `escalation_marker`, `no_client`, `below_confidence`,
+  `malformed_response` - and an exception writes `difficulty_error` with
+  the exception type instead of vanishing through a bare `except`. The
+  router moved from `proxy.py` to `minder_decision/router.py` (C2, C5),
+  which took the proxy from 1015 to 889 lines. On the worker side a
+  protocol-version mismatch made the server raise, so the client saw a
+  dropped connection and logged nothing: it now replies with an error
+  frame naming both versions, and the client writes one line per distinct
+  failure reason to `laya-worker.log` in the state dir, once per process,
+  never raising into the request path. `doctor` gained a `laya-worker`
+  check that surfaces the last recorded failure, which is how the live
+  install's stale protocol error became visible. `difficulty_router` takes
+  a third value, `lower`: consult, and apply the band only when it lowers
+  effort - never a raise - so an experiment can cut cost without the
+  router ever escalating. A client that set its own effort still wins in
+  every mode.
 - **Every lesson injection is recorded, including the decisions that had
   nothing to offer (issue #13).** Nothing answered "is this lesson still
   doing anything?". Retrieval ran, a digest or a duplicate-block directive

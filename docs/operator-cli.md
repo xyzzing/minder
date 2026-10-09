@@ -6,6 +6,10 @@ writes only behind `--yes`.
 ```bash
 python3 -m minder_op doctor [--no-probe] [--json]
 python3 -m minder_op status
+python3 -m minder_op migrate
+# apply the migrations this runtime ships to the store it is pointed at,
+# printing the versions it landed. Additive and idempotent, so no --yes.
+# Refuses (exit 1) a store already past this runtime's migration set.
 python3 -m minder_op flags
 python3 -m minder_op task declare --domain D [--task T] [--subtask S] [--note N]
 python3 -m minder_op task status [--task T]
@@ -74,7 +78,34 @@ python3 -m minder_op trace regress SESSION --finding FINDING_ID \
 ```
 
 `--db PATH` points at another memory sqlite (tests, second installs).
-Exit codes: `0` ok, `1` usage / not found, `2` DB missing or corrupt.
+Exit codes: `0` ok, `1` usage / not found, `2` DB missing or unreadable.
+
+Schema currency:
+
+- `status` prints `schema_version` (what the store has applied),
+`schema_latest` (what the running code can apply) and
+`schema_installed` (what the installed share staged at install time).
+`schema_behind: yes` means the store predates the running code; the
+gap is closed with `minder-op migrate`.
+- The two denominators are different numbers on purpose. A store can
+be current for the code that runs and still be ahead of what the
+installed share staged — that means the staged files are stale and
+`install.sh` needs a re-run, not a migration.
+- Migration files use bare `CREATE TABLE`, so a store whose recorded
+`user_version` sits below the tables it already holds refuses to
+replay. The error says so and names `PRAGMA user_version`; the store
+is not damaged and must not be deleted.
+- `migrate` only ever applies the migration files sitting beside the
+copy of minder answering the call. A store above that ceiling is
+refused with exit `1` and a sentence naming which runtime can do the
+work; stamping a store with migrations the deployed code has no files
+for would turn the next read into a missing table reported as
+corruption. When a successful run pushes the store past what the
+installed share staged, the same run says the staged files are stale.
+- A DB error names its own kind: `memory db not found`, `memory db not
+readable as a sqlite database`, `db schema is missing an object`, or
+`db corrupt or wrong schema`. Each points at a different repair, so
+one message for all four sends the operator to the wrong one.
 
 Doctor facts (operator health check):
 
@@ -82,6 +113,29 @@ Doctor facts (operator health check):
 presence, schema currency, flag values (unknown `MINDER_*` values
 fail — typo detection), hook wiring (share + zcode config), event
 staleness, loopback proxy probe, benchmark suites, pinned baselines.
+- The `schema` line compares the store against the migrations this
+runtime ships, and names `minder-op migrate` when it is behind. When
+the store is ahead of the installed share it says the staged files are
+stale instead.
+- The `laya-worker` line reports the isolated decision worker (issue
+#7): `ok` when a worker is answering on its socket, `info` when none
+is live (it spawns on the first router-eligible request), and `warn`
+with the last recorded failure when the client-side log holds one —
+that last case means the difficulty router is failing open, so
+`difficulty_router` is costing nothing but achieving nothing either.
+- The router's own modes (`~/.config/minder/minder.json`,
+`difficulty_router`): `shadow` consults and records without acting,
+`active` may move effort in either direction, `lower` consults and
+applies the band only when it lowers effort — never a raise. A client
+that set its own effort always wins, in every mode. Only presets
+marked `"class": "auto"` reach the router at all, and the router is
+`shadow` by default, so a store with no `difficulty_*` events means
+the router has never been consulted — check for `auto_effort` events
+first to see whether any request was eligible. When it has been,
+`minder-op events ls --type difficulty_skipped` says why it abstained
+(`client_effort`, `escalation_marker`, `no_client`,
+`below_confidence`, `malformed_response`) rather than leaving the
+operator to guess between "never ran" and "ran and did nothing".
 - Verdict semantics: `fail` -> exit 1 (broken); `warn` -> exit 0 but
 look (missing wiring, silent-for-a-week hook); `info` -> context
 only (proxy not running, no baseline pinned).
