@@ -156,17 +156,26 @@ def _is_post_tool_use(record):
     return record.get("hook_event") == "PostToolUse"
 
 
-def _db_event_count(db_path, since_iso, event_type=None, where=None):
+def _db_event_count(db_path, since_iso, event_type=None):
+    """Rows of one event type written at or after `since_iso`, or None
+    when that side could not be measured.
+
+    None is reserved for "not measured" - a missing, corrupt or unreadable
+    store, or a query that failed. It is never 0, because 0 is the value
+    that fails the coverage floor and sends the operator to fix hooks that
+    are fine (issue #31). `db_measured` in the report carries the same
+    fact as a boolean so a consumer cannot confuse the two.
+
+    The window filter is in SQL, which is the part that was broken: the
+    previous version fetched rows through the CLI's listing query and
+    filtered them in Python, capped by a limit constant that does not
+    exist in this package, so the whole call raised and became None.
+    Counting the rows in SQL also means the number is not capped by a
+    fetch limit: a window's worth of rows is counted, not listed."""
     try:
         from minder_op import queries
-        rows = queries.events(db_path, event_type=event_type,
-                              limit=queries.MAX_LIMIT)
-    except Exception:
-        return None
-    try:
-        return sum(1 for r in rows
-                   if str(r.get("ts") or "") >= since_iso
-                   and (where is None or where(r)))
+        return queries.count_events_since(db_path, since_iso,
+                                          event_type=event_type)
     except Exception:
         return None
 
@@ -247,7 +256,7 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
         where=_is_post_tool_use)
     persisted_db = _db_event_count(
         db_path, datetime.fromtimestamp(since, timezone.utc).isoformat(),
-        event_type="hook_timing", where=_is_post_tool_use)
+        event_type="hook_timing")
     persisted = max(persisted_ledger, persisted_db or 0)
     ratio = None
     if ground["total"] > 0:
@@ -257,6 +266,9 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
         "persisted_ledger": persisted_ledger,
         "persisted_unattributed": persisted_other,
         "persisted_db": persisted_db,
+        # Distinct from a `None` persisted_db only in kind: this side was
+        # not measured, so the ledger is the only view of the writes.
+        "db_measured": persisted_db is not None,
         "invocations": ground["total"],
         "ratio": ratio,
         "min_ratio": MIN_COVERAGE,

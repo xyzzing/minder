@@ -16,6 +16,39 @@ def _ins(dbp, sql, params):
         conn.close()
 
 
+def test_count_events_since_counts_a_window_not_a_page(tmp_path):
+    """The store side of capture coverage counted rows fetched through the
+    listing query, so the count was capped by the fetch limit and the
+    constant it passed did not exist in the package at all (#31). The
+    count has to come from SQL, over a time window."""
+    from minder_op import queries
+    dbp = tmp_path / "m.sqlite"
+    _ins(dbp, "INSERT INTO events (event_id, ts, event_type, session_id,"
+         " task_id, repo, repo_version, tool, failure_key,"
+         " action_fingerprint, payload_json, redaction_status)"
+         " VALUES ('in1', '2026-09-22T10:00:00+00:00', 'hook_timing',"
+         " 's1', 't1', '', '', 'bash', '', '', '{}', 'redacted')", ())
+    _ins(dbp, "INSERT INTO events (event_id, ts, event_type, session_id,"
+         " task_id, repo, repo_version, tool, failure_key,"
+         " action_fingerprint, payload_json, redaction_status)"
+         " VALUES ('in2', '2026-09-23T10:00:00+00:00', 'hook_timing',"
+         " 's1', 't1', '', '', 'bash', '', '', '{}', 'redacted')", ())
+    _ins(dbp, "INSERT INTO events (event_id, ts, event_type, session_id,"
+         " task_id, repo, repo_version, tool, failure_key,"
+         " action_fingerprint, payload_json, redaction_status)"
+         " VALUES ('old', '2026-09-01T10:00:00+00:00', 'hook_timing',"
+         " 's1', 't1', '', '', 'bash', '', '', '{}', 'redacted')", ())
+    _ins(dbp, "INSERT INTO events (event_id, ts, event_type, session_id,"
+         " task_id, repo, repo_version, tool, failure_key,"
+         " action_fingerprint, payload_json, redaction_status)"
+         " VALUES ('other', '2026-09-23T10:00:00+00:00', 'tool_failure',"
+         " 's1', 't1', '', '', 'bash', '', '', '{}', 'redacted')", ())
+    assert queries.count_events_since(
+        dbp, "2026-09-20T00:00:00+00:00", event_type="hook_timing") == 2
+    assert queries.count_events_since(
+        dbp, "2026-09-20T00:00:00+00:00") == 3
+
+
 def _seed(dbp, n=3):
     for i in range(n):
         _ins(dbp, "INSERT INTO events (event_id, ts, event_type,"

@@ -6,11 +6,16 @@ deterministic window (`now=` injection, like the weekly summary).
 """
 import json
 import time
+from datetime import datetime, timezone
 
 import dshseed
 from minder_op import capture
 
 NOW = 1_790_003_600.0
+
+
+def _iso(seconds):
+    return datetime.fromtimestamp(seconds, timezone.utc).isoformat()
 
 
 def _home(tmp_path, monkeypatch, hooks=3):
@@ -69,6 +74,49 @@ def test_ledger_records_raise_coverage(tmp_path, monkeypatch):
     assert report["coverage"]["persisted_unattributed"] == 0
     assert report["coverage"]["ratio"] == 1.0
     assert not any("coverage" in w for w in report["warnings"])
+
+
+def test_the_store_side_count_is_a_number_not_none(tmp_path, monkeypatch):
+    """Coverage claims two independent views of the same writes: the
+    ledger and the sqlite store. The store side had been `None` on every
+    real install - a missing constant raised inside a catch-all that
+    returns `None`, the same value a store with no matching rows
+    produces, so a bug and a legitimate zero were indistinguishable
+    (#31)."""
+    from minder_memory import db as memdb
+    _root, sid = _home(tmp_path, monkeypatch, hooks=3)
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("MINDER_STATE_DIR", str(state))
+    dbp = tmp_path / "m.sqlite"
+    conn = memdb.connect(dbp)
+    insert = ("INSERT INTO events (event_id, ts, event_type, session_id,"
+              " task_id, repo, repo_version, tool, failure_key,"
+              " action_fingerprint, payload_json, redaction_status)"
+              " VALUES (?, ?, 'hook_timing', ?, ?, '', '', 'bash', '', '',"
+              " ?, 'redacted')")
+    for i in range(3):
+        memdb.write(conn, insert,
+                    (f"ev_post_{i}", _iso(NOW - 60), sid, sid,
+                     json.dumps({"hook_event": "PostToolUse"})))
+    conn.close()
+    report = capture.build(dbp, now=NOW)
+    cov = report["coverage"]
+    assert cov["persisted_db"] == 3, cov
+    assert cov["db_measured"] is True, cov
+
+
+def test_an_unreadable_store_is_not_reported_as_zero(tmp_path, monkeypatch):
+    """`None` has to mean one thing: this side could not be measured. A
+    store that is absent or unreadable must not read as zero records,
+    because zero is the number that fails the floor and sends the
+    operator off to fix hooks that are fine."""
+    _home(tmp_path, monkeypatch, hooks=2)
+    monkeypatch.setenv("MINDER_STATE_DIR", str(tmp_path / "state"))
+    report = capture.build(tmp_path / "absent.sqlite", now=NOW)
+    cov = report["coverage"]
+    assert cov["persisted_db"] is None, cov
+    assert cov["db_measured"] is False, cov
 
 
 def test_records_for_unknown_sessions_do_not_count_as_capture(

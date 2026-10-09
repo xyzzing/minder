@@ -283,6 +283,22 @@ def events(path, failure_key=None, event_type=None, episode_id=None,
     return _rows(path, sql, params)
 
 
+def count_events_since(path, since_iso, event_type=None):
+    """Rows of one type at or after `since_iso` (an ISO-8601 string, the
+    format `events.ts` is stored in).
+
+    Counted in SQL rather than by pulling rows and filtering them: a
+    caller that caps the rows it fetch gets a truncated count and cannot
+    tell. `token_reuse` above uses the same `ts >= ?` comparison."""
+    sql = "SELECT COUNT(*) AS n FROM events WHERE ts >= ?"
+    params = [since_iso]
+    if event_type:
+        sql += " AND event_type = ?"
+        params.append(event_type)
+    row = _one(path, sql, params)
+    return int(row["n"]) if row else 0
+
+
 def event(path, event_id):
     return _one(path,
                 "SELECT e.*, (SELECT ee.episode_id FROM episode_events ee"
