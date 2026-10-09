@@ -437,6 +437,11 @@ def _decorate_capture(report):
         store["age"] = capture.age_text(store.get("age_s"))
     for session in report["coverage"].get("sessions") or []:
         session["short"] = str(session.get("session_id") or "")[8:20]
+    # The raw-evidence tier (issue #12) reads each row with .get(), so the
+    # sandbox mode map becomes rows here rather than in the template.
+    report["sandbox_rows"] = [{"mode": mode, "sessions": count}
+                              for mode, count in
+                              sorted((report.get("sandbox") or {}).items())]
     return report
 
 
