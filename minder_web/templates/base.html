@@ -7,42 +7,44 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+  <a class="skip" href="#content">{{ S.base.skip }}</a>
+  {% set here = request.url.path %}
   <header>
     <nav>
       <span class="brand">minder</span>
       <span class="navlabel">{{ S.nav.doing }}</span>
-      <a href="/">{{ S.nav.overview }}</a>
-      <a href="/scorecard">{{ S.nav.scorecard }}</a>
-      <a href="/domains">{{ S.nav.domains }}</a>
+      <a href="/"{% if here == "/" %} aria-current="page"{% endif %}>{{ S.nav.overview }}</a>
+      <a href="/scorecard"{% if here == "/scorecard" %} aria-current="page"{% endif %}>{{ S.nav.scorecard }}</a>
+      <a href="/domains"{% if here == "/domains" %} aria-current="page"{% endif %}>{{ S.nav.domains }}</a>
       <span class="navlabel">{{ S.nav.happened }}</span>
-      <a href="/sessions">{{ S.nav.sessions }}</a>
-      <a href="/events">{{ S.nav.events }}</a>
-      <a href="/episodes">{{ S.nav.episodes }}</a>
+      <a href="/sessions"{% if here == "/sessions" %} aria-current="page"{% endif %}>{{ S.nav.sessions }}</a>
+      <a href="/events"{% if here == "/events" %} aria-current="page"{% endif %}>{{ S.nav.events }}</a>
+      <a href="/episodes"{% if here == "/episodes" %} aria-current="page"{% endif %}>{{ S.nav.episodes }}</a>
       <span class="navlabel">{{ S.nav.learned }}</span>
-      <a href="/lessons">{{ S.nav.lessons }}</a>
-      <a href="/gaps">{{ S.nav.gaps }}</a>
-      <a href="/skills">{{ S.nav.skills }}</a>
+      <a href="/lessons"{% if here == "/lessons" %} aria-current="page"{% endif %}>{{ S.nav.lessons }}</a>
+      <a href="/gaps"{% if here == "/gaps" %} aria-current="page"{% endif %}>{{ S.nav.gaps }}</a>
+      <a href="/skills"{% if here == "/skills" %} aria-current="page"{% endif %}>{{ S.nav.skills }}</a>
       <span class="navlabel">{{ S.nav.running }}</span>
-      <a href="/engine">{{ S.nav.engines }}</a>
+      <a href="/engine"{% if here == "/engine" %} aria-current="page"{% endif %}>{{ S.nav.engines }}</a>
       <details class="adv">
         <summary>{{ S.nav.advanced }}</summary>
         <div class="advmenu">
-          <a href="/capture">{{ S.nav.capture }}</a>
-          <a href="/consults">{{ S.nav.consults }}</a>
-          <a href="/decisions">{{ S.nav.decisions }}</a>
-          <a href="/difficulty">{{ S.nav.difficulty }}</a>
-          <a href="/benchmarks">{{ S.nav.benchmarks }}</a>
-          <a href="/traces">{{ S.nav.traces }}</a>
+          <a href="/capture"{% if here == "/capture" %} aria-current="page"{% endif %}>{{ S.nav.capture }}</a>
+          <a href="/consults"{% if here == "/consults" %} aria-current="page"{% endif %}>{{ S.nav.consults }}</a>
+          <a href="/decisions"{% if here == "/decisions" %} aria-current="page"{% endif %}>{{ S.nav.decisions }}</a>
+          <a href="/difficulty"{% if here == "/difficulty" %} aria-current="page"{% endif %}>{{ S.nav.difficulty }}</a>
+          <a href="/benchmarks"{% if here == "/benchmarks" %} aria-current="page"{% endif %}>{{ S.nav.benchmarks }}</a>
+          <a href="/traces"{% if here == "/traces" %} aria-current="page"{% endif %}>{{ S.nav.traces }}</a>
         </div>
       </details>
     </nav>
     <span class="health" title="schema v{{ health.schema_version if health.schema_version is not none else '?' }} · {{ health.status }}">{{ recording }}</span>
   </header>
-  <main>
+  <main id="content">
     {% block content %}{% endblock %}
   </main>
   <footer>
-    {{ S.base.footer }}
+    {{ S.base.footer }}<a href="/engine">engines</a>{{ S.base.footer_engine_link_suffix }}
   </footer>
 </body>
 </html>

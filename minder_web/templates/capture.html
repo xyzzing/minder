@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.capture.title }} <small>{{ S.capture.gloss }}</small></h1>
+{% include "_answer.html" %}
 <p class="note">
   {{ S.capture.note }}
 </p>
@@ -9,9 +11,9 @@
 {% if ok %}
 <p class="ok">{{ S.capture.healthy.format(hours=window_hours) }}</p>
 {% else %}
-<ul class="focus">
+<ol class="actions">
   {% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}
-</ul>
+</ol>
 {% endif %}
 
 <h2>{{ S.capture.coverage }} <small>{{ S.capture.coverage_gloss.format(hours=window_hours) }}</small></h2>
@@ -22,36 +24,41 @@
     ({{ S.capture.ledger }} {{ coverage.persisted_ledger }}, {{ S.capture.db }} {{ coverage.persisted_db if coverage.persisted_db is not none else S.common.na }})</td></tr>
   <tr><th>{{ S.capture.ratio }}</th><td>
     {% if coverage.ratio is none %}{{ S.scorecard.not_measurable }}{% else %}
-      <span class="badge {% if coverage.ratio >= coverage.min_ratio %}badge-verified{% else %}badge-invalidated{% endif %}">
+      <span class="badge {% if coverage.ratio >= coverage.min_ratio %}badge-ok{% else %}badge-bad{% endif %}">
         {{ '%.0f%%' % (coverage.ratio * 100) }}</span>
       ({{ S.capture.floor }} {{ '%.0f%%' % (coverage.min_ratio * 100) }})
     {% endif %}</td></tr>
 </table>
 
 {% if coverage.sessions %}
-<table>
-  <thead><tr><th>{{ S.capture.col_session }}</th><th>{{ S.capture.col_invocations }}</th><th>{{ S.capture.col_hook_p50 }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.capture.session_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.capture.col_session }}</th><th scope="col">{{ S.capture.col_invocations }}</th><th scope="col">{{ S.capture.col_hook_p50 }}</th></tr></thead>
   <tbody>
   {% for s in coverage.sessions %}
-    <tr><td><a href="/sessions/{{ s.session_id }}"><code>{{ s.short }}…</code></a></td>
-        <td>{{ s.invocations }}</td>
-        <td>{% if s.hook_p50_ms is not none %}{{ s.hook_p50_ms }} ms{% else %}-{% endif %}</td></tr>
+    <tr><td data-label="{{ S.capture.col_session }}"><a href="/sessions/{{ s.session_id }}"><code>{{ s.short }}…</code></a></td>
+        <td data-label="{{ S.capture.col_invocations }}" class="num">{{ s.invocations }}</td>
+        <td data-label="{{ S.capture.col_hook_p50 }}" class="num">{% if s.hook_p50_ms is not none %}{{ s.hook_p50_ms }} ms{% else %}{{ S.common.na }}{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['session_id', 'invocations', 'hook_p50_ms'], coverage.sessions) }}
 {% endif %}
 
 <h2>{{ S.capture.stores }}</h2>
-<table>
-  <thead><tr><th>{{ S.capture.col_store }}</th><th>{{ S.capture.col_file }}</th><th>{{ S.capture.col_last_write }}</th><th>{{ S.capture.col_status }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.capture.store_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.capture.col_store }}</th><th scope="col">{{ S.capture.col_file }}</th><th scope="col">{{ S.capture.col_last_write }}</th><th scope="col">{{ S.capture.col_status }}</th></tr></thead>
   <tbody>
   {% for s in stores %}
-    <tr><td>{{ s.name }}</td><td class="excerpt">{{ s.file }}</td>
-        <td>{{ s.age }} {{ S.capture.ago }}</td>
-        <td><span class="badge {% if s.status == 'fresh' %}badge-verified{% elif s.status == 'warn' %}badge-candidate{% else %}badge-invalidated{% endif %}">{{ s.status }}</span></td></tr>
+    <tr><td data-label="{{ S.capture.col_store }}">{{ s.name }}</td>
+        <td data-label="{{ S.capture.col_file }}" class="excerpt">{{ s.file }}</td>
+        <td data-label="{{ S.capture.col_last_write }}" class="num">{{ s.age }} {{ S.capture.ago }}</td>
+        <td data-label="{{ S.capture.col_status }}"><span class="badge {% if s.status == 'fresh' %}badge-ok{% elif s.status == 'warn' %}badge-warn{% else %}badge-bad{% endif %}">{{ s.status }}</span></td></tr>
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['name', 'file', 'age_s', 'status'], stores) }}
 
 <h2>{{ S.capture.sink }} <small>{{ S.capture.sink_gloss }}</small></h2>
 <table class="kv">
@@ -70,15 +77,20 @@
 </table>
 
 <h2>{{ S.capture.sandbox_modes }} <small>{{ S.capture.sandbox_gloss }}</small></h2>
-<table>
-  <thead><tr><th>{{ S.capture.col_mode }}</th><th>{{ S.capture.col_sessions }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.capture.sandbox_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.capture.col_mode }}</th><th scope="col">{{ S.capture.col_sessions }}</th></tr></thead>
   <tbody>
   {% for mode, n in sandbox | dictsort %}
-    <tr><td>{{ mode }}</td><td>{{ n }}</td></tr>
+    <tr><td data-label="{{ S.capture.col_mode }}">
+        {% if mode == 'danger-full-access' %}<span class="badge badge-bad">{{ mode }}</span>
+        {% else %}<span class="badge badge-ok">{{ mode }}</span>{% endif %}</td>
+        <td data-label="{{ S.capture.col_sessions }}" class="num">{{ n }}</td></tr>
   {% else %}
     <tr><td colspan="2" class="na">{{ S.capture.sandbox_empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['mode', 'sessions'], sandbox_rows) }}
 <p class="note">{{ S.capture.state_note.format(dir=state_dir, now=now | int) }}</p>
 {% endblock %}

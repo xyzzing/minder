@@ -50,6 +50,41 @@ def test_header_is_a_translucent_layer():
     assert "backdrop-filter" in header, "header must blur content under it"
 
 
+def test_motion_uses_named_easing_tokens():
+    """One motion language: the curves are tokens, so every transition
+    in the sheet can be re-tuned in one place (issue #12)."""
+    css = _css()
+    for token in ("--ease-out:", "--ease-in-out:", "--dur-fast:",
+                  "--dur-ui:"):
+        assert token in css, f"stylesheet has no {token} token"
+    assert "cubic-bezier(0.23, 1, 0.32, 1)" in css, \
+        "the ease-out curve must be the named curve, not ease"
+    assert "transition: all" not in css, \
+        "transition: all animates properties nobody chose"
+
+
+def test_numeric_columns_align():
+    """Token counts and durations are read by scanning a column; digits
+    must line up (issue #12)."""
+    assert "font-variant-numeric: tabular-nums" in _css()
+
+
+def test_hover_effects_are_gated_to_pointing_devices():
+    css = _css()
+    assert "(hover: hover) and (pointer: fine)" in css, \
+        "hover rules must not stick on touch screens"
+
+
+def test_stylesheet_avoids_the_rejected_patterns():
+    """The console is an information surface: the decoration issue #12
+    rejects must not reappear as polish."""
+    css = _css()
+    assert css.count("backdrop-filter:") <= 6, \
+        "frosted glass on every surface reads as decoration"
+    for banned in ("linear-gradient(135deg", "background-clip: text"):
+        assert banned not in css, f"stylesheet uses {banned}"
+
+
 def test_stylesheet_is_served():
     from fastapi.testclient import TestClient
     from minder_web.app import app

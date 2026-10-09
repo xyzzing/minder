@@ -1,46 +1,61 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.events.title }} <small>{{ S.events.gloss }}</small></h1>
+{% include "_answer.html" %}
 {% if stale_days %}
 <p class="warn">
   {{ S.events.stale_warn.format(days=stale_days) }}
 </p>
 {% endif %}
 <form method="get" class="filters">
-  <select name="event_type">
+  <label for="f-type"><span>{{ S.events.col_type }}</span>
+  <select id="f-type" name="event_type">
     <option value="">{{ S.events.all_types }}</option>
     {% for t in filters.types %}
     <option value="{{ t }}" {% if t == event_type %}selected{% endif %}>{{ t }}</option>
     {% endfor %}
   </select>
-  <select name="tool">
+  </label>
+  <label for="f-tool"><span>{{ S.events.col_tool }}</span>
+  <select id="f-tool" name="tool">
     <option value="">{{ S.events.all_tools }}</option>
     {% for t in filters.tools %}
     <option value="{{ t }}" {% if t == tool %}selected{% endif %}>{{ t }}</option>
     {% endfor %}
   </select>
-  <select name="failure_key">
+  </label>
+  <label for="f-key"><span>{{ S.events.col_failure_key }}</span>
+  <select id="f-key" name="failure_key">
     <option value="">{{ S.events.all_keys }}</option>
     {% for k in filters.failure_keys %}
     <option value="{{ k }}" {% if k == failure_key %}selected{% endif %}>{{ k }}</option>
     {% endfor %}
   </select>
-  <input type="search" name="session" value="{{ session }}" placeholder="{{ S.events.session_placeholder }}">
+  </label>
+  <label for="f-session"><span>{{ S.events.col_session }}</span>
+    <input id="f-session" type="search" name="session" value="{{ session }}">
+  </label>
   <button type="submit">{{ S.events.filter }}</button>
   {% if event_type or tool or failure_key or session %}<a href="/events">{{ S.events.reset }}</a>{% endif %}
 </form>
-<table>
-  <thead><tr><th>{{ S.events.col_ts }}</th><th>{{ S.events.col_type }}</th><th>{{ S.events.col_tool }}</th>
-           <th>{{ S.events.col_failure_key }}</th><th>{{ S.events.col_session }}</th><th>{{ S.events.col_episode }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.events.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.events.col_ts }}</th><th scope="col">{{ S.events.col_type }}</th><th scope="col">{{ S.events.col_tool }}</th>
+           <th scope="col">{{ S.events.col_failure_key }}</th><th scope="col">{{ S.events.col_session }}</th><th scope="col">{{ S.events.col_episode }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
-    <tr><td>{{ r.ts }}</td><td>{{ r.event_type }}</td>
-        <td>{{ r.tool }}</td><td class="excerpt">{{ r.failure_key }}</td>
-        <td>{% if r.session_id %}<a href="/sessions/{{ r.session_id }}"><code>{{ r.session_id }}</code></a>{% else %}-{% endif %}</td>
-        <td>{% if r.episode_id %}<a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a>{% else %}-{% endif %}</td></tr>
+    <tr><td data-label="{{ S.events.col_ts }}">{{ r.ts | human_date }}</td>
+        <td data-label="{{ S.events.col_type }}">{{ r.event_type }}</td>
+        <td data-label="{{ S.events.col_tool }}">{{ r.tool }}</td>
+        <td data-label="{{ S.events.col_failure_key }}" class="excerpt">{{ r.failure_key }}</td>
+        <td data-label="{{ S.events.col_session }}">{% if r.session_id %}<a href="/sessions/{{ r.session_id }}"><code>{{ r.session_id }}</code></a>{% else %}{{ S.common.na }}{% endif %}</td>
+        <td data-label="{{ S.events.col_episode }}">{% if r.episode_id %}<a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a>{% else %}{{ S.common.na }}{% endif %}</td></tr>
   {% else %}
     <tr><td colspan="6" class="na">{{ S.events.empty }}{% if not stale_days %} {{ S.events.empty_suffix }}{% endif %}.</td></tr>
   {% endfor %}
   </tbody>
+{{ raw_tier(['ts', 'event_type', 'tool', 'failure_key', 'session_id',
+             'redaction_status'], rows) }}
 </table>
 {% endblock %}

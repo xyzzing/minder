@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.domains.title }} <small>{{ S.domains.gloss }}</small></h1>
+{% include "_answer.html" %}
 
 <h2>{{ S.domains.profile }} <small>{{ S.domains.profile_gloss }}</small></h2>
 {% if profile.error %}
@@ -22,18 +24,21 @@
 {% if suites.error %}
 <p class="warn">{{ suites.error }}</p>
 {% elif suites.rows %}
-<table>
-  <thead><tr><th>{{ S.domains.col_domain }}</th><th>{{ S.domains.col_suite }}</th>
-           <th>{{ S.domains.col_tasks }}</th><th>{{ S.domains.col_status }}</th>
-           <th>{{ S.domains.col_verdict }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.domains.suite_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.domains.col_domain }}</th><th scope="col">{{ S.domains.col_suite }}</th>
+           <th scope="col">{{ S.domains.col_tasks }}</th><th scope="col">{{ S.domains.col_status }}</th>
+           <th scope="col">{{ S.domains.col_verdict }}</th></tr></thead>
   <tbody>
   {% for s in suites.rows %}
     <tr>
-      <td>{{ s.domain }}</td>
-      <td><code>{{ s.suite_id }}</code></td>
-      <td>{{ s.tasks if s.tasks is not none else S.common.na }}</td>
-      <td>{{ s.status }}</td>
-      <td>
+      <td data-label="{{ S.domains.col_domain }}">{{ s.domain }}</td>
+      <td data-label="{{ S.domains.col_suite }}"><code>{{ s.suite_id }}</code></td>
+      <td data-label="{{ S.domains.col_tasks }}" class="num">{{ s.tasks if s.tasks is not none else S.common.na }}</td>
+      <td data-label="{{ S.domains.col_status }}">
+        <span class="badge {{ 'badge-ok' if s.status == 'ok' else 'badge-warn' }}">{{ s.status }}</span>
+      </td>
+      <td data-label="{{ S.domains.col_verdict }}">
         {% if s.status != 'ok' %}{{ S.domains.verdict_invalid }}
         {% elif not s.baseline %}{{ S.domains.verdict_no_baseline }}
         {% else %}{{ S.domains.verdict_baseline.format(
@@ -46,6 +51,7 @@
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['domain', 'suite_id', 'tasks', 'status'], suites.rows) }}
 {% else %}
 <p class="na">{{ S.domains.suites_empty }}</p>
 {% endif %}
@@ -54,23 +60,26 @@
 {% if provenance.error %}
 <p class="warn">{{ provenance.error }}</p>
 {% elif provenance.rows %}
-<table>
-  <thead><tr><th>{{ S.domains.col_rule }}</th><th>{{ S.domains.col_verification }}</th>
-           <th>{{ S.domains.col_verified_on }}</th><th>{{ S.domains.col_caveat }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.domains.knowledge_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.domains.col_rule }}</th><th scope="col">{{ S.domains.col_verification }}</th>
+           <th scope="col">{{ S.domains.col_verified_on }}</th><th scope="col">{{ S.domains.col_caveat }}</th></tr></thead>
   <tbody>
   {% for r in provenance.rows %}
     <tr>
-      <td><code>{{ r.rule }}</code></td>
-      <td>
-        <span class="badge {% if r.verification == 'primary' %}badge-verified{% elif r.verification == 'secondary' %}badge-candidate{% endif %}">{{ r.verification }}</span>
+      <td data-label="{{ S.domains.col_rule }}"><code>{{ r.rule }}</code></td>
+      <td data-label="{{ S.domains.col_verification }}">
+        <span class="badge {% if r.verification == 'primary' %}badge-ok{% elif r.verification == 'secondary' %}badge-warn{% else %}badge-warn{% endif %}">{{ r.verification }}</span>
         <small>{{ S.domains['grade_' + r.verification + '_gloss'] if S.domains['grade_' + r.verification + '_gloss'] is defined else '' }}</small>
       </td>
-      <td>{{ r.verified_on or S.common.na }}</td>
-      <td>{{ r.caveat or '' }}</td>
+      <td data-label="{{ S.domains.col_verified_on }}">{{ r.verified_on | human_date if r.verified_on else S.common.na }}</td>
+      <td data-label="{{ S.domains.col_caveat }}">{{ r.caveat or S.common.na }}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['rule', 'verification', 'verified_on', 'caveat'],
+            provenance.rows) }}
 {% else %}
 <p class="na">{{ S.domains.knowledge_empty }}</p>
 {% endif %}

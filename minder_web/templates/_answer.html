@@ -1,0 +1,9 @@
+{# The plain-language answer line (issue #12): the page's conclusion
+   before any table. Composed in minder_web/answers.py from the page
+   model; body text is code-owned, so it is escaped normally and only
+   the inline markup from strings.py is allowed through. #}
+{% if answer %}
+<p class="answer answer-{{ answer.level }}">
+  <span class="answer-lead">{{ answer.lead }}</span>{{ answer.body }}
+</p>
+{% endif %}

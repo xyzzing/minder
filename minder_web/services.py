@@ -4,10 +4,11 @@ Every number and label comes from the minder_op query/summary layer —
 this module issues no SQL of its own and knows no policy. Anything
 free-text passes through minder_op.format.safe (redact + truncate)
 before it can reach a template; missing DB or optional tables become
-the NOT_AVAILABLE model (minder_web.strings) here, so a route can
+the NOT_AVAILABLE model (minder_web.strings_base) here, so a route can
 never 500 on storage.
 """
 import os
+import sys
 
 from minder_op import benchmark as bench
 from minder_op import format as fmt
@@ -15,11 +16,11 @@ from minder_op import queries
 from minder_op.queries import DBError
 from minder_op.summary import build_weekly_summary
 
-from minder_web import strings
+from minder_web import page_actions, strings_base
 
 FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
              "MINDER_SUCCESS_GUARD")
-NOT_AVAILABLE = strings.NOT_AVAILABLE
+NOT_AVAILABLE = strings_base.NOT_AVAILABLE
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 200
 # a page is stale when the newest stored event is older than this
@@ -43,6 +44,20 @@ def _safe_row(row, fields):
     for field in fields:
         out[field] = fmt.safe(out.get(field), 160)
     return out
+
+
+def _log_scan_failure(error):
+    """Name a failed page scan in the ledger. minder.log reaches the sink
+    or a local file; either way a write error must not turn a degraded
+    page into a 500, so the log call itself is guarded (issue #12)."""
+    try:
+        import minder
+        minder.log("web", "overview_scorecard_failed",
+                   error=f"{type(error).__name__}: {error}")
+    except Exception as log_error:  # noqa: BLE001
+        print(f"minder_web: ledger write failed: "
+              f"{type(log_error).__name__}: {log_error}",
+              file=sys.stderr)
 
 
 def health(db_path):
@@ -85,23 +100,18 @@ def overview(db_path, window_hours=24):
         since = report.get("since")
     except Exception as e:
         # the landing page must not 500, but a broken scan must be named
-        try:
-            import minder
-            minder.log("web", "overview_scorecard_failed",
-                       error=f"{type(e).__name__}: {e}")
-        except Exception:
-            pass
+        _log_scan_failure(e)
     # Capture breaks are the one failure that invalidates every other page,
     # so they come first in the operator focus list.
     focus = list((summary or {}).get("focus", []))
     if capture is not None and not capture["ok"]:
         focus = capture["warnings"][:2] + focus
-    return {
+    model = {
         "db_ok": db_ok,
         "health": health(db_path),
         "freshness": freshness(db_path),
         "flags": [{"name": var, "value": os.environ.get(var)
-                   or strings.UNSET} for var in FLAG_VARS],
+                   or strings_base.UNSET} for var in FLAG_VARS],
         "summary": summary,
         "capture": capture,
         "verdicts": verdicts,
@@ -112,13 +122,15 @@ def overview(db_path, window_hours=24):
         "engine": _try(engine_summary, db_path, window_hours=window_hours,
                        default=None),
     }
+    return model
 
 
 def episodes_page(db_path, limit=DEFAULT_LIMIT):
     rows = _try(queries.episodes, db_path, limit=_bounded_limit(limit),
                 default=[]) or []
-    return {"rows": [_safe_row(r, ("repo", "task_id")) for r in rows],
-            "limit": _bounded_limit(limit)}
+    safe = [_safe_row(r, ("repo", "task_id")) for r in rows]
+    return {"rows": safe, "limit": _bounded_limit(limit),
+            "actions": page_actions.episode_actions(safe)}
 
 
 def episode_detail(db_path, episode_id):
@@ -172,16 +184,17 @@ def _safe_injection_rows(rows):
 def gaps_page(db_path):
     rows = _try(queries.gaps, db_path, status_filter="open",
                 default=[]) or []
-    return {"rows": [_safe_row(r, ("repo", "failure_key", "sample_error"))
-                     for r in rows]}
+    safe = [_safe_row(r, ("repo", "failure_key", "sample_error"))
+            for r in rows]
+    return {"rows": safe, "actions": page_actions.gap_actions(safe)}
 
 
 def consults_page(db_path, limit=DEFAULT_LIMIT):
     rows = _try(queries.consults, db_path,
                 limit=_bounded_limit(limit), default=[]) or []
-    return {"rows": [_safe_row(r, ("failure_key",
-                                   "provider_fingerprint"))
-                     for r in rows]}
+    safe = [_safe_row(r, ("failure_key", "provider_fingerprint"))
+            for r in rows]
+    return {"rows": safe, "actions": page_actions.consult_actions(safe)}
 
 
 def consult_detail(db_path, trace_id):
@@ -201,7 +214,8 @@ def consult_detail(db_path, trace_id):
 def decisions_page(db_path, limit=DEFAULT_LIMIT):
     rows = _try(queries.decisions, db_path,
                 limit=_bounded_limit(limit), default=[]) or []
-    return {"rows": [_safe_row(r, ("failure_key",)) for r in rows]}
+    safe = [_safe_row(r, ("failure_key",)) for r in rows]
+    return {"rows": safe, "actions": page_actions.decision_actions(safe)}
 
 
 # Difficulty-router events live in the proxy's raw audit ledger
@@ -286,10 +300,12 @@ def sessions_page(db_path, query=None, sort=None, limit=200,
     for row in rows:
         row["age"] = _age_text(row.get("age_s"))
         row["capture_ok"] = (row.get("event_count") or 0) > 0
+    uncaptured = sum(1 for r in rows if not r["capture_ok"])
     return {"rows": rows, "total": total,
             "counts": model["counts"], "query": query or "",
             "sort": sort or "recent",
             "limit": _bounded_limit(limit),
+            "uncaptured": uncaptured,
             "sorts": ("recent", "project", "tokens", "steps", "capture")}
 
 
@@ -320,16 +336,16 @@ def session_detail_page(db_path, session_id, dsh_root=None):
 
 def _age_text(age_s):
     if age_s is None:
-        return strings.UNKNOWN
+        return strings_base.UNKNOWN
     try:
         age = float(age_s)
     except (TypeError, ValueError):
-        return strings.UNKNOWN
+        return strings_base.UNKNOWN
     if age < 90:
-        return strings.AGE_SECONDS.format(n=int(age))
+        return strings_base.AGE_SECONDS.format(n=int(age))
     if age < 48 * 3600:
-        return strings.AGE_HOURS.format(n=int(age // 3600))
-    return strings.AGE_DAYS.format(n=int(age // 86400))
+        return strings_base.AGE_HOURS.format(n=int(age // 3600))
+    return strings_base.AGE_DAYS.format(n=int(age // 86400))
 
 
 def _human_date(iso):
@@ -350,11 +366,11 @@ def _window_text(hours):
     if h and h % 24 == 0:
         days = h // 24
         if days == 1:
-            return strings.WINDOW_DAY
+            return strings_base.WINDOW_DAY
         if days == 7:
-            return strings.WINDOW_WEEK
-        return strings.WINDOW_DAYS.format(n=days)
-    return strings.WINDOW_HOURS.format(n=h)
+            return strings_base.WINDOW_WEEK
+        return strings_base.WINDOW_DAYS.format(n=days)
+    return strings_base.WINDOW_HOURS.format(n=h)
 
 
 def _human_tokens(n):
@@ -367,7 +383,7 @@ def _human_tokens(n):
         return f"{value / 1_000_000:.2f}M"
     if value >= 1_000:
         return f"{value / 1_000:.1f}k"
-    return f"{int(value)}" if value else strings.DASH
+    return f"{int(value)}" if value else strings_base.DASH
 
 
 def _last_event_age(db_path):
@@ -391,13 +407,16 @@ def _last_event_age(db_path):
 def recording(db_path):
     """Header-chip text: is evidence still being written? One cheap
     MAX(ts) query per page render — no dsh scan. The schema version and
-    db health stay available via the title attribute and /healthz."""
+    db health stay available via the title attribute and /healthz.
+    `state` is the machine-readable level (ok / stale / unknown) the
+    template styles the dot from, so no template matches on copy."""
     _last, age = _last_event_age(db_path)
     if age is None:
-        return strings.RECORDING_UNKNOWN
+        return {"text": strings_base.RECORDING_UNKNOWN, "state": "unknown"}
     if age > STALE_AFTER_S:
-        return strings.RECORDING_STALE.format(age=_age_text(age))
-    return strings.RECORDING_OK
+        return {"text": strings_base.RECORDING_STALE.format(age=_age_text(age)),
+                "state": "stale"}
+    return {"text": strings_base.RECORDING_OK, "state": "ok"}
 
 
 def freshness(db_path):
@@ -459,9 +478,12 @@ def events_page(db_path, limit=DEFAULT_LIMIT, event_type=None, tool=None,
                 stale_days = int(age // 86400)
         except (TypeError, ValueError):
             stale_days = None
+    failures = _try(queries.events, db_path, event_type="tool_failure",
+                    limit=MAX_LIMIT, default=None)
     return {"rows": [_safe_row(r, ("failure_key", "error_excerpt",
                                    "payload_json")) for r in rows],
             "limit": _bounded_limit(limit),
+            "failures": None if failures is None else len(failures),
             "filters": filters, "event_type": event_type or "",
             "tool": tool or "", "failure_key": failure_key or "",
             "session": session or "", "stale_days": stale_days}
@@ -487,15 +509,16 @@ def skills_page():
                 "risk_level": meta.get("risk_level") or "?",
                 "body_ok": bool(full and full.get("instructions")),
             })
-        return {"rows": rows}
+        return {"rows": rows, "actions": page_actions.skill_actions(rows)}
     except Exception:
-        return {"rows": []}
+        return {"rows": [], "actions": []}
 
 
 def benchmarks_page():
     suites = bench.list_suites()
     baselines = bench.list_baselines()
-    return {"suites": suites or NOT_AVAILABLE, "baselines": baselines}
+    return {"suites": suites or NOT_AVAILABLE, "baselines": baselines,
+            "rows": suites if isinstance(suites, list) else []}
 
 
 # --- trace review (read-only) -------------------------------------------
@@ -509,11 +532,13 @@ SEVERITY_ORDER = ("blocker", "high", "medium", "low", "info")
 
 def _review_row(review):
     summary = review.get("summary") or {}
+    ts = review.get("ts") or ""
     return {
         "review_id": review.get("review_id"),
         "session_id": review.get("session_id"),
         "run_id": review.get("run_id"),
-        "ts": (review.get("ts") or "")[:19],
+        "ts_full": ts,
+        "ts": ts[:19],
         "status": review.get("status"),
         "evaluator_version": review.get("evaluator_version"),
         "rubric_id": review.get("rubric_id") or "-",
@@ -603,6 +628,16 @@ def engine_page():
         return {"rows": _engine_rows(), "error": None}
     except Exception as e:  # noqa: BLE001
         return {"rows": [], "error": f"{type(e).__name__}: {e}"}
+
+
+def engine_target(name):
+    """The row the confirm step shows: what the switch will stop and
+    start. An unknown name reads as no row, and the route says so."""
+    name = (name or "").strip()
+    for row in engine_page()["rows"]:
+        if row.get("name") == name:
+            return row
+    return None
 
 
 def engine_switch(name):

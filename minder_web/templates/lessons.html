@@ -1,7 +1,9 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.lessons.title }}</h1>
-<nav class="filters">
+{% include "_answer.html" %}
+<nav class="filters" aria-label="{{ S.lessons.filter_label }}">
   {% for s in ('verified', 'candidate', 'invalidated') %}
     <a href="/lessons?status={{ s }}" class="badge badge-{{ s }}"
        {% if s == status %}aria-current="true"{% endif %}>{{ s }}</a>
@@ -10,16 +12,17 @@
 <p class="note">
   {{ S.lessons.note }}
 </p>
-<table>
-  <thead><tr><th>{{ S.lessons.col_id }}</th><th>{{ S.lessons.col_status }}</th><th>{{ S.lessons.col_valid_from }}</th><th>{{ S.lessons.col_failure_key }}</th><th>{{ S.lessons.col_instruction }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.lessons.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.lessons.col_id }}</th><th scope="col">{{ S.lessons.col_status }}</th><th scope="col">{{ S.lessons.col_valid_from }}</th><th scope="col">{{ S.lessons.col_failure_key }}</th><th scope="col">{{ S.lessons.col_instruction }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td><a href="/lessons/{{ r.lesson_id }}">{{ r.lesson_id }}</a></td>
-      <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
-      <td>{{ r.valid_from }}</td>
-      <td>{{ r.failure_key }}</td>
-      <td>{{ r.instruction }}</td>
+      <td data-label="{{ S.lessons.col_id }}"><a href="/lessons/{{ r.lesson_id }}">{{ r.lesson_id }}</a></td>
+      <td data-label="{{ S.lessons.col_status }}"><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+      <td data-label="{{ S.lessons.col_valid_from }}">{{ r.valid_from | human_date }}</td>
+      <td data-label="{{ S.lessons.col_failure_key }}">{{ r.failure_key }}</td>
+      <td data-label="{{ S.lessons.col_instruction }}">{{ r.instruction }}</td>
     </tr>
   {% else %}
     <tr><td colspan="5" class="na">{{ S.lessons.empty }}</td></tr>
@@ -27,4 +30,6 @@
   </tbody>
 </table>
 <p class="note">{{ S.lessons.showing.format(limit=limit) }}</p>
+{{ raw_tier(['lesson_id', 'status', 'valid_from',
+             'failure_key', 'instruction'], rows) }}
 {% endblock %}

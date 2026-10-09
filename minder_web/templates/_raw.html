@@ -1,0 +1,22 @@
+{# The raw-evidence tier (issue #12): the technical reader's view of the
+   same rows. Field names are the storage column names and the values are
+   the model's own values, unrounded and unhumanized, so a console screen
+   can be compared line by line against a CLI row. The tier reads the page
+   model, never a DB row: redaction stays a service-layer contract. #}
+{% macro raw_tier(fields, rows) %}
+<details class="raw">
+  <summary>{{ S.common.raw_fields }}: {{ fields | join(', ') }}</summary>
+  <p class="note">{{ S.common.raw_note }}</p>
+  <table>
+    <thead><tr>
+      {% for f in fields %}<th scope="col">{{ f }}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>{% for f in fields %}<td><code>{{ r.get(f) if r.get(f) is not none
+        else S.common.na }}</code></td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endmacro %}

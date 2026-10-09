@@ -72,3 +72,42 @@ def test_engine_switch_route_names_failure(tmp_path, monkeypatch):
 def minder_op_engines_error(name):
     from minder_op.engines import EngineError
     return EngineError(f"unknown engine '{name}'")
+
+
+def test_switch_needs_a_confirm_step_that_names_the_unit(tmp_path,
+                                                         monkeypatch):
+    """The console's one write path stops a systemd unit and flips the
+    live upstream. A click on the row must land on a page that says what
+    it will stop, not on the switch itself (issue #12)."""
+    _registry_config(tmp_path, monkeypatch)
+    seen = []
+    monkeypatch.setattr(services, "engine_switch",
+                        lambda name: seen.append(name) or
+                        {"switched": True, "from": "strata",
+                         "engine": name})
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    resp = client.get("/engine/switch?engine=llama&confirm=1")
+    assert resp.status_code == 200
+    assert "u-llama" in resp.text
+    assert "llama" in resp.text
+    assert seen == [], "the confirm view must not switch anything"
+    assert 'method="post"' in resp.text
+
+
+def test_engine_page_links_to_the_confirm_step_not_the_switch(
+        tmp_path, monkeypatch):
+    _registry_config(tmp_path, monkeypatch)
+    monkeypatch.setattr(services, "_engine_rows", lambda: [
+        {"name": "llama", "active": False,
+         "upstream": "http://127.0.0.1:8080",
+         "unit": "u-llama", "unit_state": "inactive", "healthy": True}])
+    dbp = new_db(tmp_path)
+    text = webseed.client_for(dbp, monkeypatch).get("/engine").text
+    assert "/engine/switch?engine=llama&confirm=1" in text
+
+
+def test_footer_names_the_write_path(tmp_path, monkeypatch):
+    dbp = new_db(tmp_path)
+    text = webseed.client_for(dbp, monkeypatch).get("/").text
+    assert "one write path" in text

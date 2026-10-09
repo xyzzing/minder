@@ -1,5 +1,5 @@
 """Copy for the /domains page (C3, issue #8). Merged into the Jinja
-global S by app.py as S.domains; same rules as minder_web.strings:
+global S by app.py as S.domains; same rules as minder_web.strings_base:
 code-owned static text, light markup allowed, plain hyphens."""
 
 DOMAINS = {

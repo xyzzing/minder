@@ -14,10 +14,10 @@ import os
 from minder_op import benchmark as bench
 from minder_op import format as fmt
 
-from minder_web.strings import NOT_AVAILABLE
+from minder_web.strings_base import NOT_AVAILABLE
 
 # profile knobs shown on the page, in display order: (config key,
-# strings_domains label key)
+# strings_pages label key)
 PROFILE_ROWS = (("l1_budget", "budget"), ("l2_budget", "budget2"),
                 ("spend_guardrail_tokens", "guardrail"),
                 ("frontier_budget", "frontier"))

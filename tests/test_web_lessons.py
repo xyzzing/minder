@@ -121,3 +121,4 @@ def test_lesson_detail_empty_ledger_is_not_a_misleading_zero(
     legacy_text = legacy_client.get("/lessons/les_q").text
     assert "not available" in legacy_text
     assert "never injected" not in legacy_text
+

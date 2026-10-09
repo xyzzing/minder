@@ -1,16 +1,24 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.gaps.title }} <small>{{ S.gaps.gloss }}</small></h1>
-<table>
-  <thead><tr><th>{{ S.gaps.col_id }}</th><th>{{ S.gaps.col_ts }}</th><th>{{ S.gaps.col_type }}</th><th>{{ S.gaps.col_repo }}</th><th>{{ S.gaps.col_failure_key }}</th><th>{{ S.gaps.col_sample }}</th></tr></thead>
+{% include "_answer.html" %}
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.gaps.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.gaps.col_id }}</th><th scope="col">{{ S.gaps.col_ts }}</th><th scope="col">{{ S.gaps.col_type }}</th><th scope="col">{{ S.gaps.col_repo }}</th><th scope="col">{{ S.gaps.col_failure_key }}</th><th scope="col">{{ S.gaps.col_sample }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
-    <tr><td>{{ r.gap_id }}</td><td>{{ r.ts }}</td><td>{{ r.gap_type }}</td>
-        <td>{{ r.repo }}</td><td>{{ r.failure_key }}</td>
-        <td>{{ r.sample_error }}</td></tr>
+    <tr><td data-label="{{ S.gaps.col_id }}">{{ r.gap_id }}</td>
+        <td data-label="{{ S.gaps.col_ts }}">{{ r.ts | human_date }}</td>
+        <td data-label="{{ S.gaps.col_type }}">{{ r.gap_type }}</td>
+        <td data-label="{{ S.gaps.col_repo }}">{{ r.repo }}</td>
+        <td data-label="{{ S.gaps.col_failure_key }}">{{ r.failure_key }}</td>
+        <td data-label="{{ S.gaps.col_sample }}">{{ r.sample_error }}</td></tr>
   {% else %}
     <tr><td colspan="6" class="na">{{ S.gaps.empty }}</td></tr>
   {% endfor %}
   </tbody>
+{{ raw_tier(['gap_id', 'ts', 'gap_type', 'repo', 'failure_key',
+             'sample_error'], rows) }}
 </table>
 {% endblock %}

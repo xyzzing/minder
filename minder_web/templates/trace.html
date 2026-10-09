@@ -3,36 +3,39 @@
 <h1>{{ S.trace.title }} <small>{{ review.review_id }}</small></h1>
 <p class="note">
   session <code>{{ review.session_id }}</code> · run {{ review.run_id }} ·
-  reviewed {{ review.ts }} · {{ S.common.status }} {{ review.status }} ·
+  reviewed {{ review.ts | human_date }} · {{ S.common.status }} {{ review.status }} ·
   {{ S.trace.col_evaluator }} {{ review.evaluator_version }} ·
   {{ S.trace.col_rubric }} {{ review.rubric_id }} · payloads {{ redaction_status }}
 </p>
 
 <h2>{{ S.trace.findings }} <small>({{ findings | length }})</small></h2>
-<table>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.trace.finding_unit) }}</caption>
   <thead><tr>
-    <th>{{ S.trace.col_severity }}</th><th>{{ S.trace.col_evaluator }}</th><th>{{ S.trace.col_rule }}</th><th>{{ S.trace.col_events }}</th>
-    <th>{{ S.trace.col_reviewed }}</th><th>{{ S.trace.col_message }}</th>
+    <th scope="col">{{ S.trace.col_severity }}</th><th scope="col">{{ S.trace.col_evaluator }}</th><th scope="col">{{ S.trace.col_rule }}</th><th scope="col">{{ S.trace.col_events }}</th>
+    <th scope="col">{{ S.trace.col_reviewed }}</th><th scope="col">{{ S.trace.col_message }}</th>
   </tr></thead>
   <tbody>
   {% for f in findings %}
     <tr>
-      <td>
-        {% if f.severity in ('blocker', 'high') %}
-          <span class="badge badge-candidate">{{ f.severity }}</span>
+      <td data-label="{{ S.trace.col_severity }}">
+        {% if f.severity in ('blocker', 'high', 'critical', 'error') %}
+          <span class="badge sev-{{ f.severity }}">{{ f.severity }}</span>
+        {% elif f.severity == 'none' %}
+          <span class="badge badge-ok">{{ f.severity }}</span>
         {% else %}<span class="badge">{{ f.severity }}</span>{% endif %}
       </td>
-      <td>{{ f.evaluator }}</td>
-      <td class="excerpt">{{ f.rule_id }}</td>
-      <td class="excerpt">{{ f.events }}
+      <td data-label="{{ S.trace.col_evaluator }}">{{ f.evaluator }}</td>
+      <td data-label="{{ S.trace.col_rule }}" class="excerpt">{{ f.rule_id }}</td>
+      <td data-label="{{ S.trace.col_events }}" class="excerpt">{{ f.events }}
         {% if f.event_count > 6 %}<span class="badge">+{{ f.event_count - 6 }}</span>{% endif %}
       </td>
-      <td>
-        {% if f.reviewed == 'confirm' %}<span class="badge badge-verified">{{ S.trace.confirmed }}</span>
-        {% elif f.reviewed == 'reject' %}<span class="badge badge-candidate">{{ S.trace.rejected }}</span>
-        {% else %}<span class="badge">{{ S.trace.unreviewed }}</span>{% endif %}
+      <td data-label="{{ S.trace.col_reviewed }}">
+        {% if f.reviewed == 'confirm' %}<span class="badge badge-ok">{{ S.trace.confirmed }}</span>
+        {% elif f.reviewed == 'reject' %}<span class="badge badge-neutral">{{ S.trace.rejected }}</span>
+        {% else %}<span class="badge badge-warn">{{ S.trace.unreviewed }}</span>{% endif %}
       </td>
-      <td>
+      <td data-label="{{ S.trace.col_message }}">
         {{ f.message }}
         <div class="excerpt">{{ S.trace.suggested }} {{ f.suggested_fix }}</div>
         {% for e in f.excerpts %}<div class="excerpt"><code>{{ e }}</code></div>{% endfor %}
@@ -46,36 +49,40 @@
 </table>
 
 <h2>{{ S.trace.summary }}</h2>
-<table>
+<table class="kv">
   <tbody>
-    <tr><th>{{ S.trace.sum_findings }}</th><td>{{ summary.findings }}</td></tr>
-    <tr><th>{{ S.trace.sum_highest }}</th><td>{{ summary.highest_severity }}</td></tr>
+    <tr><th>{{ S.trace.sum_findings }}</th><td class="num">{{ summary.findings }}</td></tr>
+    <tr><th>{{ S.trace.sum_highest }}</th><td>{{ summary.highest_severity or S.common.na }}</td></tr>
     <tr><th>{{ S.trace.sum_by_severity }}</th><td class="excerpt">{{ summary.by_severity }}</td></tr>
     <tr><th>{{ S.trace.sum_by_evaluator }}</th><td class="excerpt">{{ summary.by_evaluator }}</td></tr>
-    <tr><th>{{ S.trace.sum_tool_calls }}</th><td>{{ summary.tool_calls }}</td></tr>
-    <tr><th>{{ S.trace.sum_failures }}</th><td>{{ summary.failures }}</td></tr>
-    <tr><th>{{ S.trace.sum_turns }}</th><td>{{ summary.turns }}</td></tr>
-    <tr><th>{{ S.trace.sum_cited }}</th><td>{{ summary.evidence_links }}</td></tr>
+    <tr><th>{{ S.trace.sum_tool_calls }}</th><td class="num">{{ summary.tool_calls }}</td></tr>
+    <tr><th>{{ S.trace.sum_failures }}</th><td class="num">{{ summary.failures }}</td></tr>
+    <tr><th>{{ S.trace.sum_turns }}</th><td class="num">{{ summary.turns }}</td></tr>
+    <tr><th>{{ S.trace.sum_cited }}</th><td class="num">{{ summary.evidence_links }}</td></tr>
   </tbody>
 </table>
 
 <h2>{{ S.trace.feedback }} <small>({{ feedback | length }})</small></h2>
-<table>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.trace.feedback_unit) }}</caption>
   <thead><tr>
-    <th>{{ S.trace.col_when }}</th><th>{{ S.trace.col_level }}</th><th>{{ S.trace.col_category }}</th><th>{{ S.trace.col_target }}</th>
-    <th>{{ S.trace.col_verdict }}</th><th>{{ S.trace.col_reviewer }}</th><th>{{ S.trace.col_comment }}</th>
+    <th scope="col">{{ S.trace.col_when }}</th><th scope="col">{{ S.trace.col_level }}</th><th scope="col">{{ S.trace.col_category }}</th><th scope="col">{{ S.trace.col_target }}</th>
+    <th scope="col">{{ S.trace.col_verdict }}</th><th scope="col">{{ S.trace.col_reviewer }}</th><th scope="col">{{ S.trace.col_comment }}</th>
   </tr></thead>
   <tbody>
   {% for f in feedback %}
     <tr>
-      <td>{{ f.ts }}</td><td>{{ f.level }}</td><td>{{ f.category }}</td>
-      <td class="excerpt">{{ f.target }}</td>
-      <td>
-        {% if f.verdict == 'confirm' %}<span class="badge badge-verified">{{ S.trace.confirm }}</span>
-        {% elif f.verdict == 'reject' %}<span class="badge badge-candidate">{{ S.trace.reject }}</span>
-        {% else %}<span class="badge">-</span>{% endif %}
+      <td data-label="{{ S.trace.col_when }}">{{ f.ts | human_date }}</td>
+      <td data-label="{{ S.trace.col_level }}">{{ f.level }}</td>
+      <td data-label="{{ S.trace.col_category }}">{{ f.category }}</td>
+      <td data-label="{{ S.trace.col_target }}" class="excerpt">{{ f.target }}</td>
+      <td data-label="{{ S.trace.col_verdict }}">
+        {% if f.verdict == 'confirm' %}<span class="badge badge-ok">{{ S.trace.confirm }}</span>
+        {% elif f.verdict == 'reject' %}<span class="badge badge-neutral">{{ S.trace.reject }}</span>
+        {% else %}<span class="badge badge-neutral">{{ S.common.na }}</span>{% endif %}
       </td>
-      <td>{{ f.reviewer }}</td><td class="excerpt">{{ f.comment }}</td>
+      <td data-label="{{ S.trace.col_reviewer }}">{{ f.reviewer }}</td>
+      <td data-label="{{ S.trace.col_comment }}" class="excerpt">{{ f.comment }}</td>
     </tr>
   {% else %}
     <tr><td colspan="7" class="na">{{ S.trace.feedback_empty }}</td></tr>

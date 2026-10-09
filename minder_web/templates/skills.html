@@ -1,17 +1,24 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.skills.title }} <small>{{ S.skills.gloss }}</small></h1>
-<table>
-  <thead><tr><th>{{ S.skills.col_name }}</th><th>{{ S.skills.col_description }}</th><th>{{ S.skills.col_triggers }}</th>
-           <th>{{ S.skills.col_risk }}</th><th>{{ S.skills.col_body }}</th></tr></thead>
+{% include "_answer.html" %}
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.skills.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.skills.col_name }}</th><th scope="col">{{ S.skills.col_description }}</th><th scope="col">{{ S.skills.col_triggers }}</th>
+           <th scope="col">{{ S.skills.col_risk }}</th><th scope="col">{{ S.skills.col_body }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
-    <tr><td><code>{{ r.name }}</code></td><td>{{ r.description }}</td>
-        <td>{{ r.triggers }}</td><td>{{ r.risk_level }}</td>
-        <td>{{ S.skills.ok if r.body_ok else S.skills.missing }}</td></tr>
+    <tr><td data-label="{{ S.skills.col_name }}"><code>{{ r.name }}</code></td>
+        <td data-label="{{ S.skills.col_description }}">{{ r.description }}</td>
+        <td data-label="{{ S.skills.col_triggers }}">{{ r.triggers }}</td>
+        <td data-label="{{ S.skills.col_risk }}">{{ r.risk_level }}</td>
+        <td data-label="{{ S.skills.col_body }}">{{ S.skills.ok if r.body_ok else S.skills.missing }}</td></tr>
   {% else %}
     <tr><td colspan="5" class="na">{{ S.skills.empty }}</td></tr>
   {% endfor %}
   </tbody>
+{{ raw_tier(['name', 'description', 'triggers', 'risk_level',
+             'body_ok'], rows) }}
 </table>
 {% endblock %}

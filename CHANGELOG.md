@@ -5,6 +5,37 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The console answers first and shows its evidence second (issue #12).**
+  Both readers were reading the same wall of tables: a person trying to
+  improve what the agents produce and the operator debugging capture got
+  no conclusion, no ordering, and no way to check a rendered number
+  against the stored one. Every page now leads with a plain-language
+  answer composed from the page model (`minder_web/answers.py`) - what
+  the page concludes, at what level, and the first action - followed by
+  the tables, then a collapsed **raw fields** tier carrying the same rows
+  with storage field names and unmodified values. The tier reads the page
+  model, not a DB row, so redaction stays a service-layer contract. Three
+  states that used to read alike are now named apart: capture broken (a
+  configured sink not answering), capture quiet (no activity in the
+  window), and no sink configured (nothing recorded yet); an empty store
+  is never a zero, and `n/a` never means zero. Palette fixes on the same
+  pass: `danger-full-access` and store staleness no longer wear the
+  "all clear" colour, and severity carries a word, not only a colour.
+  Accessibility: skip link, `aria-current` on the active nav item, a
+  `<caption>` naming each table's row unit, `scope="col"`, labelled
+  filters, tabular numerals. Motion is CSS-only (named easing tokens,
+  interruptible transitions, `@starting-style`, hover gated to pointing
+  devices, full reduced-motion fallback) - no JavaScript, no new
+  dependencies. The engine switch gains a confirm step (GET
+  `/engine/switch` names the unit it will stop, POST still the only
+  write): a misclick guard, not a security control. Copy split across
+  `strings_base`, `strings_pages`, `strings_copy` and `page_actions` to
+  hold the C2 line budget; `files_over_400` 15 -> 14 and
+  `bare_except_pass` 43 -> 42, both lowered rather than raised (C7): the
+  shadowed duplicate `scorecard`/`session` sections were deleted and one
+  swallowed `except: pass` around the overview ledger write now names its
+  failure on stderr.
+
 - **Every lesson injection is recorded, including the decisions that had
   nothing to offer (issue #13).** Nothing answered "is this lesson still
   doing anything?". Retrieval ran, a digest or a duplicate-block directive
@@ -30,6 +61,7 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
   surface, never a zero that reads as "unused". Retrieved lesson payloads
   now carry `failure_key` so the ledger names its own tier without a
   second query.
+
 - **A frontier answer's next action is what reaches the lesson queue (issue
   #11).** The consult prompt asked for ranked root causes plus one labelled
   `Next action:`, and the reading ignored both instructions: it tested each

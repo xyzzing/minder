@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.sessions.title }} <small>{{ S.sessions.gloss }}</small></h1>
+{% include "_answer.html" %}
 <p class="note">
   {{ S.sessions.note_counts.format(sessions=counts.sessions,
        projection=counts.with_projection, archived=counts.archived,
@@ -11,45 +13,52 @@
 </p>
 
 <form method="get" class="filters">
-  <input type="search" name="q" value="{{ query }}" placeholder="{{ S.sessions.filter_placeholder }}">
-  <select name="sort">
+  <label for="f-q"><span>{{ S.sessions.filter_placeholder }}</span>
+    <input id="f-q" type="search" name="q" value="{{ query }}">
+  </label>
+  <label for="f-sort"><span>{{ S.sessions.col_last_seen }}</span>
+  <select id="f-sort" name="sort">
     {% for option in sorts %}
     <option value="{{ option }}" {% if option == sort %}selected{% endif %}>{{ option }}</option>
     {% endfor %}
   </select>
+  </label>
   <button type="submit">{{ S.sessions.filter }}</button>
   {% if query or sort != 'recent' %}<a href="/sessions">{{ S.sessions.reset }}</a>{% endif %}
 </form>
 
-<table>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.sessions.unit) }}</caption>
   <thead><tr>
-    <th>{{ S.sessions.col_project }}</th><th>{{ S.sessions.col_title }}</th><th>{{ S.sessions.col_last_seen }}</th>
-    <th>{{ S.sessions.col_turns }}</th><th>{{ S.sessions.col_steps }}</th><th>{{ S.sessions.col_tokens }}</th><th>{{ S.sessions.col_context }}</th>
-    <th>{{ S.sessions.col_sandbox }}</th><th>{{ S.sessions.col_capture }}</th>
+    <th scope="col">{{ S.sessions.col_project }}</th><th scope="col">{{ S.sessions.col_title }}</th><th scope="col">{{ S.sessions.col_last_seen }}</th>
+    <th scope="col">{{ S.sessions.col_turns }}</th><th scope="col">{{ S.sessions.col_steps }}</th><th scope="col">{{ S.sessions.col_tokens }}</th><th scope="col">{{ S.sessions.col_context }}</th>
+    <th scope="col">{{ S.sessions.col_sandbox }}</th><th scope="col">{{ S.sessions.col_capture }}</th>
   </tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td title="{{ r.project_path }}">{{ r.project_title }}
+      <td data-label="{{ S.sessions.col_project }}" title="{{ r.project_path }}">{{ r.project_title }}
         {% if r.archived %}<span class="badge">{{ S.sessions.badge_archived }}</span>{% endif %}</td>
       <td>
         {% if r.title %}<div>{{ r.title }}</div>{% endif %}
         <a href="/sessions/{{ r.session_id }}"><code>{{ r.session_id }}</code></a>
-        {% if not r.has_projection %}<span class="badge badge-candidate">{{ S.sessions.badge_no_projection }}</span>{% endif %}
+        {% if not r.has_projection %}<span class="badge badge-warn">{{ S.sessions.badge_no_projection }}</span>{% endif %}
       </td>
-      <td>{{ r.age }}<div class="excerpt">{{ r.format or '?' }} · {{ (r.log_bytes / 1024) | round(0) | int }} KiB</div></td>
-      <td>{{ r.turns if r.turns is not none else '-' }}</td>
-      <td>{{ r.steps if r.steps is not none else '-' }}</td>
-      <td title="{{ '{:,}'.format(r.tokens_total) }} tokens"{% if not r.tokens_total %} class="na"{% endif %}>{{ r.tokens_total | human_tokens if r.tokens_total else '-' }}</td>
-      <td>{% if r.context_pressure_pct is not none %}{{ r.context_pressure_pct }}%{% else %}-{% endif %}</td>
-      <td>
+      <td data-label="{{ S.sessions.col_last_seen }}">{{ r.age }}<div class="excerpt">{{ r.format or '?' }} · {{ (r.log_bytes / 1024) | round(0) | int }} KiB</div></td>
+      <td data-label="{{ S.sessions.col_turns }}" class="num">{{ r.turns if r.turns is not none else S.common.na }}</td>
+      <td data-label="{{ S.sessions.col_steps }}" class="num">{{ r.steps if r.steps is not none else S.common.na }}</td>
+      <td data-label="{{ S.sessions.col_tokens }}" class="num" title="{{ '{:,}'.format(r.tokens_total) }} tokens"{% if not r.tokens_total %} class="num na"{% endif %}>{{ r.tokens_total | human_tokens if r.tokens_total else '-' }}</td>
+      <td data-label="{{ S.sessions.col_context }}" class="num">{% if r.context_pressure_pct is not none %}{{ r.context_pressure_pct }}%{% else %}{{ S.common.na }}{% endif %}</td>
+      <td data-label="{{ S.sessions.col_sandbox }}">
+        {# the widest sandbox is the one to notice, so it never wears
+           the "all clear" colour (issue #12) #}
         {% if r.sandbox_mode == 'danger-full-access' %}
-          <span class="badge badge-verified">{{ r.sandbox_mode }}</span>
+          <span class="badge badge-bad" title="{{ S.sessions.sandbox_explain['danger-full-access'] }}">{{ r.sandbox_mode }}</span>
         {% elif r.sandbox_mode %}
-          <span class="badge badge-candidate">{{ r.sandbox_mode }}</span>
+          <span class="badge badge-ok" title="{{ S.sessions.sandbox_explain.get(r.sandbox_mode, '') }}">{{ r.sandbox_mode }}</span>
         {% else %}<span class="badge">{{ S.common.unknown }}</span>{% endif %}
       </td>
-      <td>
+      <td data-label="{{ S.sessions.col_capture }}">
         {% if r.episode_count %}<a href="/episodes">{{ r.episode_count }} {{ S.sessions.ep }}</a>{% endif %}
         {% if r.event_count %}<span class="badge">{{ r.event_count }} {{ S.sessions.ev }}</span>{% endif %}
         {% if not r.episode_count and not r.event_count %}<span class="badge">{{ S.sessions.badge_none }}</span>{% endif %}
@@ -63,4 +72,7 @@
 <p class="note">
   {{ S.sessions.note_none }}
 </p>
+{{ raw_tier(['session_id', 'project_path', 'sandbox_mode', 'turns',
+             'steps', 'tokens_total', 'event_count', 'episode_count',
+             'archived'], rows) }}
 {% endblock %}
