@@ -14,22 +14,23 @@
 </p>
 <table class="stack">
   <caption>{{ S.common.caption.format(unit=S.lessons.unit) }}</caption>
-  <thead><tr><th scope="col">{{ S.lessons.col_id }}</th><th scope="col">{{ S.lessons.col_status }}</th><th scope="col">{{ S.lessons.col_valid_from }}</th><th scope="col">{{ S.lessons.col_failure_key }}</th><th scope="col">{{ S.lessons.col_instruction }}</th></tr></thead>
+  <thead><tr><th scope="col">{{ S.lessons.col_id }}</th><th scope="col">{{ S.lessons.col_status }}</th><th scope="col">{{ S.lessons.col_diagnosis }}</th><th scope="col">{{ S.lessons.col_valid_from }}</th><th scope="col">{{ S.lessons.col_failure_key }}</th><th scope="col">{{ S.lessons.col_instruction }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
       <td data-label="{{ S.lessons.col_id }}"><a href="/lessons/{{ r.lesson_id }}">{{ r.lesson_id }}</a></td>
       <td data-label="{{ S.lessons.col_status }}"><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+      <td data-label="{{ S.lessons.col_diagnosis }}">{{ r.invalidated_diagnosis or S.lessons.diagnosis_none }}</td>
       <td data-label="{{ S.lessons.col_valid_from }}">{{ r.valid_from | human_date }}</td>
       <td data-label="{{ S.lessons.col_failure_key }}">{{ r.failure_key }}</td>
       <td data-label="{{ S.lessons.col_instruction }}">{{ r.instruction }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="5" class="na">{{ S.lessons.empty }}</td></tr>
+    <tr><td colspan="6" class="na">{{ S.lessons.empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
 <p class="note">{{ S.lessons.showing.format(limit=limit) }}</p>
-{{ raw_tier(['lesson_id', 'status', 'valid_from',
-             'failure_key', 'instruction'], rows) }}
+{{ raw_tier(['lesson_id', 'status', 'invalidated_diagnosis',
+             'valid_from', 'failure_key', 'instruction'], rows) }}
 {% endblock %}

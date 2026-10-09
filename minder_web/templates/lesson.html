@@ -11,7 +11,31 @@
   <tr><th>{{ S.lesson.col_source_episode }}</th><td>{{ lesson.source_episode or '-' }}</td></tr>
   <tr><th>{{ S.lesson.col_valid_from }}</th><td>{{ lesson.valid_from or '-' }}</td></tr>
   <tr><th>{{ S.lesson.col_valid_to }}</th><td>{{ lesson.valid_to or '-' }}</td></tr>
+  <tr><th>{{ S.lesson.col_diagnosis }}</th><td>{{ lesson.invalidated_diagnosis or S.common.na }}</td></tr>
 </table>
+<h2>{{ S.lesson_decisions.title }}</h2>
+{% if not decisions_available %}
+<p class="na">{{ S.lesson_decisions.not_available }}</p>
+{% elif not decisions %}
+<p class="na">{{ S.lesson_decisions.none }}</p>
+{% else %}
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.lesson_decisions.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.lesson_decisions.col_when }}</th><th scope="col">{{ S.lesson_decisions.col_action }}</th><th scope="col">{{ S.lesson_decisions.col_code }}</th><th scope="col">{{ S.lesson_decisions.col_actor }}</th><th scope="col">{{ S.lesson_decisions.col_note }}</th></tr></thead>
+  <tbody>
+  {% for r in decisions %}
+    <tr>
+      <td data-label="{{ S.lesson_decisions.col_when }}">{{ r.ts | human_date }}<span class="row-key">{{ r.decision_id }}</span></td>
+      <td data-label="{{ S.lesson_decisions.col_action }}">{{ r.action }}</td>
+      <td data-label="{{ S.lesson_decisions.col_code }}"><code>{{ r.code }}</code></td>
+      <td data-label="{{ S.lesson_decisions.col_actor }}">{{ r.actor }}</td>
+      <td data-label="{{ S.lesson_decisions.col_note }}">{{ r.note or S.common.na }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">{{ S.lesson_decisions.note }}</p>
+{% endif %}
 <h2>{{ S.injections.title }}</h2>
 {% if not ledger_available %}
 <p class="na">{{ S.injections.not_available }}</p>

@@ -57,13 +57,14 @@ def add_event(dbp, event_id="ev1", episode_id="ep1",
 def add_lesson(dbp, lesson_id="les1", status="verified",
                instruction=f"check {SECRET} defaults",
                failure_key="bash|keyerror|k|a.py", valid_from=TS,
-               valid_to=None):
+               valid_to=None, diagnosis=None):
     _ins(dbp, "INSERT INTO lessons (lesson_id, repo, failure_key,"
           " instruction, anti_pattern, verification_json, status,"
-          " source_episode, valid_from, valid_to, expires_when)"
-          " VALUES (?, ?, ?, ?, '', '{}', ?, 'ep1', ?, ?, '')",
+          " source_episode, valid_from, valid_to, expires_when,"
+          " invalidated_diagnosis)"
+          " VALUES (?, ?, ?, ?, '', '{}', ?, 'ep1', ?, ?, '', ?)",
           (lesson_id, "/repo", failure_key, instruction, status,
-           valid_from, valid_to))
+           valid_from, valid_to, diagnosis))
 
 
 def add_injection(dbp, injection_id="inj1", lesson_id="les1",
@@ -80,6 +81,18 @@ def add_injection(dbp, injection_id="inj1", lesson_id="les1",
           " VALUES (?, ?, 's1', 'ev1', ?, '/repo', ?, ?, NULL, 1, ?, ?,"
           " 'redacted')",
           (injection_id, ts, failure_key, lesson_id, tier, chars, mode))
+
+
+def add_lesson_decision(dbp, decision_id="lds1", lesson_id="les1",
+                        ts=TS, action="invalidate", code="content_defect",
+                        note=f"wrong for {SECRET} defaults", actor="operator"):
+    """One lesson-decision row (issue #14). The note carries the marker
+    secret so redaction is asserted on the ledger, and the code is the
+    countable part the page must show as stored."""
+    _ins(dbp, "INSERT INTO lesson_decisions (decision_id, ts, lesson_id,"
+          " action, code, note, actor, redaction_status)"
+          " VALUES (?, ?, ?, ?, ?, ?, ?, 'redacted')",
+          (decision_id, ts, lesson_id, action, code, note, actor))
 
 
 def add_gap(dbp, gap_id="gap1"):

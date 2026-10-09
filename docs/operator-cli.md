@@ -37,7 +37,15 @@ python3 -m minder_op lessons show LESSON_ID
 # which retrieval tier matched, which assist path carried it, chars
 # injected, session (issue #13). A store predating migration 015 prints
 # `injection ledger: not available` instead of an empty table.
-python3 -m minder_op lessons invalidate LESSON_ID --reason "..." --yes
+python3 -m minder_op lessons invalidate LESSON_ID --reason "..." \
+[--diagnosis unknown|content_defect|application_failure|external_failure|no_issue] \
+--yes # the diagnosis names what went wrong; the reason stays the note
+python3 -m minder_op lessons reject LESSON_ID --code generic \
+[--note "..."] --yes # refuse a frontier candidate with a closed reason code
+python3 -m minder_op lessons decisions [--id LESSON_ID] [--limit N]
+# no --id: decisions per (action, code) straight off the ledger; with
+# --id: that lesson's decision history, newest first (issue #14). A store
+# predating migration 016 prints `decision ledger: not available`.
 python3 -m minder_op lessons promote EPISODE_ID --instruction "..." \
 [--tests-passed] --yes # same gates as promote_lesson
 python3 -m minder_op lessons promote LESSON_ID --from-candidate \
@@ -285,6 +293,13 @@ legacy 003 integer. Benchmarks render "not available" when no suites exist. The
 "operator focus" block is a fixed-priority, max-three list of
 follow-up commands; `now=` injection keeps it deterministic in
 tests.
+- `lessons invalidate --diagnosis` and `lessons reject --code` write a
+closed code from `minder_memory/lesson_decisions.py` next to the free-text
+reason (issue #14), so the queue's history is countable rather than only
+readable. `lessons decisions` reads those counts back. An out-of-taxonomy
+code is a usage error and writes nothing; the default diagnosis is
+`unknown`, which names no mechanism. A store predating migration 016
+reports `not available`, never zeros.
 - The `lesson injections` section separates the two numbers that make
 each other meaningful (issue #13): decisions that carried a lesson, and
 decisions that had none to offer. A verified lesson with no injection

@@ -167,11 +167,23 @@ def lesson_detail(db_path, lesson_id):
     # zero that reads as "unused".
     injections = _try(queries.lesson_injections, db_path, lesson_id,
                       default=None)
+    # issue #14: and why the last decision about it was made. The code is
+    # the countable part; the note is the human part.
+    decisions = _try(queries.lesson_decisions, db_path, lesson_id,
+                     default=None)
     return {"lesson": _safe_row(row, ("failure_key", "instruction",
                                       "anti_pattern",
                                       "verification_json")),
             "injections": _safe_injection_rows(injections),
-            "ledger_available": injections is not None}
+            "ledger_available": injections is not None,
+            "decisions": _safe_decision_rows(decisions),
+            "decisions_available": decisions is not None}
+
+
+def _safe_decision_rows(rows):
+    if rows is None:
+        return None
+    return [_safe_row(r, ("note",)) for r in rows]
 
 
 def _safe_injection_rows(rows):

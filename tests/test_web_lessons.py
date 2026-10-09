@@ -122,3 +122,77 @@ def test_lesson_detail_empty_ledger_is_not_a_misleading_zero(
     assert "not available" in legacy_text
     assert "never injected" not in legacy_text
 
+
+def _drop_decision_ledger(dbp):
+    """A store predating migration 016: the ledger table is gone, so the
+    decision block must classify rather than render an empty table."""
+    conn = _db.connect(dbp)
+    try:
+        conn.execute("DROP TABLE lesson_decisions")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_lessons_list_shows_the_diagnosis_code(tmp_path, monkeypatch):
+    """Issue #14: the queue page shows *why* a lesson was invalidated, as
+    the closed code, next to the status it already showed."""
+    dbp = new_db(tmp_path)
+    webseed.add_lesson(dbp, lesson_id="les_d", status="invalidated",
+                       valid_to=webseed.TS, diagnosis="content_defect")
+    webseed.add_lesson(dbp, lesson_id="les_u", status="invalidated",
+                       valid_to=webseed.TS, diagnosis="unknown")
+    client = webseed.client_for(dbp, monkeypatch)
+    text = client.get("/lessons?status=invalidated").text
+    assert "content_defect" in _row_fragment(text, "les_d").group(0)
+    assert "unknown" in _row_fragment(text, "les_u").group(0)
+
+
+def test_lesson_detail_shows_decision_history_newest_first(
+        tmp_path, monkeypatch):
+    """The code is rendered as stored, the note is redacted, and the
+    order answers "what was the last decision about this lesson?". The
+    decision ids are not rendered, so ordering is asserted on the codes
+    that only the newest row carries."""
+    dbp = new_db(tmp_path)
+    webseed.add_lesson(dbp, lesson_id="les_h", status="invalidated",
+                       valid_to="2026-09-23T10:00:00+00:00",
+                       diagnosis="application_failure")
+    webseed.add_lesson_decision(dbp, decision_id="lds_new",
+                                lesson_id="les_h",
+                                ts="2026-09-23T10:00:00+00:00",
+                                action="invalidate",
+                                code="application_failure")
+    webseed.add_lesson_decision(dbp, decision_id="lds_old",
+                                lesson_id="les_h",
+                                ts="2026-09-20T10:00:00+00:00",
+                                action="adopt", code="grounded_useful")
+    client = webseed.client_for(dbp, monkeypatch)
+    text = client.get("/lessons/les_h").text
+    row_new = _row_fragment(text, "lds_new")
+    row_old = _row_fragment(text, "lds_old")
+    assert row_new and "invalidate" in row_new.group(0)
+    assert "application_failure" in row_new.group(0)
+    assert row_old and "adopt" in row_old.group(0)
+    assert "grounded_useful" in row_old.group(0)
+    # newest first: the ledger is read as "what was decided last"
+    assert text.index("lds_new") < text.index("lds_old")
+    # the seeded note carries the marker secret
+    assert SECRET not in text
+
+
+def test_decision_ledger_absent_is_not_reported_as_no_decisions(
+        tmp_path, monkeypatch):
+    """Two different facts, two different sentences: no decisions
+    recorded, and no ledger to have recorded them in."""
+    dbp = new_db(tmp_path)
+    webseed.add_lesson(dbp, lesson_id="les_n")
+    client = webseed.client_for(dbp, monkeypatch)
+    assert "no recorded decision" in client.get("/lessons/les_n").text
+
+    legacy = tmp_path / "legacy.sqlite"
+    legacy.write_bytes(dbp.read_bytes())
+    _drop_decision_ledger(legacy)
+    text = webseed.client_for(legacy, monkeypatch).get("/lessons/les_n").text
+    assert "predates the lesson" in text
+    assert "no recorded decision" not in text

@@ -62,6 +62,34 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
   now carry `failure_key` so the ledger names its own tier without a
   second query.
 
+- **Lesson decisions carry a closed reason code and a diagnosis (issue
+  #14).** The operator queue recorded that a decision happened; why it
+  happened was free text, so nothing about the queue's history could be
+  counted or trended - "how many candidates did we reject as generic?" had
+  no answer, and an invalidated lesson carried a note but no claim about
+  what went wrong. `minder_memory/lesson_decisions.py` owns both closed
+  vocabularies (C4): the diagnoses `unknown | content_defect |
+  application_failure | external_failure | no_issue`, and the decision
+  codes behind every invalidate / reject / adopt. `EVIDENCE_RULES` states
+  the two constraints that decide when a code may *not* be chosen: an
+  unsuccessful run alone does not establish a content defect, and a lesson
+  that was not retrieved never shows the store lacks a rule. Migration
+  `016_lesson_decisions.sql` adds the append-only `lesson_decisions`
+  ledger and an `invalidated_diagnosis` column on `lessons`, so the list
+  page needs no join. `lessons.invalidate_lesson` takes the diagnosis,
+  `reject_candidate_lesson` is new (issue #10 made candidates reviewable
+  but only recorded adoption), and `adopt_candidate_lesson` records one
+  `adopt/grounded_useful` decision - not an adopt plus a spurious
+  invalidate, which would have made the accept/reject counts lie. An
+  out-of-taxonomy code is refused before anything is written, so a typo
+  cannot half-invalidate a lesson; `unknown` is reachable and is the
+  default. Read side: `minder-op lessons decisions` prints the counts per
+  (action, code), or one lesson's history with `--id`; `/lessons` shows
+  the diagnosis next to the status; `/lessons/{id}` renders the decision
+  ledger. A store predating 016 reports `not available`, never zeros.
+  `minder_op/summary.py` sits at the C2 line budget, so the counts live in
+  their own subcommand instead of the weekly summary.
+
 - **A frontier answer's next action is what reaches the lesson queue (issue
   #11).** The consult prompt asked for ranked root causes plus one labelled
   `Next action:`, and the reading ignored both instructions: it tested each

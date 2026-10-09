@@ -81,6 +81,39 @@ commit hash behind it; the instruction gate checks the hash exists.
   counts, so a failing package matches none of `FAIL_SIGNS` and needs its
   own clean-run rule. (issue #9)
 
+- `proven-red.sh` copies only the changed `tests/test_*.py` files into a
+  worktree at the fork point, so a shared helper (`tests/webseed.py`,
+  `tests/tracebuild.py`) stays at the pre-change version. Two traps this
+  creates: a new keyword argument on a shared helper can never turn a
+  test red, and a new module imported at a test file's top level makes
+  every test in that file a collection error, which the gate reports as
+  `WEAK - red only by missing reference` instead of a real red. Import a
+  brand-new module inside the test bodies that need it. A test file whose
+  only diff is a comment is a `FAIL - PASSES on pre-change code`, so
+  comment-only test edits must stay out of the commit. (#16)
+- `db.migrate` skips a migration whose created objects already exist, so
+  `DROP TABLE x` plus a reconnect leaves the table gone. That is the
+  sanctioned way to build a "store predating migration N" fixture, and it
+  works for 015, 016 and 018 alike. (#16)
+- A store-predating-migration fixture and a "query answered zero" case are
+  different facts and the console law requires them to render
+  differently. Returning `[]` for "the table is missing" collapses the
+  first into the second, which is what a legacy-store test caught: the
+  page said "no verdict yet" for a store that has no verdict table.
+  Read helpers that feed a console count return `None` for "cannot
+  answer" and `[]` for "answered zero", and every surface in between
+  propagates the distinction. (#16)
+- The ratchet counters run over `git ls-files` from the repo root, so a
+  ratchet check needs a tree whose index matches the candidate commit;
+  `git checkout-index -a` into a scratch dir leaves an empty index and
+  the gate reports 0, a fake improvement (M2). Gate in a real worktree
+  (`git worktree add --detach <dir> <commit>`). When the counter grows,
+  run the same gate on the parent alone before touching the baseline. (#16)
+- A test that asserts a SQLite structure must select the declared index
+  by `PRAGMA index_list` `origin`, not by `unique`: a table's primary key
+  contributes its own `sqlite_autoindex_*` with `unique = 1`, so an
+  assertion over unique indexes passes when the declared pair index is
+  dropped. (#16)
 ## Platform quirks
 
 - SQLite WAL allows a plain read on a second connection while a write
