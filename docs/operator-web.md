@@ -93,7 +93,7 @@ curl -sS http://127.0.0.1:8765/healthz
 | `/scorecard` | the six improvement groups (capture, cost, failures, learning, context, hygiene) plus a 3-item focus list |
 | `/events` | raw observed events with type/tool/failure-key/session filters and a staleness banner |
 | `/episodes`, `/episodes/{id}` | episode list, timeline with redacted excerpts |
-| `/lessons`, `/lessons/{id}` | verified / candidate / invalidated — badges visibly differ; default view is live verified only. A candidate came from a frontier consult labelled by its episode's verified close; adopting one is a CLI write (`lessons promote <id> --from-candidate`), not a console action. The detail page carries the lesson's injection ledger (issue #13): the decisions that put it in front of an agent, with the tier that matched and the assist path that carried it. A lesson with no rows says "never injected"; a store predating the ledger says "not available". |
+| `/lessons`, `/lessons/{id}` | verified / candidate / invalidated — badges visibly differ; default view is live verified only. A candidate came from a frontier consult labelled by its episode's verified close; adopting one is a CLI write (`lessons promote <id> --from-candidate`), not a console action. The detail page carries the lesson's injection ledger (issue #13): the decisions that put it in front of an agent, with the tier that matched and the assist path that carried it. A lesson with no rows says "never injected"; a store predating the ledger says "not available". It also carries the operator's own decision ledger (issue #14): every invalidate / reject / adopt with its closed reason code and note, newest first, and the list page shows the diagnosis code next to the status of an invalidated lesson. A store predating migration 016 says so rather than showing an empty table |
 | `/gaps` | open skill gaps |
 | `/consults`, `/consults/{id}` | frontier consult labels (`frontier_evals`, never the legacy 003 integer); hashes only, no raw prompt/response text |
 | `/decisions` | shadow decision traces: model recommendation vs policy decision |
@@ -101,7 +101,7 @@ curl -sS http://127.0.0.1:8765/healthz
 | `/traces` | stored trace reviews: session, highest severity, finding counts, rubric and evaluator version |
 | `/traces/{review_id}` | one review: findings (severity, rule, cited dsh event `seq`s, redacted excerpts, suggested fix), the summary counts, and the human feedback with its confirm/reject verdicts |
 | `/engine` | the engine registry: active engine, upstream, systemd unit and unit health. The switch cell is a link, not a form |
-| `/engine/switch?engine=NAME&confirm=1` | the confirm step for the console's one write path (issue #12): names the unit it will stop, the unit it will start and the upstream that will flip, and posts back to the same path |
+| `/engine/switch?engine=NAME` | the confirm step for the console's one write path (issue #12): names the unit it will stop, the unit it will start and the upstream that will flip, and posts back to the same path |
 | `/healthz` | JSON `{status, schema_version}` |
 
 `/engine/switch` answers GET with that confirm view and switches only on
