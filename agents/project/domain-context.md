@@ -227,6 +227,18 @@ commit hash behind it; the instruction gate checks the hash exists.
   and the count reads as complete. `coverage.complete` is that flag;
   `minder_op/capture_ground.py` owns the counting. (7175dd3)
 
+- A catch-all that returns `None` makes a programming error
+  indistinguishable from a legitimate zero, and a constant borrowed from
+  another package is a name that does not exist. The store side of
+  capture coverage passed `limit=queries.MAX_LIMIT` - the name lives in
+  `minder_web.services`, where 200 is a display cap - so the call raised,
+  the `except Exception: return None` swallowed it, and `persisted_db`
+  was `None` on every install while the report still looked healthy. Two
+  rules: a count belongs in SQL (`ts >= ?`), not in a fetch-then-filter
+  whose limit silently truncates it; and a "could not measure" state
+  needs its own field (`db_measured`), never the same value a zero
+  produces. (32b4c4b)
+
 ## Platform quirks
 
 - SQLite WAL allows a plain read on a second connection while a write

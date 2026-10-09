@@ -5,6 +5,15 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **Coverage's store-side count is a number now (issue #31).**
+  `coverage.persisted_db` was `None` on every real install: `_db_event_count`
+  passed `limit=queries.MAX_LIMIT`, a name that exists only in
+  `minder_web.services`, and the resulting `AttributeError` was swallowed by a
+  catch-all that returns `None` - the same value a store with no matching rows
+  produces. The count now runs in SQL through `queries.count_events_since`, so
+  it is a window count rather than a capped fetch, and `coverage.db_measured`
+  says explicitly when that side could not be measured.
+
 - **Capture coverage measures one thing on both sides (issue #30).**
   `minder-op doctor` failed its 95% hook-coverage floor on a host where capture
   was working - 764 persisted against 811 invocations - and the two numbers were
