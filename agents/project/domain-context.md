@@ -204,6 +204,29 @@ commit hash behind it; the instruction gate checks the hash exists.
   the guard rule and the refuse-to-write check. Staging also has to keep
   the installed hooks.json, or the live mode is gone before the render
   can read it. (#29)
+- A ratio whose two sides count different units cannot fail in the
+  direction it exists for. `coverage` compared all `hook_timing` ledger
+  rows in a window against PostToolUse invocations only, and `hook.py`
+  writes one timing row per invocation at *both* hook points, so
+  persisted was double the invocations and `min(1.0, persisted /
+  invocations)` pinned the ratio at 1.0: the floor could only fire when
+  the whole hook path was dead, never when half of it was. Filter both
+  sides to one unit (`hook_event` on the ledger row) before trusting the
+  verdict. (5fe1708)
+- The dsh session log records a hook twice - `hook/invoked` and
+  `hook/result` - and the cost (`durationMs`) is on the result, not the
+  invocation. The two join on `handlerId`, which names one call on both
+  record types; a fixture that writes different ids on the pair hides
+  that join from any test which relies on it. `time` on those records is
+  epoch **milliseconds**, while the events ledger's `ts` is seconds.
+  (5fe1708)
+- Session logs are append-only, so a byte cap that keeps the head keeps
+  the oldest records and drops the recent ones. A windowed scan must
+  take the tail (`dsh_sessions.log_scan(..., tail=True)`) and report
+  `truncated` when the cap bit, otherwise a busy session reads as idle
+  and the count reads as complete. `coverage.complete` is that flag;
+  `minder_op/capture_ground.py` owns the counting. (7175dd3)
+
 ## Platform quirks
 
 - SQLite WAL allows a plain read on a second connection while a write

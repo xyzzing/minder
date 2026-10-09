@@ -270,7 +270,10 @@ def run_checks(db_path, probe=True, now=None):
             add("coverage", "ok",
                 f"hook coverage {cov['ratio']:.0%} "
                 f"({cov['persisted']}/{cov['invocations']}) over the "
-                "last hour")
+                "last hour" + ("" if cov["complete"]
+                               else " - partial view: the log scan hit "
+                                    "its caps, so the invocation count "
+                                    "is a floor"))
         else:
             add("coverage", "info",
                 "no dsh hook invocations in the last hour")

@@ -5,6 +5,22 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **Capture coverage measures one thing on both sides (issue #30).**
+  `minder-op doctor` failed its 95% hook-coverage floor on a host where capture
+  was working - 764 persisted against 811 invocations - and the two numbers were
+  measured over different spans. The denominator counted every `hook/invoked`
+  record in a session log with no time filter, so a session older than the window
+  was charged for its whole lifetime (6.2 hours and 1204 invocations for a 1 hour
+  window), and the scan cap kept the head of an append-only log, dropping exactly
+  the recent records. Fixing that exposed the worse half: the numerator counted
+  every `hook_timing` ledger row in the window while the hook writes one per
+  invocation at *both* hook points, so persisted was double the invocations and
+  `min(1.0, ...)` pinned the ratio at 1.0 - the floor could only fire when the
+  whole hook path was dead, never when half of it was. Both sides now count
+  PostToolUse only, a `hook/result` counts only when it answers an in-window
+  invocation (joined on `handlerId`), and `coverage.complete` says when the scan
+  hit its caps so a partial view is labelled instead of implied.
+
 - **The installed hooks file now always carries a real guard mode (issue #29).**
   `install.sh` filled two of the three placeholders in `dsh/hooks.json`, so the
   installed hook commands ran with `MINDER_SUCCESS_GUARD=__MINDER_SUCCESS_GUARD__`.

@@ -189,6 +189,30 @@ def test_doctor_json_shape(tmp_path, monkeypatch):
         assert check["detail"]
 
 
+def test_a_capped_log_scan_is_labelled_a_partial_view(tmp_path, monkeypatch):
+    """100% is not a measurement when the scan could not see the whole
+    window. The log scan caps how much of each session log it reads, so
+    the invocation count can be a floor; the coverage line has to say so
+    rather than report a clean verdict off a partial view."""
+    def _fake_build(_db_path, now=None, window_hours=1):
+        return {"coverage": {"invocations": 40, "persisted": 40,
+                             "ratio": 1.0, "min_ratio": 0.95,
+                             "sessions": [], "scanned": 1,
+                             "truncated": True, "complete": False,
+                             "window_hours": window_hours},
+                "sink": {"configured": True, "reachable": True,
+                         "url": "http://127.0.0.1:8392", "stats": {}},
+                "stores": [], "warnings": [], "ok": True, "sandbox": {}}
+    monkeypatch.setattr("minder_op.capture.build", _fake_build)
+    dbp = _mig(tmp_path)
+    monkeypatch.setenv("MINDER_SHARE", str(tmp_path / "x"))
+    monkeypatch.setenv("MINDER_ZCODE_CONFIG", str(tmp_path / "x.json"))
+    report = doctor.run_checks(dbp, probe=False, now=time.time())
+    line = [c for c in report["checks"] if c["id"] == "coverage"][0]
+    assert line["status"] == "ok", line
+    assert "partial view" in line["detail"], line
+
+
 def test_hook_flags_check_validates_declared_values(tmp_path, monkeypatch):
     """The live hooks.json is the flag source of truth on dsh installs; the
     2026-09-25 regression shipped an illegal MINDER_SUCCESS_GUARD value in
