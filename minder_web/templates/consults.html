@@ -1,22 +1,26 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.consults.title }}</h1>
+{% include "_answer.html" %}
 <p class="note">{{ S.consults.note }}</p>
-<table>
-  <thead><tr><th>{{ S.consults.col_trace_id }}</th><th>{{ S.consults.col_ts }}</th><th>{{ S.consults.col_label }}</th><th>{{ S.consults.col_verification }}</th><th>{{ S.consults.col_failure_key }}</th><th>{{ S.consults.col_providers }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.consults.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.consults.col_trace_id }}</th><th scope="col">{{ S.consults.col_ts }}</th><th scope="col">{{ S.consults.col_label }}</th><th scope="col">{{ S.consults.col_verification }}</th><th scope="col">{{ S.consults.col_failure_key }}</th><th scope="col">{{ S.consults.col_providers }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td><a href="/consults/{{ r.trace_id }}">{{ r.trace_id }}</a></td>
-      <td>{{ r.ts }}</td>
-      <td><span class="badge label-{{ r.helpfulness or 'unclassified' }}">{{ r.helpfulness or S.consults.unclassified }}</span></td>
-      <td>{{ r.verification_status or '-' }}</td>
-      <td>{{ r.failure_key }}</td>
-      <td>{{ r.provider_fingerprint }}</td>
+      <td data-label="{{ S.consults.col_trace_id }}"><a href="/consults/{{ r.trace_id }}">{{ r.trace_id }}</a></td>
+      <td data-label="{{ S.consults.col_ts }}">{{ r.ts | human_date }}</td>
+      <td data-label="{{ S.consults.col_label }}"><span class="badge label-{{ r.helpfulness or 'unclassified' }}">{{ r.helpfulness or S.consults.unclassified }}</span></td>
+      <td data-label="{{ S.consults.col_verification }}">{{ r.verification_status or S.common.na }}</td>
+      <td data-label="{{ S.consults.col_failure_key }}">{{ r.failure_key }}</td>
+      <td data-label="{{ S.consults.col_providers }}">{{ r.provider_fingerprint }}</td>
     </tr>
   {% else %}
     <tr><td colspan="6" class="na">{{ S.consults.empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['trace_id', 'ts', 'helpfulness', 'verification_status', 'failure_key', 'local_attempts', 'provider_fingerprint'], rows) }}
 {% endblock %}

@@ -6,8 +6,9 @@
 </p>
 
 <h2>{{ S.scorecard.focus }}</h2>
+{% include "_answer.html" %}
 {% if focus %}
-<ol class="focus">
+<ol class="actions">
   {% for item in focus %}<li>{{ item }}</li>{% endfor %}
 </ol>
 {% else %}
@@ -18,7 +19,7 @@
 <table class="kv">
   <tr><th>{{ S.scorecard.coverage }}</th><td>
     {% if scores.capture.coverage_ratio is none %}{{ S.scorecard.not_measurable }}{% else %}
-      <span class="badge {% if scores.capture.coverage_ratio >= scores.capture.min_ratio %}badge-verified{% else %}badge-invalidated{% endif %}">
+      <span class="badge {% if scores.capture.coverage_ratio >= scores.capture.min_ratio %}badge-ok{% else %}badge-bad{% endif %}">
         {{ '%.0f%%' % (scores.capture.coverage_ratio * 100) }}</span>
       ({{ scores.capture.persisted }} / {{ scores.capture.invocations }} {{ S.scorecard.hooks }})
     {% endif %}</td></tr>

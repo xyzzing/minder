@@ -21,11 +21,18 @@ S = {
         "unknown": UNKNOWN, "yes": "yes", "no": "no", "none": "none",
         "status": "status", "day": WINDOW_DAY, "week": WINDOW_WEEK,
         "caption": "one row per {unit}, newest first",
+        "raw_fields": "raw fields",
+        "raw_note": "the same rows, with the storage field names and the"
+                    " values exactly as stored - nothing rounded,"
+                    " humanized or renamed.",
     },
     "base": {
         "title": "minder operator console",
+        "skip": "skip to content",
         "footer": "localhost · observed workflow evidence only, no "
-                  "productivity claims - the console is not a policy engine.",
+                  "productivity claims - the console is not a policy "
+                  "engine. There is one write path: the engine switch on ",
+        "footer_engine_link_suffix": " page.",
     },
     "nav": {
         "doing": "how am I doing?", "happened": "what happened?",
@@ -78,107 +85,12 @@ S = {
         "current_flags": "current flags",
         "flags_gloss": "(environment/systemd owned - display only)",
         "flag": "flag", "value": "value", "health": "health",
+        "flag_unit": "environment flag",
         "schema_version": "schema version",
         "engine": "engine",
         "engine_gloss": "(which model server the proxy forwards to)",
         "active_engine": "active engine", "reuse": "prompt-cache reuse",
         "reuse_gloss": "(cached share of prompt tokens, past {window})",
-    },
-    "scorecard": {
-        "title": "scorecard",
-        "gloss": "(what to improve next, from observed evidence)",
-        "note": "last {hours}h (since {since}). Every number is read from data"
-                " already on this machine - the console adds no collection."
-                " \"n/a\" means the source is empty or unavailable, never zero.",
-        "focus": "focus", "capture": "capture",
-        "capture_gloss": "(observation itself)", "coverage": "coverage",
-        "not_measurable": "not measurable", "hooks": "hooks",
-        "sink": "sink", "configured": "configured",
-        "reachable": "reachable", "stale_stores": "stale stores",
-        "cost": "cost", "cost_gloss": "(per tool call)",
-        "hook_p50": "hook p50", "ms": "ms",
-        "worst_session": "worst session", "measured": "measured",
-        "failures": "failures", "tool_failures": "tool failures",
-        "repeat_keys": "repeat failure keys",
-        "episodes_open": "episodes open / opened",
-        "failure_key": "failure key", "count": "failures",
-        "learning": "learning", "skill_gaps_open": "skill gaps open",
-        "lessons": "lessons verified / candidate",
-        "decision_traces": "decision traces / shadow rows",
-        "context": "context", "sessions_measured": "sessions measured",
-        "over_80": "over 80%:", "max": "max",
-        "llm_retries": "sessions with llm retries",
-        "tokens": "tokens (dsh usage ledger)", "hygiene": "hygiene",
-        "sessions": "sessions",
-        "without_projection": "without projection cache",
-        "without_log": "without a log file", "archived": "archived",
-        "no_capture_link": "no capture link",
-    },
-    "sessions": {
-        "title": "sessions",
-        "gloss": "(dsh sessions joined with projections, workspace and episodes)",
-        "note_counts": "{sessions} session(s) · {projection} with a projection"
-                       " cache · {archived} archived · showing {shown} ({sort}"
-                       " first).",
-        "note_ids_pre": "Session ids are dsh's own (<code>~/.dsh/sessions/</code>)"
-                        " - the same id the hook records and"
-                        " <code>episodes.task_id</code> carries.",
-        "legend": "tokens = words of compute the session used (exact number on"
-                  " hover); context = how full the AI's working memory was (over"
-                  " 80% means it starts forgetting); capture = whether minder"
-                  " saved this session's evidence.",
-        "filter_placeholder": "filter by path, title or id",
-        "filter": "filter", "reset": "reset",
-        "col_project": "project", "col_title": "title / session",
-        "col_last_seen": "last seen", "col_turns": "turns",
-        "col_steps": "steps", "col_tokens": "tokens",
-        "col_context": "context", "col_sandbox": "sandbox",
-        "col_capture": "capture",
-        "badge_archived": "archived",
-        "badge_no_projection": "no projection", "badge_none": "none",
-        "ep": "ep", "ev": "ev",
-        "empty": "no sessions found - is <code>~/.dsh/sessions/</code> populated?",
-        "note_none": "\"none\" means no episode or observed event is linked to"
-                     " that session yet. When a session has hook invocations but"
-                     " nothing captured, open <a href=\"/capture\">capture</a>,"
-                     " which compares the two directly.",
-    },
-    "session": {
-        "title": "session", "detail": "session detail",
-        "capture_gap": "<strong>capture gap:</strong> this session has {invocations}"
-                       " hook invocations but nothing persisted ({events} events)."
-                       " See <a href=\"/capture\">capture</a> - the hook fired and"
-                       " its writes were dropped.",
-        "work": "work", "goal": "goal", "last_activity": "last activity",
-        "sandbox": "sandbox",
-        "sandbox_gloss": "{preset} preset, approval {approval}",
-        "turns_steps": "turns / steps", "tool_calls": "tool calls",
-        "tool_failures": "tool failures seen in log",
-        "llm_tool_time": "llm / tool time",
-        "context_pressure": "context pressure",
-        "context_pressure_gloss": "(how full the AI's working memory was)",
-        "tokens_total": "tokens (total)",
-        "tokens_total_gloss": "(words of compute)",
-        "hook_cost": "hook cost",
-        "hook_cost_gloss": "(every tool call pays this)",
-        "invocations_results": "invocations / results",
-        "non_zero_exits": "non-zero exits",
-        "duration": "duration p50 / p90 / max", "points": "points",
-        "log_unavailable": "session log counters unavailable - no readable"
-                           " <code>session.vN.jsonl.zstd</code> for this session"
-                           " (zstd reader missing or the log is absent).",
-        "tools_used": "tools used", "col_tool": "tool",
-        "col_calls": "calls",
-        "tools_empty": "nothing recorded in the log.",
-        "episodes": "episodes",
-        "episodes_gloss": "(joined on task_id == session id)",
-        "col_episode": "episode", "col_status": "status",
-        "col_opened": "opened", "col_repo": "repo",
-        "episodes_empty": "no episode linked to this session.",
-        "observed": "observed events", "col_ts": "ts", "col_type": "type",
-        "col_tool_name": "tool", "col_failure_key": "failure_key",
-        "observed_empty": "nothing observed for this session.",
-        "todos": "todos at last projection",
     },
     "events": {
         "title": "events", "gloss": "(raw observed events, newest first)",
@@ -193,13 +105,14 @@ S = {
         "col_ts": "ts", "col_type": "type", "col_tool": "tool",
         "col_failure_key": "failure_key", "col_session": "session",
         "col_episode": "episode",
+        "unit": "observed event",
         "empty": "no observed events for this filter",
         "empty_suffix": "(nothing has failed in the stored window)",
     },
     "episodes": {
         "title": "episodes", "col_id": "id", "col_opened": "opened",
         "col_status": "status", "col_repo": "repo", "col_task": "task",
-        "empty": "not available.",
+        "unit": "episode", "empty": "not available.",
         "showing": "showing up to {limit} most recent.",
     },
     "episode": {
@@ -216,6 +129,8 @@ S = {
         "col_valid_from": "valid_from",
         "col_failure_key": "failure_key",
         "col_instruction": "instruction", "empty": "not available.",
+        "filter_label": "lesson status filter",
+        "unit": "lesson",
         "showing": "showing up to {limit}; default view is live verified"
                    " only.",
     },
@@ -245,7 +160,7 @@ S = {
         "title": "skill gaps", "gloss": "(open)", "col_id": "id",
         "col_ts": "ts", "col_type": "type", "col_repo": "repo",
         "col_failure_key": "failure_key", "col_sample": "sample",
-        "empty": "not available.",
+        "unit": "open skill gap", "empty": "not available.",
     },
     "skills": {
         "title": "skill index",
@@ -253,15 +168,19 @@ S = {
         "col_name": "name", "col_description": "description",
         "col_triggers": "triggers", "col_risk": "risk",
         "col_body": "body", "ok": "ok", "missing": "missing",
-        "empty": "not available.",
+        "unit": "skill", "empty": "not available.",
     },
     "engine": {
         "title": "engines", "col_engine": "engine",
         "col_upstream": "upstream", "col_unit": "unit",
         "col_unit_state": "unit state", "col_health": "upstream health",
         "col_switch": "switch", "active": "(active)",
+        "unit": "engine",
         "healthy": "healthy", "unhealthy": "unhealthy",
         "current": "current", "switch_to": "switch to {name}",
+        "switch": "switch",
+        "switch_hint": "opens a confirm step; nothing changes until you"
+                       " confirm it",
         "empty": "no engine registry configured (minder.json engines"
                  " key).",
         "note": "switching stops the current engine unit, starts the target, and"
@@ -298,6 +217,8 @@ S = {
         "sandbox_modes": "sandbox modes",
         "sandbox_gloss": "(why some sessions can write and others cannot)",
         "col_mode": "mode", "col_sessions": "sessions",
+        "session_unit": "captured session", "store_unit": "state store",
+        "sandbox_unit": "sandbox mode",
         "sandbox_empty": "no projection data.",
         "state_note": "state dir: <code>{dir}</code> · generated {now}"
                       " (unix seconds).",
@@ -310,6 +231,7 @@ S = {
         "col_verification": "verification",
         "col_failure_key": "failure_key", "col_providers": "providers",
         "unclassified": "(unclassified)", "empty": "not available.",
+        "unit": "frontier consult",
     },
     "consult": {
         "title": "consult", "col_ts": "ts",
@@ -333,33 +255,16 @@ S = {
         "col_failure_key": "failure_key", "col_model": "model",
         "col_policy": "policy", "col_override": "override",
         "col_confidence": "confidence", "col_provider": "provider",
-        "empty": "not available.",
+        "empty": "not available.", "unit": "gateway decision",
         "note": "nothing in policy reads this table; traces separate the"
                 " model recommendation from the final policy decision.",
-    },
-    "difficulty": {
-        "title": "difficulty router",
-        "gloss": "(laya decision layer - proxy ledger)",
-        "event_one": "event", "event_many": "events",
-        "in_ledger": "in ledger",
-        "col_ts": "ts", "col_kind": "kind", "col_label": "label",
-        "col_score": "score", "col_confidence": "confidence",
-        "col_band": "band", "col_effort": "effort", "col_budget": "budget",
-        "col_max_tokens": "max_tokens", "col_guardrail": "guardrail",
-        "shadow": "shadow", "routed": "routed",
-        "empty": "no difficulty events yet - the router logs here once it runs"
-                 " (shadow mode observes without changing the request).",
-        "note": "read-only view of the proxy's <code>events.jsonl</code> ledger."
-                " <code>shadow</code> rows are laya's difficulty opinion logged"
-                " without touching the request; <code>routed</code> rows show the"
-                " band actually applied (effort / thinking-budget / max-tokens"
-                " ceiling / spend guardrail). Nothing here feeds policy.",
     },
     "benchmarks": {
         "title": "benchmarks", "suites": "suites",
         "col_suite": "suite", "col_manifest": "manifest",
         "col_tasks": "tasks", "col_fingerprint": "fingerprint",
         "col_status": "status", "suites_empty": "no suites found.",
+        "unit": "benchmark suite", "baseline_unit": "pinned baseline",
         "baselines": "pinned baselines",
         "col_generated_at": "generated_at", "col_runs": "runs",
         "col_verified_rate": "verified rate",
@@ -368,6 +273,20 @@ S = {
         "note": "comparison verdicts come from <code>minder-op benchmark"
                 " compare</code>; improvement claims require a pinned baseline"
                 " comparison, never console activity.",
+    },
+    "engine_confirm": {
+        "title": "switch the engine?",
+        "lead": "this stops one running unit and starts another",
+        "body": "<code>{name}</code> will take the unit now held by the"
+                " active engine. The unit is {unit} and its state is"
+                " {upstream}. Nothing else in the console writes.",
+        "confirm": "switch to {name}",
+        "cancel": "cancel - keep the current engine",
+        "note": "a running unit can take a moment to hand over; the"
+                " engines page shows the new state once it settles.",
+        "unknown": "no engine named <code>{name}</code> in this console,"
+                   " so nothing was switched.",
+        "back": "back to engines",
     },
     "traces": {
         "title": "traces",
@@ -383,6 +302,7 @@ S = {
         "col_tools": "tools", "col_failures": "failures",
         "col_tokens": "tokens", "col_rubric": "rubric",
         "col_evaluator": "evaluator", "clean": "clean",
+        "unit": "stored trace review",
         "empty": "no stored reviews yet - run"
                  " <code>minder-op trace review &lt;session&gt;</code>"
                  " with <code>MINDER_TRACE_REVIEW=on</code>.",
@@ -403,6 +323,7 @@ S = {
         "findings_empty": "no findings - this trace is clean under the active"
                           " evaluators.",
         "summary": "summary", "sum_findings": "findings",
+        "finding_unit": "finding", "feedback_unit": "feedback entry",
         "sum_highest": "highest severity", "sum_by_severity": "by severity",
         "sum_by_evaluator": "by evaluator",
         "sum_tool_calls": "tool calls", "sum_failures": "failures",

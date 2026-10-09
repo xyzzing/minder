@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.traces.title }} <small>{{ S.traces.gloss }}</small></h1>
+{% include "_answer.html" %}
 <p class="note">
   {{ S.traces.note_shown.format(count=counts.reviews) }}
   {{ S.traces.note_confirmed }} {{ counts.confirmed or 0 }} ·
@@ -9,33 +11,36 @@
   {{ S.traces.note_meaning }}
 </p>
 
-<table>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.traces.unit) }}</caption>
   <thead><tr>
-    <th>{{ S.traces.col_reviewed }}</th><th>{{ S.traces.col_session }}</th><th>{{ S.traces.col_severity }}</th><th>{{ S.traces.col_findings }}</th>
-    <th>{{ S.traces.col_tools }}</th><th>{{ S.traces.col_failures }}</th><th>{{ S.traces.col_tokens }}</th><th>{{ S.traces.col_rubric }}</th>
-    <th>{{ S.traces.col_evaluator }}</th>
+    <th scope="col">{{ S.traces.col_reviewed }}</th><th scope="col">{{ S.traces.col_session }}</th><th scope="col">{{ S.traces.col_severity }}</th><th scope="col">{{ S.traces.col_findings }}</th>
+    <th scope="col">{{ S.traces.col_tools }}</th><th scope="col">{{ S.traces.col_failures }}</th><th scope="col">{{ S.traces.col_tokens }}</th><th scope="col">{{ S.traces.col_rubric }}</th>
+    <th scope="col">{{ S.traces.col_evaluator }}</th>
   </tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td>{{ r.ts }}</td>
-      <td><a href="/traces/{{ r.review_id }}"><code>{{ r.session_id }}</code></a>
-        {% if r.status != 'ok' %}<span class="badge badge-candidate">{{ r.status }}</span>{% endif %}
+      <td data-label="{{ S.traces.col_reviewed }}">{{ r.ts | human_date }}</td>
+      <td data-label="{{ S.traces.col_session }}"><a href="/traces/{{ r.review_id }}"><code>{{ r.session_id }}</code></a>
+        {% if r.status != 'ok' %}<span class="badge badge-warn">{{ r.status }}</span>{% endif %}
         <div class="excerpt">{{ r.review_id }} · {{ r.run_id }}</div>
       </td>
-      <td>
-        {% if r.highest_severity in ('blocker', 'high') %}
-          <span class="badge badge-candidate">{{ r.highest_severity }}</span>
+      <td data-label="{{ S.traces.col_severity }}">
+        {# a blocker or high finding is not a neutral state, so it never
+           wears the confirmed-review colour (issue #12) #}
+        {% if r.highest_severity in ('blocker', 'high', 'critical', 'error') %}
+          <span class="badge sev-{{ r.highest_severity }}">{{ r.highest_severity }}</span>
         {% elif r.highest_severity == 'none' %}
-          <span class="badge badge-verified">{{ S.traces.clean }}</span>
+          <span class="badge badge-ok">{{ S.traces.clean }}</span>
         {% else %}<span class="badge">{{ r.highest_severity }}</span>{% endif %}
       </td>
-      <td>{{ r.findings if r.findings is not none else '-' }}</td>
-      <td>{{ r.tool_calls if r.tool_calls is not none else '-' }}</td>
-      <td>{{ r.failures if r.failures is not none else '-' }}</td>
-      <td>{{ '{:,}'.format(r.tokens_total) if r.tokens_total else '-' }}</td>
-      <td>{{ r.rubric_id }}</td>
-      <td class="excerpt">{{ r.evaluator_version }}</td>
+      <td data-label="{{ S.traces.col_findings }}" class="num">{{ r.findings if r.findings is not none else S.common.na }}</td>
+      <td data-label="{{ S.traces.col_tools }}" class="num">{{ r.tool_calls if r.tool_calls is not none else S.common.na }}</td>
+      <td data-label="{{ S.traces.col_failures }}" class="num">{{ r.failures if r.failures is not none else S.common.na }}</td>
+      <td data-label="{{ S.traces.col_tokens }}" class="num">{{ '{:,}'.format(r.tokens_total) if r.tokens_total else S.common.na }}</td>
+      <td data-label="{{ S.traces.col_rubric }}">{{ r.rubric_id }}</td>
+      <td data-label="{{ S.traces.col_evaluator }}" class="excerpt">{{ r.evaluator_version }}</td>
     </tr>
   {% else %}
     <tr><td colspan="9" class="na">{{ S.traces.empty }}</td></tr>
@@ -45,4 +50,7 @@
 <p class="note">
   {{ S.traces.note_readonly }}
 </p>
+{{ raw_tier(['review_id', 'session_id', 'run_id', 'ts_full', 'status',
+             'highest_severity', 'findings', 'tool_calls', 'failures',
+             'tokens_total', 'rubric_id', 'evaluator_version'], rows) }}
 {% endblock %}

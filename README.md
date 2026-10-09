@@ -148,6 +148,12 @@ minder-web --port 8765 --db ~/.local/state/minder/memory.sqlite
 # then open http://127.0.0.1:8765
 ```
 
+Every page leads with one plain-language answer - what the page
+concludes and what to do first - then the tables, then a collapsed
+"raw fields" section with the storage field names and the values exactly
+as stored, so a screen can be checked line by line against the CLI. An
+empty store is stated as empty, never as a zero (issue #12).
+
 The landing page states how current its evidence is, and the
 `/domains` page answers, in plain words, what minder knows about your
 field: the active profile and its budgets, each eval suite with a
@@ -277,7 +283,10 @@ minder-op engine status             # rows: active flag, unit state, health
 minder-op engine switch strata --yes
 ```
 
-The console exposes the same switch at `/engine`. `doctor` reports the
+The console exposes the same switch at `/engine`: the row links to a
+confirm step that names the unit it will stop and the upstream it will
+flip, and the switch itself still needs the POST from that page (issue
+#12). `doctor` reports the
 active engine's health and warns when two engine units run at the same
 time, because they compete for the GPU. `install.sh
 --engine NAME=URL[,UNIT]` (repeatable) plus `--active-engine NAME`

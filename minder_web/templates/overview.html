@@ -17,10 +17,11 @@
     <a href="/?window_hours=24"{% if window_hours == 24 %} class="active"{% endif %}>{{ S.common.day }}</a> ·
     <a href="/?window_hours=168"{% if window_hours == 168 %} class="active"{% endif %}>{{ S.common.week }}</a>
   </span></h2>
+{% include "_answer.html" %}
 {% if verdicts %}
-<ul class="focus">
+<ol class="actions">
   {% for verdict in verdicts %}<li>{{ verdict }}</li>{% endfor %}
-</ul>
+</ol>
 {% else %}
 <p class="ok">{{ S.overview.none_flagged_window.format(window=window_text) }}</p>
 {% endif %}
@@ -38,9 +39,9 @@
   <a href="/capture"><b>&rarr;</b>{{ S.overview.capture_detail }}{% if not capture.ok %} ({{ capture.warnings | length }} {{ S.overview.warnings_suffix }}){% endif %}</a>
 </div>
 {% if not capture.ok %}
-<ul class="focus">
+<ol class="actions">
   {% for warning in capture.warnings[:3] %}<li>{{ warning }}</li>{% endfor %}
-</ul>
+</ol>
 {% endif %}
 {% endif %}
 
@@ -74,7 +75,7 @@
 
 <h2>{{ S.overview.operator_focus }}</h2>
 {% if focus %}
-<ol class="focus">
+<ol class="actions">
   {% for action in focus %}<li><code>{{ action }}</code></li>{% endfor %}
 </ol>
 {% else %}
@@ -86,11 +87,13 @@
 {% endif %}
 
 <h2>{{ S.overview.current_flags }} <small>{{ S.overview.flags_gloss }}</small></h2>
-<table>
-  <thead><tr><th>{{ S.overview.flag }}</th><th>{{ S.overview.value }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.overview.flag_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.overview.flag }}</th><th scope="col">{{ S.overview.value }}</th></tr></thead>
   <tbody>
   {% for flag in flags %}
-    <tr><td>{{ flag.name }}</td><td>{{ flag.value }}</td></tr>
+    <tr><td data-label="{{ S.overview.flag }}">{{ flag.name }}</td>
+        <td data-label="{{ S.overview.value }}">{{ flag.value }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

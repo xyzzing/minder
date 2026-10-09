@@ -1,22 +1,27 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.decisions.title }} <small>{{ S.decisions.gloss }}</small></h1>
-<table>
-  <thead><tr><th>{{ S.decisions.col_id }}</th><th>{{ S.decisions.col_ts }}</th><th>{{ S.decisions.col_contract }}</th><th>{{ S.decisions.col_failure_key }}</th><th>{{ S.decisions.col_model }}</th><th>{{ S.decisions.col_policy }}</th><th>{{ S.decisions.col_override }}</th><th>{{ S.decisions.col_confidence }}</th><th>{{ S.decisions.col_provider }}</th></tr></thead>
+{% include "_answer.html" %}
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.decisions.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.decisions.col_id }}</th><th scope="col">{{ S.decisions.col_ts }}</th><th scope="col">{{ S.decisions.col_contract }}</th><th scope="col">{{ S.decisions.col_failure_key }}</th><th scope="col">{{ S.decisions.col_model }}</th><th scope="col">{{ S.decisions.col_policy }}</th><th scope="col">{{ S.decisions.col_override }}</th><th scope="col">{{ S.decisions.col_confidence }}</th><th scope="col">{{ S.decisions.col_provider }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
-    <tr><td>{{ r.id }}</td><td>{{ r.ts }}</td>
-        <td>{{ r.contract_id }}/{{ r.contract_version }}</td>
-        <td>{{ r.failure_key }}</td>
-        <td>{{ r.model_recommendation or '-' }}</td>
-        <td>{{ r.policy_decision or '-' }}</td>
-        <td>{{ r.override or '-' }}</td>
-        <td>{{ r.confidence }}</td>
-        <td>{{ r.provider }}</td></tr>
+    <tr><td data-label="{{ S.decisions.col_id }}">{{ r.id }}</td>
+        <td data-label="{{ S.decisions.col_ts }}">{{ r.ts | human_date }}</td>
+        <td data-label="{{ S.decisions.col_contract }}">{{ r.contract_id }}/{{ r.contract_version }}</td>
+        <td data-label="{{ S.decisions.col_failure_key }}">{{ r.failure_key }}</td>
+        <td data-label="{{ S.decisions.col_model }}">{{ r.model_recommendation or S.common.na }}</td>
+        <td data-label="{{ S.decisions.col_policy }}">{{ r.policy_decision or S.common.na }}</td>
+        <td data-label="{{ S.decisions.col_override }}">{{ r.override or S.common.na }}</td>
+        <td data-label="{{ S.decisions.col_confidence }}" class="num">{{ r.confidence }}</td>
+        <td data-label="{{ S.decisions.col_provider }}">{{ r.provider }}</td></tr>
   {% else %}
     <tr><td colspan="9" class="na">{{ S.decisions.empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['id', 'ts', 'failure_key', 'model_recommendation', 'policy_decision', 'override', 'confidence'], rows) }}
 <p class="note">{{ S.decisions.note }}</p>
 {% endblock %}

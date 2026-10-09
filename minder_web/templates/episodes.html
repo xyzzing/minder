@@ -1,15 +1,19 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.episodes.title }}</h1>
-<table>
-  <thead><tr><th>{{ S.episodes.col_id }}</th><th>{{ S.episodes.col_opened }}</th><th>{{ S.episodes.col_status }}</th><th>{{ S.episodes.col_repo }}</th><th>{{ S.episodes.col_task }}</th></tr></thead>
+{% include "_answer.html" %}
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.episodes.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.episodes.col_id }}</th><th scope="col">{{ S.episodes.col_opened }}</th><th scope="col">{{ S.episodes.col_status }}</th><th scope="col">{{ S.episodes.col_repo }}</th><th scope="col">{{ S.episodes.col_task }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td><a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a></td>
-      <td>{{ r.opened_at }}</td>
-      <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
-      <td>{{ r.repo }}</td><td>{{ r.task_id }}</td>
+      <td data-label="{{ S.episodes.col_id }}"><a href="/episodes/{{ r.episode_id }}">{{ r.episode_id }}</a></td>
+      <td data-label="{{ S.episodes.col_opened }}">{{ r.opened_at | human_date }}</td>
+      <td data-label="{{ S.episodes.col_status }}"><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+      <td data-label="{{ S.episodes.col_repo }}">{{ r.repo }}</td>
+      <td data-label="{{ S.episodes.col_task }}">{{ r.task_id }}</td>
     </tr>
   {% else %}
     <tr><td colspan="5" class="na">{{ S.episodes.empty }}</td></tr>
@@ -17,4 +21,6 @@
   </tbody>
 </table>
 <p class="note">{{ S.episodes.showing.format(limit=limit) }}</p>
+{{ raw_tier(['episode_id', 'opened_at', 'closed_at', 'repo', 'task_id',
+             'status'], rows) }}
 {% endblock %}

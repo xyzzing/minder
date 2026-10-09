@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ S.engine_confirm.title }}</h1>
+{% if target %}
+<p class="answer answer-warn">
+  <span class="answer-lead">{{ S.engine_confirm.lead }}</span>{{
+    S.engine_confirm.body.format(name=target.name,
+                                 unit=target.unit or S.common.unknown,
+                                 upstream=target.upstream) }}
+</p>
+<table class="kv">
+  <tr><th>{{ S.engine.col_engine }}</th><td>{{ target.name }}</td></tr>
+  <tr><th>{{ S.engine.col_unit }}</th>
+      <td><code>{{ target.unit or S.common.unknown }}</code></td></tr>
+  <tr><th>{{ S.engine.col_unit_state }}</th>
+      <td>{{ target.unit_state or S.common.na }}</td></tr>
+  <tr><th>{{ S.engine.col_upstream }}</th>
+      <td><code>{{ target.upstream }}</code></td></tr>
+  <tr><th>{{ S.engine.col_health }}</th>
+      <td>{{ S.engine.healthy if target.healthy else S.engine.unhealthy }}</td></tr>
+</table>
+<form method="post" action="/engine/switch?engine={{ target.name }}">
+  <button type="submit">{{ S.engine_confirm.confirm.format(name=target.name) }}</button>
+  <a class="cancel" href="/engine">{{ S.engine_confirm.cancel }}</a>
+</form>
+<p class="note">{{ S.engine_confirm.note }}</p>
+{% else %}
+<p class="na">{{ S.engine_confirm.unknown.format(name=engine or S.common.unknown) }}</p>
+<p><a href="/engine">{{ S.engine_confirm.back }}</a></p>
+{% endif %}
+{% endblock %}

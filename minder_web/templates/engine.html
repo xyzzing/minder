@@ -1,26 +1,28 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.engine.title }}</h1>
+{% include "_answer.html" %}
 {% if error %}
 <p class="na">{{ error }}</p>
 {% endif %}
-<table>
-  <thead><tr><th>{{ S.engine.col_engine }}</th><th>{{ S.engine.col_upstream }}</th><th>{{ S.engine.col_unit }}</th><th>{{ S.engine.col_unit_state }}</th><th>{{ S.engine.col_health }}</th><th>{{ S.engine.col_switch }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.engine.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.engine.col_engine }}</th><th scope="col">{{ S.engine.col_upstream }}</th><th scope="col">{{ S.engine.col_unit }}</th><th scope="col">{{ S.engine.col_unit_state }}</th><th scope="col">{{ S.engine.col_health }}</th><th scope="col">{{ S.engine.col_switch }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td>{{ r.name }}{% if r.active %} <strong>{{ S.engine.active }}</strong>{% endif %}</td>
-      <td><code>{{ r.upstream }}</code></td>
-      <td>{{ r.unit or S.common.na }}</td>
-      <td>{{ r.unit_state or S.common.na }}</td>
-      <td>{{ S.engine.healthy if r.healthy else S.engine.unhealthy }}</td>
-      <td>
+      <td data-label="{{ S.engine.col_engine }}">{{ r.name }}{% if r.active %} <strong>{{ S.engine.active }}</strong>{% endif %}</td>
+      <td data-label="{{ S.engine.col_upstream }}"><code>{{ r.upstream }}</code></td>
+      <td data-label="{{ S.engine.col_unit }}">{{ r.unit or S.common.na }}</td>
+      <td data-label="{{ S.engine.col_unit_state }}">{{ r.unit_state or S.common.na }}</td>
+      <td data-label="{{ S.engine.col_health }}">{{ S.engine.healthy if r.healthy else S.engine.unhealthy }}</td>
+      <td data-label="{{ S.engine.col_switch }}">
         {% if r.active %}
           <span class="na">{{ S.engine.current }}</span>
         {% else %}
-          <form method="post" action="/engine/switch?engine={{ r.name }}">
-            <button type="submit">{{ S.engine.switch_to.format(name=r.name) }}</button>
-          </form>
+          <a class="switch" href="/engine/switch?engine={{ r.name }}&confirm=1"
+             title="{{ S.engine.switch_hint }}">{{ S.engine.switch }}</a>
         {% endif %}
       </td>
     </tr>
@@ -29,5 +31,7 @@
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['name', 'active', 'upstream', 'unit', 'unit_state',
+             'healthy'], rows) }}
 <p class="note">{{ S.engine.note }}</p>
 {% endblock %}

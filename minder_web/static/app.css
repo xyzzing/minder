@@ -20,6 +20,12 @@
   /* spacing scale */
   --s1: .25rem; --s2: .5rem; --s3: .75rem; --s4: 1.2rem; --s5: 1.6rem;
   --radius: .25rem;
+  --ring: #2f6feb;
+  /* motion: one curve per intent, so the whole console re-tunes here.
+     Interruptible by design - transitions, never keyframes. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-fast: 120ms; --dur-ui: 180ms;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -31,12 +37,32 @@
     --neutral: #aab4c4; --neutral-bg: #252d3a;
     --header-bg: rgba(20, 24, 31, .78);
     --shadow: rgba(0, 0, 0, .4);
+    --ring: #7aa7ff;
   }
 }
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font: var(--text)/var(--leading) var(--font);
+}
+/* one focus treatment for every control; keyboard-only, so a mouse
+   click does not leave a ring behind */
+:where(a, button, summary, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring); outline-offset: 2px;
+  border-radius: var(--radius);
+}
+.skip {
+  position: absolute; left: var(--s3); top: -3rem; z-index: 60;
+  background: var(--card); color: var(--ink); padding: .4rem .7rem;
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.skip:focus { top: var(--s3); }
+.skip { transition: top var(--dur-fast) var(--ease-out); }
+/* visually hidden but announced: a status word a sighted reader gets
+   from the badge color, a screen reader needs in words */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
 }
 /* header: a translucent floating layer content scrolls under */
 header {
@@ -52,8 +78,9 @@ nav a {
   margin-right: .55rem; color: var(--ink); text-decoration: none;
   border-radius: var(--radius); padding: .1rem .2rem;
 }
-nav a:hover { text-decoration: underline; }
-nav a:active { transform: scale(.96); }
+nav a[aria-current="page"] {
+  background: var(--neutral-bg); font-weight: 600;
+}
 .brand { font-weight: 700; margin-right: .8rem; }
 .navlabel {
   color: var(--muted); font-size: .72rem; margin: 0 .15rem 0 .45rem;
@@ -63,7 +90,6 @@ details.adv summary {
   cursor: pointer; color: var(--ink); list-style: none; user-select: none;
 }
 details.adv summary::-webkit-details-marker { display: none; }
-details.adv summary:hover { text-decoration: underline; }
 details.adv .advmenu {
   position: absolute; top: calc(100% + .4rem); left: 0; z-index: 30;
   display: flex; flex-direction: column; min-width: 7rem;
@@ -72,6 +98,19 @@ details.adv .advmenu {
   box-shadow: 0 4px 14px var(--shadow);
 }
 details.adv .advmenu a { margin: .18rem 0; }
+/* the menu enters from where its trigger is, so the eye keeps the
+   spatial relationship. @starting-style supplies the first painted
+   frame; a transition stays interruptible, a keyframe would not. */
+details.adv[open] .advmenu {
+  opacity: 1; transform: translateY(0);
+  transition: opacity var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+@supports (transition-behavior: allow-discrete) {
+  @starting-style {
+    details.adv[open] .advmenu { opacity: 0; transform: translateY(-.3rem); }
+  }
+}
 .health { color: var(--muted); font-size: .85rem; white-space: nowrap; }
 .wtoggle { font-size: .8rem; color: var(--muted); font-weight: 400; }
 .wtoggle a { color: var(--muted); }
@@ -95,6 +134,11 @@ table {
 }
 th, td { text-align: left; padding: .4rem .6rem; border-top: 1px solid var(--line); }
 thead th { border-top: none; background: var(--neutral-bg); }
+caption {
+  caption-side: top; text-align: left; color: var(--muted);
+  font-size: .78rem; padding: .3rem .6rem;
+}
+.num { font-variant-numeric: tabular-nums; text-align: end; }
 table.kv td:first-child, table.kv th {
   width: 16rem; color: var(--muted); font-weight: 500;
 }
@@ -107,17 +151,59 @@ code { font-family: ui-monospace, monospace; font-size: .85em; background: var(-
   monospace; font-size: .75rem;
 }
 .focus li { margin: .25rem 0; }
+/* the page's short answer, before any table: the conclusion in plain
+   words, with the level carried by color and by the lead's words */
+.answer {
+  margin: .8rem 0 1rem; padding: .55rem .75rem; font-size: .92rem;
+  border-left: 3px solid var(--line); border-radius: var(--radius);
+  background: var(--card);
+}
+.answer-lead {
+  display: block; color: var(--muted); font-size: .74rem;
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: .15rem;
+}
+.answer-warn { border-left-color: var(--cand); background: var(--cand-bg); }
+.answer-ok { border-left-color: var(--ok); background: var(--ok-bg); }
+/* the numbered list of things to act on: a card per action, so the
+   order is legible without reading the whole sentence */
+ol.actions { list-style: none; counter-reset: act; margin: .6rem 0;
+             padding: 0; }
+ol.actions li {
+  counter-increment: act; position: relative; margin: .3rem 0;
+  padding: .45rem .7rem .45rem 2.1rem; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+ol.actions li::before {
+  content: counter(act); position: absolute; left: .6rem;
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+/* the raw-evidence tier: collapsed by default, so the plain table
+   stays the first thing read */
+details.raw { margin: .5rem 0 1rem; }
+details.raw > summary {
+  cursor: pointer; color: var(--muted); font-size: .82rem;
+  font-family: ui-monospace, monospace; list-style: none; padding: .2rem 0;
+}
+details.raw > summary::-webkit-details-marker { display: none; }
+details.raw > summary::before {
+  content: "+"; display: inline-block; width: 1rem; color: var(--muted);
+}
+details.raw[open] > summary::before { content: "-"; }
+details.raw table { margin-top: .4rem; }
+details.raw td code { background: none; padding: 0; }
 .badge {
   display: inline-block; padding: .05rem .5rem; border-radius: 1rem;
   font-size: .78rem; background: var(--neutral-bg); color: var(--neutral);
 }
-.badge-verified, .label-helpful { background: var(--ok-bg); color: var(--ok); }
-.badge-candidate, .label-partial { background: var(--cand-bg); color: var(--cand); }
-.badge-invalidated, .label-harmful { background: var(--bad-bg); color: var(--bad); }
-.badge-open, .badge-unresolved { background: var(--cand-bg); color: var(--cand); }
-.badge-resolved, .label-inconclusive { background: var(--neutral-bg); color: var(--neutral); }
+.badge-ok, .badge-verified, .label-helpful { background: var(--ok-bg); color: var(--ok); }
+.badge-warn, .badge-candidate, .label-partial, .badge-open,
+.badge-unresolved { background: var(--cand-bg); color: var(--cand); }
+.badge-bad, .badge-invalidated, .label-harmful, .sev-high,
+.sev-blocker, .sev-critical, .sev-error { background: var(--bad-bg); color: var(--bad); }
+.badge-neutral, .badge-resolved, .label-inconclusive,
+.badge-risk { background: var(--neutral-bg); color: var(--neutral); }
 .filters {
-  display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+  display: flex; flex-wrap: wrap; gap: .5rem .7rem; align-items: end;
   margin: .8rem 0; padding: .6rem .7rem; background: var(--card);
   border: 1px solid var(--line); font-size: .85rem;
   border-radius: var(--radius);
@@ -126,9 +212,18 @@ code { font-family: ui-monospace, monospace; font-size: .85em; background: var(-
   font: inherit; padding: .25rem .5rem; border: 1px solid var(--line);
   background: var(--card); color: var(--ink); border-radius: var(--radius);
 }
-.filters input[type="search"] { min-width: 16rem; }
-.filters button { cursor: pointer; }
-.filters button:active { transform: scale(.96); }
+.filters label { display: flex; flex-direction: column; gap: .15rem; }
+.filters label span { color: var(--muted); font-size: .74rem; }
+.filters input[type="search"] { min-width: 14rem; }
+.filters button { cursor: pointer; min-height: 2rem; }
+.filters button, .strip a, nav a, details.adv summary,
+details.raw > summary {
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.filters button:active, .strip a:active, nav a:active,
+details.adv summary:active, details.raw > summary:active,
+.switch:active { transform: scale(.97); }
 .warn { background: var(--bad-bg); color: var(--bad); padding: .5rem .7rem;
         border-radius: var(--radius); border: 1px solid var(--bad-bg); }
 .ok { background: var(--ok-bg); color: var(--ok); padding: .5rem .7rem;
@@ -139,18 +234,42 @@ code { font-family: ui-monospace, monospace; font-size: .85em; background: var(-
   border: 1px solid var(--line); border-radius: var(--radius);
   color: var(--ink); text-decoration: none; font-size: .85rem;
 }
-.strip a:hover { border-color: var(--muted); }
 .strip a:active { transform: scale(.97); }
 .strip .stat b { display: block; font-size: 1.05rem; letter-spacing: -.01em; }
 footer {
   max-width: 68rem; margin: 2rem auto; padding: 0 var(--s4);
   color: var(--muted); font-size: .8rem;
 }
+/* narrow screens: a 9-column table is unreadable on a phone, so each
+   row becomes a labelled block and the header nav stacks */
+@media (max-width: 40rem) {
+  header { flex-wrap: wrap; }
+  .filters input[type="search"] { min-width: 0; width: 100%; }
+  table.kv td:first-child, table.kv th { width: 45%; }
+  table.stack thead { display: none; }
+  table.stack, table.stack tbody, table.stack tr, table.stack td {
+    display: block; border: 0;
+  }
+  table.stack caption { border: 1px solid var(--line); border-bottom: 0; }
+  table.stack tr { border: 1px solid var(--line); margin-bottom: .5rem; }
+  table.stack td { padding: .25rem .6rem; border-top: 1px solid var(--line); }
+  table.stack td::before {
+    content: attr(data-label); display: block; color: var(--muted);
+    font-size: .74rem;
+  }
+  table.stack td.num { text-align: left; }
+}
+@media (hover: hover) and (pointer: fine) {
+  nav a:hover, details.adv summary:hover { text-decoration: underline; }
+  .strip a:hover { border-color: var(--muted); }
+}
 /* accessibility: gentler, non-vestibular equivalents; the tokens do
    the adapting, components stay untouched */
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
-  nav a:active, .filters button:active, .strip a:active { transform: none; }
+  nav a:active, .filters button:active, .strip a:active,
+  details.adv summary:active, details.raw > summary:active,
+  .switch:active { transform: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
   header { background: var(--card); backdrop-filter: none;

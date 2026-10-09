@@ -1,38 +1,43 @@
 {% extends "base.html" %}
+{% from "_raw.html" import raw_tier %}
 {% block content %}
 <h1>{{ S.difficulty.title }} <small>{{ S.difficulty.gloss }}</small></h1>
+{% include "_answer.html" %}
 {% if by_label %}
   <p class="note">
     {% for label, n in by_label | dictsort %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}
     &nbsp;·&nbsp; {{ total }} {{ S.difficulty.event_one if total == 1 else S.difficulty.event_many }} {{ S.difficulty.in_ledger }}
   </p>
 {% endif %}
-<table>
-  <thead><tr><th>{{ S.difficulty.col_ts }}</th><th>{{ S.difficulty.col_kind }}</th><th>{{ S.difficulty.col_label }}</th><th>{{ S.difficulty.col_score }}</th>
-      <th>{{ S.difficulty.col_confidence }}</th><th>{{ S.difficulty.col_band }}</th><th>{{ S.difficulty.col_effort }}</th><th>{{ S.difficulty.col_budget }}</th>
-      <th>{{ S.difficulty.col_max_tokens }}</th><th>{{ S.difficulty.col_guardrail }}</th></tr></thead>
+<table class="stack">
+  <caption>{{ S.common.caption.format(unit=S.difficulty.unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.difficulty.col_ts }}</th><th scope="col">{{ S.difficulty.col_kind }}</th><th scope="col">{{ S.difficulty.col_label }}</th><th scope="col">{{ S.difficulty.col_score }}</th>
+      <th scope="col">{{ S.difficulty.col_confidence }}</th><th scope="col">{{ S.difficulty.col_band }}</th><th scope="col">{{ S.difficulty.col_effort }}</th><th scope="col">{{ S.difficulty.col_budget }}</th>
+      <th scope="col">{{ S.difficulty.col_max_tokens }}</th><th scope="col">{{ S.difficulty.col_guardrail }}</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
-      <td class="excerpt">{{ r.ts }}</td>
-      <td>{% if r.event == 'difficulty_shadow' %}
-            <span class="badge badge-resolved">{{ S.difficulty.shadow }}</span>
+      <td data-label="{{ S.difficulty.col_ts }}" class="excerpt">{{ r.ts | human_date }}</td>
+      <td data-label="{{ S.difficulty.col_kind }}">{% if r.event == 'difficulty_shadow' %}
+            <span class="badge badge-neutral">{{ S.difficulty.shadow }}</span>
           {% else %}
-            <span class="badge badge-verified">{{ S.difficulty.routed }}</span>
+            <span class="badge badge-ok">{{ S.difficulty.routed }}</span>
           {% endif %}</td>
-      <td><span class="badge">{{ r.label or '-' }}</span></td>
-      <td>{{ '%.2f' | format(r.score) if r.score is not none else '-' }}</td>
-      <td>{{ '%.2f' | format(r.confidence) if r.confidence is not none else '-' }}</td>
-      <td>{{ r.band or '-' }}</td>
-      <td>{{ r.effort or '-' }}</td>
-      <td>{{ r.budget if r.budget is not none else '-' }}</td>
-      <td>{{ r.max_tokens if r.max_tokens is not none else '-' }}</td>
-      <td>{{ r.guardrail or '-' }}</td>
+      <td data-label="{{ S.difficulty.col_label }}"><span class="badge">{{ r.label or S.common.unknown }}</span></td>
+      <td data-label="{{ S.difficulty.col_score }}" class="num">{{ '%.2f' | format(r.score) if r.score is not none else S.common.na }}</td>
+      <td data-label="{{ S.difficulty.col_confidence }}" class="num">{{ '%.2f' | format(r.confidence) if r.confidence is not none else S.common.na }}</td>
+      <td data-label="{{ S.difficulty.col_band }}">{{ r.band or S.common.na }}</td>
+      <td data-label="{{ S.difficulty.col_effort }}">{{ r.effort or S.common.na }}</td>
+      <td data-label="{{ S.difficulty.col_budget }}" class="num">{{ r.budget if r.budget is not none else S.common.na }}</td>
+      <td data-label="{{ S.difficulty.col_max_tokens }}" class="num">{{ r.max_tokens if r.max_tokens is not none else S.common.na }}</td>
+      <td data-label="{{ S.difficulty.col_guardrail }}">{{ r.guardrail or S.common.na }}</td>
     </tr>
   {% else %}
     <tr><td colspan="10" class="na">{{ S.difficulty.empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
+{{ raw_tier(['ts', 'event', 'label', 'score', 'confidence', 'band', 'effort',
+             'budget', 'max_tokens', 'guardrail'], rows) }}
 <p class="note">{{ S.difficulty.note }}</p>
 {% endblock %}
