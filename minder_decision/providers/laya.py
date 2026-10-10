@@ -302,6 +302,11 @@ def _try_modern():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             agent = laya.Agent(path, device=device)
-        return LayaSystemOneClient(agent, source=repo)
+        client = LayaSystemOneClient(agent, source=repo)
+        # the laya-studio specialization seam (issue #34): difficulty
+        # from the bundle when MINDER_LAYA_SPECIALIZATION is set and it
+        # loads; base head otherwise or on any failure
+        from .laya_spec import try_specialized
+        return try_specialized(client, device)
     except Exception:
         return None
