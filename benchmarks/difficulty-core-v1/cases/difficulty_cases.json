@@ -538,15 +538,15 @@
     },
     {
       "id": "dc042",
-      "class": "core_routine",
+      "class": "core_mechanical",
       "description": "improve an error message with context",
       "state": {
         "task": "When migrate fails in db.py the error says 'migration failed'. Include the migration filename and the underlying exception text so operators can tell which step broke.",
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
@@ -642,15 +642,15 @@
     },
     {
       "id": "dc050",
-      "class": "core_routine",
+      "class": "core_mechanical",
       "description": "small performance fix with a clear target",
       "state": {
         "task": "render_table builds the whole string with += in a loop. Use a list join instead; the table can be thousands of rows and this shows in profiles.",
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
@@ -928,15 +928,15 @@
     },
     {
       "id": "dc072",
-      "class": "core_complex",
+      "class": "core_routine",
       "description": "replace the ad-hoc CLI parser",
       "state": {
         "task": "cli.py hand-rolls argv parsing in _dispatch with string equality chains. Move to a real parser while keeping every existing command, flag, exit code, and the usage text contract that tests pin.",
         "turn": 1
       },
       "gold": {
-        "label": "complex",
-        "score": 2
+        "label": "routine",
+        "score": 1
       }
     },
     {
@@ -1247,8 +1247,8 @@
         "turn": 1
       },
       "gold": {
-        "label": "complex",
-        "score": 2
+        "label": "routine",
+        "score": 1
       }
     },
     {
@@ -1598,8 +1598,8 @@
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
@@ -1663,8 +1663,8 @@
         "turn": 3
       },
       "gold": {
-        "label": "complex",
-        "score": 2
+        "label": "routine",
+        "score": 1
       }
     },
     {
@@ -1676,8 +1676,8 @@
         "turn": 6
       },
       "gold": {
-        "label": "complex",
-        "score": 2
+        "label": "routine",
+        "score": 1
       }
     },
     {
@@ -1767,8 +1767,8 @@
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
@@ -1793,8 +1793,8 @@
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
@@ -1864,15 +1864,15 @@
     },
     {
       "id": "dc144",
-      "class": "core_routine",
+      "class": "core_mechanical",
       "description": "enforce a style rule locally",
       "state": {
         "task": "Every public function in minder_op should have a docstring. Add the missing ones in cli.py, one line each, describing what the command does.",
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
@@ -1916,15 +1916,15 @@
     },
     {
       "id": "dc148",
-      "class": "core_routine",
+      "class": "core_mechanical",
       "description": "extract a magic threshold",
       "state": {
         "task": "The 0.7 confidence floor appears as a literal in three places. Move it to one named constant module and reference it everywhere (the tests pin the value).",
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
@@ -1955,28 +1955,28 @@
     },
     {
       "id": "dc151",
-      "class": "core_routine",
+      "class": "core_mechanical",
       "description": "dedupe a fixture helper",
       "state": {
         "task": "Three test files copy the same _seed_store helper. Move it into tests/webseed.py and import it from all three.",
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
       "id": "dc152",
-      "class": "core_routine",
+      "class": "core_mechanical",
       "description": "add a progress indicator to a long CLI run",
       "state": {
         "task": "minder-op benchmark run is silent for minutes. Print per-case progress to stderr as [n/total], leaving stdout for the report.",
         "turn": 1
       },
       "gold": {
-        "label": "routine",
-        "score": 1
+        "label": "mechanical",
+        "score": 0
       }
     },
     {
@@ -2378,8 +2378,8 @@
         "turn": 1
       },
       "gold": {
-        "label": "mechanical",
-        "score": 0
+        "label": "routine",
+        "score": 1
       }
     },
     {

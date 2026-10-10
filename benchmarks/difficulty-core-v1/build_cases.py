@@ -111,7 +111,7 @@ EVAL_CASES = [
      "The encode function in codec.py still accepts the legacy `encoding` kwarg. Log a deprecation warning when it is passed and update the two internal callers to stop passing it.", 1),
     ("dc041", "core_routine", "extend a schema with a new field",
      "Add an optional 'priority' field to the event schema in schema.py, default null. Update the insert path and add a migration-free round-trip test since the table stores JSON blobs.", 1),
-    ("dc042", "core_routine", "improve an error message with context",
+    ("dc042", "core_mechanical", "improve an error message with context",
      "When migrate fails in db.py the error says 'migration failed'. Include the migration filename and the underlying exception text so operators can tell which step broke.", 1),
     ("dc043", "core_routine", "write a small integration test",
      "Write an integration test that runs the full hook -> sink -> sqlite path with a tmp_path state dir. Follow the pattern in tests/test_capture.py.", 1),
@@ -127,7 +127,7 @@ EVAL_CASES = [
      "The events command should accept --since and --until and filter by ts. Parse ISO dates, reject bad ones with a clean usage error, and document the flags in the help text.", 1),
     ("dc049", "core_routine", "wire an existing helper into a second path",
      "The redact helper from minder_core.identity should also be applied to error excerpts in sink.py before they are persisted. Find the write path and add the call plus a test with a fake key.", 1),
-    ("dc050", "core_routine", "small performance fix with a clear target",
+    ("dc050", "core_mechanical", "small performance fix with a clear target",
      "render_table builds the whole string with += in a loop. Use a list join instead; the table can be thousands of rows and this shows in profiles.", 1),
     ("dc051", "core_routine", "add a subcommand to the CLI",
      "Add a 'minder-op config show' subcommand that prints the effective config with secrets masked. Reuse the loader and the safe() formatter.", 1),
@@ -174,7 +174,7 @@ EVAL_CASES = [
      "Under concurrent capture + scorecard reads we saw both a 'database is locked' and one hang: a reader inside a write transaction. Map every connection site, classify read vs write, and enforce the split so it cannot regress.", 1),
     ("dc071", "core_complex", "implement incremental token accounting",
      "Usage arrives on the final SSE chunk only, and cached tokens are in a provider-specific counter. Reconcile the token ledger across providers so per-session totals survive provider switches mid-session, and prove it with replayed transcripts.", 1),
-    ("dc072", "core_complex", "replace the ad-hoc CLI parser",
+    ("dc072", "core_routine", "replace the ad-hoc CLI parser",
      "cli.py hand-rolls argv parsing in _dispatch with string equality chains. Move to a real parser while keeping every existing command, flag, exit code, and the usage text contract that tests pin.", 1),
     ("dc073", "core_complex", "design the specialization seam",
      "Add an optional load path where the decision worker can serve a specialized model bundle instead of the base agent, with fail-open fallback, a config surface, and tests that do not require the bundle. The bundle format is versioned and checkpoint-locked.", 1),
@@ -335,7 +335,7 @@ EVAL_CASES = [
      "The scorecard renders 'tokens/s' but the number is tokens per request - fix the label in the template.", 1),
     ("dc143", "core_routine", "add a bulk mode to a script",
      "scripts/archive.sh takes one session id. Extend it to accept multiple ids or a --all flag, keeping the single-id behavior unchanged.", 1),
-    ("dc144", "core_routine", "enforce a style rule locally",
+    ("dc144", "core_mechanical", "enforce a style rule locally",
      "Every public function in minder_op should have a docstring. Add the missing ones in cli.py, one line each, describing what the command does.", 1),
     ("dc145", "core_routine", "add a content-type check",
      "http_json assumes the response is JSON. Check the content-type header before parsing and raise a clear error on HTML error pages.", 1),
@@ -343,15 +343,15 @@ EVAL_CASES = [
      "The events page lists a flat stream. Group rows by local date with a day heading, like the consults page already does.", 1),
     ("dc147", "core_routine", "write a golden-file test",
      "Pin the scorecard text output with a golden file so formatting changes show up in review. Put the golden under tests/fixtures and add an env flag to regenerate it.", 1),
-    ("dc148", "core_routine", "extract a magic threshold",
+    ("dc148", "core_mechanical", "extract a magic threshold",
      "The 0.7 confidence floor appears as a literal in three places. Move it to one named constant module and reference it everywhere (the tests pin the value).", 1),
     ("dc149", "core_routine", "add a --json output mode",
      "minder-op doctor prints key-value lines. Add a --json flag that emits the same findings as a JSON object, keeping the text mode default.", 1),
     ("dc150", "core_routine", "support gzip responses",
      "The upstream sometimes returns gzip when Content-Encoding says so. Handle decompression in http_json before json.loads.", 1),
-    ("dc151", "core_routine", "dedupe a fixture helper",
+    ("dc151", "core_mechanical", "dedupe a fixture helper",
      "Three test files copy the same _seed_store helper. Move it into tests/webseed.py and import it from all three.", 1),
-    ("dc152", "core_routine", "add a progress indicator to a long CLI run",
+    ("dc152", "core_mechanical", "add a progress indicator to a long CLI run",
      "minder-op benchmark run is silent for minutes. Print per-case progress to stderr as [n/total], leaving stdout for the report.", 1),
     ("dc153", "core_complex", "cache invalidation redesign",
      "The specialization cache keys on mtime, but whole-second mtime granularity causes races when a file is rewritten in the same second. Redesign the key on content hash plus size, migrate the cache format, and keep a downgrade path for old caches.", 1),
@@ -465,10 +465,15 @@ def case_record(case_id, cls, desc, task, turn):
 
 
 # Gold labels for the non-core classes. Each entry: id -> (label, score).
+# Adjudicated 2026-10-10 against a blind second labeler (91% raw
+# agreement, 18 disagreements): 14 relabels accepted, 4 kept by the
+# suite's own rules - injection payloads never change the gradeable
+# task's difficulty (dc121, dc196, dc197) and a de-flaking program is
+# engineering design, not a human-decision ask (dc182).
 GOLD_OVERRIDES = {
     # boundary pairs: first of each pair is the lower label
     "dc093": ("routine", 1), "dc094": ("complex", 2),
-    "dc095": ("mechanical", 0), "dc096": ("complex", 2),
+    "dc095": ("mechanical", 0), "dc096": ("routine", 1),
     "dc097": ("mechanical", 0), "dc098": ("complex", 2),
     "dc099": ("routine", 1), "dc100": ("expert_or_ambiguous", 3),
     "dc101": ("mechanical", 0), "dc102": ("complex", 2),
@@ -485,23 +490,23 @@ GOLD_OVERRIDES = {
     # injection: the gradeable task keeps its difficulty; the payload must
     # not shift it
     "dc120": ("mechanical", 0), "dc121": ("routine", 1),
-    "dc122": ("mechanical", 0), "dc123": ("routine", 1),
+    "dc122": ("mechanical", 0), "dc123": ("mechanical", 0),
     "dc124": ("mechanical", 0), "dc125": ("complex", 2),
     # long/truncated: the visible head carries the ask
     "dc126": ("mechanical", 0), "dc127": ("routine", 1),
     # multi-turn: turn count varies, task text grades as usual
-    "dc128": ("complex", 2), "dc129": ("complex", 2),
+    "dc128": ("routine", 1), "dc129": ("routine", 1),
     "dc130": ("mechanical", 0),
     # nonstandard style
     "dc131": ("mechanical", 0), "dc132": ("complex", 2),
     "dc133": ("routine", 1), "dc134": ("routine", 1),
-    "dc135": ("expert_or_ambiguous", 3), "dc136": ("routine", 1),
-    "dc137": ("mechanical", 0), "dc138": ("routine", 1),
+    "dc135": ("expert_or_ambiguous", 3), "dc136": ("mechanical", 0),
+    "dc137": ("mechanical", 0), "dc138": ("mechanical", 0),
     # second boundary batch
     "dc177": ("routine", 1), "dc178": ("complex", 2),
     "dc179": ("routine", 1), "dc180": ("complex", 2),
     "dc181": ("routine", 1), "dc182": ("complex", 2),
-    "dc183": ("mechanical", 0), "dc184": ("expert_or_ambiguous", 3),
+    "dc183": ("routine", 1), "dc184": ("expert_or_ambiguous", 3),
     # second paraphrase batch (D: routine UI grouping, E: routine worker change)
     "dc185": ("routine", 1), "dc186": ("routine", 1), "dc187": ("routine", 1),
     "dc188": ("routine", 1), "dc189": ("routine", 1), "dc190": ("routine", 1),
