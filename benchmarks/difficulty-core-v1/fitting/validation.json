@@ -1,0 +1,436 @@
+{
+ "examples": [
+  {
+   "id": "dv001",
+   "input": "task=Fix the typo 'verison' in the settings help text.; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv002",
+   "input": "task=Bump the min python version in pyproject from 3.10 to 3.11.; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv003",
+   "input": "task=Remove the stray semicolon at the end of the import block in api.ts.; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv004",
+   "input": "task=Update the docs URL in the footer template.; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv005",
+   "input": "task=Add 'coverage html' to the make test target.; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv006",
+   "input": "task=The example config still says port 3000, ours is 4000 - fix it.; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv007",
+   "input": "task=Rename the MISSPELED constant and its references in one file.; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv008",
+   "input": "task=Fix the broken anchor link in the readme (#contribute -> #contributing).; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv009",
+   "input": "task=Delete the unused CSS import at the top of the page component.; turn=1",
+   "label": "mechanical",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv010",
+   "input": "task=Add input validation to the form handler: reject empty titles, trim whitespace, cap length at 200.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv011",
+   "input": "task=Write pytest coverage for the date parser including timezone edges.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv012",
+   "input": "task=Add a retry with backoff around the webhook POST, 3 attempts.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv013",
+   "input": "task=Extract the repeated user-lookup snippet in three handlers into one helper.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv014",
+   "input": "task=Support a --format json flag on the stats command alongside the text output.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv015",
+   "input": "task=Include the request id in access log lines, matching the format the other services use.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv016",
+   "input": "task=Make the import script idempotent so a re-run updates instead of duplicating.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv017",
+   "input": "task=Add pagination to the audit log view, 50 per page, keeping filters applied.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv018",
+   "input": "task=Normalize file paths to forward slashes on read so windows artifacts compare equal.; turn=1",
+   "label": "routine",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv019",
+   "input": "task=Chasing an intermittent deadlock between capture and classification threads; map every lock site and break the cycle.; turn=1",
+   "label": "complex",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv020",
+   "input": "task=Design and implement the migration that splits the json payload column into typed columns with a resumable backfill over millions of rows.; turn=1",
+   "label": "complex",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv021",
+   "input": "task=The connection count explodes under parallel hooks; introduce pooling with write serialization that cooperates with WAL.; turn=1",
+   "label": "complex",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv022",
+   "input": "task=Protocol change: add a version field with a compatibility window, migrate the client first, keep old tests passing until cutover.; turn=1",
+   "label": "complex",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv023",
+   "input": "task=p95 hook latency is 3x budget on large tool responses; profile end to end and fix the top cost without losing events.; turn=1",
+   "label": "complex",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv024",
+   "input": "task=Build the consistency checker between the two write paths, preserving the stale vs missing distinction on every surface.; turn=1",
+   "label": "complex",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv025",
+   "input": "task=The parser diverges across runtime versions on dict ordering; make the behavior explicit and tested on all supported versions.; turn=1",
+   "label": "complex",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv026",
+   "input": "task=Instrument the unreproducible spawn hang across its stages so the next occurrence self-reports.; turn=1",
+   "label": "complex",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv027",
+   "input": "task=Decide what the retention policy should be across episodes, lessons, and raw traces; deletion is forever.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv028",
+   "input": "task=Is a declined plan review a loop failure or an operator decision? Define the taxonomy and its consequences for every consumer.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv029",
+   "input": "task=Write the policy: which model outputs may act without a deterministic gate, per action and threshold.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv030",
+   "input": "task=We have no utilization data for the co-hosting idea; design the measurement plan and the rule that decides if it paid off.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv031",
+   "input": "task=The two quality metrics disagree about the comparator. Decide what 'tested' means here.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv032",
+   "input": "task=Scope it: rewrite config layering on a spec, or pin the current order with tests and documentation. Own the reasoning.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv033",
+   "input": "task=A tiny library would replace our socket framing but breaks the zero-dependency rule. Argue both sides against the rule's why.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv034",
+   "input": "task=Define done for lesson injection, measurably, with the evidence that would kill the feature.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv035",
+   "input": "task=console says 100% capture, scorecard says the floor failed - work out which number is wrong and how to say so plainly.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  },
+  {
+   "id": "dv036",
+   "input": "task=Budget for one: engine routing or consolidation. One page each, then pick.; turn=1",
+   "label": "expert_or_ambiguous",
+   "split": "validation",
+   "task_name": "minder-difficulty",
+   "domain": "coding-agent task routing",
+   "tags": [
+    "agent_draft",
+    "difficulty-core-v1"
+   ]
+  }
+ ]
+}
