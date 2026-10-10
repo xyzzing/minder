@@ -88,6 +88,17 @@ commit hash behind it; the instruction gate checks the hash exists.
   The check queries the *proxy* unit, not the engine's: an engine unit is
   a server that listens on a port and declares no upstream.
   (`minder_op/unit_upstream.py`.) (dd34ed2)
+- On an install that has an `engines` key in `minder.json`, that
+  drop-in's `MINDER_UPSTREAM` does **not** decide where the proxy sends
+  requests: `proxy.py:refresh_upstream` re-resolves the upstream from
+  `active_engine` on every request once the config stamp changes, and
+  `minder.py:engine_registry` reads `MINDER_UPSTREAM` only when the
+  `engines` key is absent. So the drop-in's real power is over a *fresh*
+  install - the CAP probe and therefore `model_caps.json` before any
+  registry exists - and over making `systemctl --user cat` state something
+  false about a running proxy. Read the registry to answer "which engine
+  is live"; read the unit only to answer "what will a re-install probe".
+  (dd34ed2)
 - The Strata upstream serves one sequence at a time (FIFO), so
   concurrent minder-routed requests queue behind each other, and its
   tuning tooling stops the server mid-run - honest 502s from the proxy

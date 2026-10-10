@@ -206,6 +206,14 @@ so the proxy takes it from its own environment and the registry value is
 unverified. The query targets the proxy unit, not the engine's: an engine
 unit is a server listening on a port and declares no upstream.
 
+Which source decides the upstream depends on whether you have a registry.
+With an `engines` key in `minder.json`, the proxy re-resolves the upstream
+from `active_engine` while it runs - a switch needs no restart - and the
+unit's `MINDER_UPSTREAM` is used only when that key is absent. So the
+drop-in's real influence is over a fresh install, where it sets what CAP
+probes and therefore what `model_caps.json` describes, and over what
+`systemctl --user cat` claims about a running proxy.
+
 Related, from the same cause: `install.sh` always writes the base unit's
 `MINDER_UPSTREAM` from its own `--upstream`/env value or the
 `http://127.0.0.1:8080` default, and systemd applies a drop-in after that
