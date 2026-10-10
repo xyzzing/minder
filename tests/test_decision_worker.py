@@ -21,6 +21,12 @@ from minder_decision.contracts import task_difficulty_contract
 from minder_decision.difficulty import resolve_difficulty
 from minder_decision import worker as worker_mod
 
+# getattr, not a module-level import: the proven-red gate runs this file
+# against pre-change code, and a missing module there would error out the
+# whole file at import and hide which assertion catches the bug.
+log_stamp = getattr(__import__("minder_decision", fromlist=["log_stamp"]),
+                    "log_stamp", None)
+
 CFG = {"laya_min_confidence": 0.7}
 
 
@@ -326,3 +332,51 @@ def test_worker_error_reaches_the_client_log(tmp_path):
         "the worker's ok:false answer left no client-side record")
     assert "unsupported protocol version" in log, (
         "the worker's own error text never reached the client log")
+
+
+# ---------------------------------------------------------------------------
+# the worker log's own format (issue #32)
+# ---------------------------------------------------------------------------
+
+def test_client_failures_are_stamped_and_the_stamp_reads_back(tmp_path):
+    assert log_stamp is not None
+    """The log is the worker's only trace, and an undated trace is not
+    evidence: `doctor` cannot tell a failure happening now from one fixed
+    days ago. So every line the client writes carries a stamp, and the
+    stamp has to be readable back as a time."""
+    sock = tmp_path / "laya-worker.sock"
+    worker_mod._client_fail(sock, "spawn_failed", "no worker after spawn")
+    entry = log_stamp.latest_log_line(sock)
+    assert entry is not None
+    line, ts, stamped = entry
+    assert stamped is True
+    assert line.startswith(log_stamp.stamp().split(" ")[0])
+    assert "spawn_failed" in line
+    now = time.time()
+    assert ts <= now < ts + 60
+
+
+def test_an_unstamped_line_reports_the_file_mtime_as_a_floor(tmp_path):
+    assert log_stamp is not None
+    """Logs written before stamps existed still have to be reportable:
+    the age comes from the file's mtime and the caller is told it is not a
+    measurement, so it can say "at least" instead of a false precision."""
+    log = tmp_path / "laya-worker.log"
+    log.write_text("minder-decision-worker: request error: "
+                   "ValueError('unsupported protocol version')\n")
+    old = time.time() - 7200
+    os.utime(log, ns=(int(old * 1e9), int(old * 1e9)))
+    entry = log_stamp.latest_log_line(log.with_name("laya-worker.sock"))
+    assert entry is not None
+    line, ts, stamped = entry
+    assert stamped is False
+    assert ts == pytest.approx(old, abs=2)
+    assert "unsupported protocol version" in line
+    assert log_stamp.parse_stamp(line) is None
+
+
+def test_liveness_is_a_dial_and_never_raises(tmp_path):
+    assert log_stamp is not None
+    """The health check must not crash over a socket error, and absence is
+    an answer rather than an exception."""
+    assert log_stamp.worker_liveness(tmp_path / "absent.sock") is False

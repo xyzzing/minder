@@ -21,13 +21,16 @@ commit hash behind it; the instruction gate checks the hash exists.
   process imported. Re-staging the share does not replace a worker
   already listening on the socket - restart the proxy service and the
   next spawn picks up the new code. (e8e4d06)
-- `doctor`'s `laya-worker` check reads the last non-empty line of
-  `laya-worker.log`, and that log is append-only with no timestamp. A
-  fixed defect still warns forever until the log rolls (the worker
-  rotates it at 1 MB, or an operator can move it aside). Confirm with a
-  direct client call - `WorkerDifficultyClient().system_one({...})` -
-  and treat a warn whose line predates the fix as stale evidence, not a
-  live failure. (#28)
+- `doctor`'s `laya-worker` check never infers liveness from
+  `laya-worker.log`. The log is append-only and rotates only at 1 MB, so
+  its tail is evidence about the moment a line was written, not about
+  whether a worker is up: reading it that way made a live, answering
+  worker warn off a `spawn_failed` from before the fix. Liveness is a dial
+  (`minder_decision/log_stamp.py:worker_liveness`); the log names the last
+  failure and its age, with client-side lines stamped ISO-8601 UTC and an
+  unstamped line reporting the file's mtime as a floor ("at least"). A
+  worker that is not up and has never failed is `info`, not a finding.
+  (`minder_op/worker.py`.) (ab42a08)
 - `difficulty_skipped reason=client_effort` on every request is the
   approved precedence working, not the router being broken: the dsh
   profile declares `reasoningEfforts` for `qwen-auto`, so the client
@@ -182,9 +185,12 @@ commit hash behind it; the instruction gate checks the hash exists.
   inside the request path cannot be surfaced any other way: it is
   fail-open by design. One line per distinct reason per process, so a
   broken worker cannot fill the state dir. `doctor`'s `laya-worker` check
-  reads it, which is how a stale protocol-version error from an
-  un-restarted worker became visible without touching the request path.
-  (#28)
+  reads it for the reason only, which is how a stale protocol-version error
+  from an un-restarted worker became visible without touching the request
+  path. Every line it writes carries a UTC stamp (`log_stamp.stamp()`), so
+  the reason can be dated; the file's own rotation and the once-per-process
+  rule mean an old line survives, which is what made an undated tail
+  untrustworthy. (#28)
 - The harness prefixes an operator decline with `Error: ` — a dismissed
   plan review arrives as `Error: The user dismissed the plan review to
   speak instead`. Any consumer of the shared `error:` fail sign therefore

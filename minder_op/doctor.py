@@ -20,7 +20,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from minder_op import benchmark as bench
+from minder_op.ages import age_text as _age_text
 from minder_op import queries, router
+from minder_op.worker import worker_check
 from minder_op.queries import DBError
 
 FLAG_VOCAB = {
@@ -45,14 +47,6 @@ def _latest_schema():
     ships."""
     from minder_op import schema as schema_mod
     return schema_mod.latest_version()
-
-
-def _age_text(secs):
-    if secs < 90:
-        return f"{int(secs)}s"
-    if secs < 48 * 3600:
-        return f"{int(secs // 3600)}h"
-    return f"{int(secs // 86400)}d"
 
 
 def _parse_ts(text):
@@ -80,7 +74,7 @@ def _probe_proxy(port):
 
 
 def run_checks(db_path, probe=True, now=None, proxy_config=None,
-               events_ledger=None):
+               events_ledger=None, probe_worker=None):
     """Returns {"healthy": bool, "checks": [{id, status, detail}], ...}.
     Never raises on a missing/corrupt store - that's a `fail` finding,
     not a crash."""
@@ -339,31 +333,12 @@ def run_checks(db_path, probe=True, now=None, proxy_config=None,
     except Exception as exc:  # never let a health check crash doctor
         add("engine", "info", f"engine registry unavailable: {exc}")
 
-    # The isolated laya decision worker (issue #7). It is spawn-on-demand
-    # and exits when idle, so "no socket" is normal here — what is never
-    # normal is a worker that answered and failed, and only its log says
-    # so. Without this line the router's silence looked like a config
-    # problem (issue #28 diagnosed exactly that).
+    # The isolated laya decision worker (issue #7), judged in
+    # minder_op/worker.py: the log tail alone is not evidence of whether a
+    # worker is up (issue #32), and without this line the router's silence
+    # looked like a config problem (issue #28 diagnosed exactly that).
     try:
-        from minder_decision import worker as worker_mod
-        sock = worker_mod.socket_path()
-        log = sock.with_name("laya-worker.log")
-        reason = ""
-        if log.is_file():
-            lines = [ln for ln in log.read_text(errors="replace").splitlines()
-                     if ln.strip()]
-            if lines:
-                reason = lines[-1]
-        if reason:
-            add("laya-worker", "warn",
-                f"{sock.name} log: {reason[:160]} - the decision router "
-                "is failing open; see docs/operator-cli.md")
-        elif sock.is_file():
-            add("laya-worker", "ok", f"worker answering at {sock}")
-        else:
-            add("laya-worker", "info",
-                f"no live worker at {sock} (spawn-on-demand; the first "
-                "router-eligible request starts it)")
+        add(*worker_check(now, probe_worker))
     except Exception as exc:  # never let a health check crash doctor
         add("laya-worker", "info", f"worker state unavailable: {exc}")
 

@@ -26,6 +26,8 @@ Env knobs:
 """
 import itertools
 import json
+
+from . import log_stamp
 import os
 import socket
 import subprocess
@@ -213,6 +215,7 @@ def _client_fail(path, reason, detail=""):
     line = f"minder-decision-worker-client: {reason}"
     if detail:
         line += f": {detail}"
+    line = log_stamp.stamp() + line
     if _CLIENT_LOGGED.get(reason):
         return
     _CLIENT_LOGGED[reason] = True

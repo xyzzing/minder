@@ -5,6 +5,19 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **`doctor`'s `laya-worker` line stopped reading the log tail as evidence
+  of liveness (issue #32).** A healthy install warned: `spawn_failed: no
+  worker after spawn`, while a worker was alive on that socket and
+  answering a direct call. The check took the last non-empty line of
+  `laya-worker.log` as the worker's state, and that log is append-only and
+  rotates only at 1 MB, so a defect fixed days ago kept warning. Liveness
+  is now a dial of the socket; the log only names the last failure and says
+  how old it is. Client-side failure lines carry an ISO-8601 UTC stamp
+  (`minder_decision/log_stamp.py`), and a line written before stamps
+  existed reports the file's mtime with "at least" rather than a false
+  precision. A worker that is not up and has never failed is `info`, not a
+  finding: the worker is spawn-on-demand and exits when idle.
+
 - **The difficulty router has a mode that can beat the client's effort
   (issue #7).** `difficulty_router` takes a fifth value, `laya`: the
   worker's band replaces a client-declared `reasoning_effort`, but only

@@ -145,18 +145,22 @@ number was measured at all.
 An unreadable store gives `db_measured: false` and no count, never a 0,
 because 0 is the value that fails the floor and sends you to fix hooks
 that are working.
-- The `laya-worker` line reports the isolated decision worker (issue
-#7): `ok` when a worker is answering on its socket, `info` when none
-is live (it spawns on the first router-eligible request), and `warn`
-with the last recorded failure when the client-side log holds one —
-that last case means the difficulty router is failing open, so
-`difficulty_router` is costing nothing but achieving nothing either.
-The log has no timestamps and rolls only at 1 MB, so a `warn` can name
-a defect that is already fixed: confirm with a direct call before
-acting, and move the log aside (`mv ~/.local/state/minder/laya-worker.log
-{,.old}`) to clear the evidence. The worker is spawned by the proxy, so
-it runs the staged share the proxy imported — after `install.sh`, restart
-the proxy service or an already-listening worker keeps the old code.
+- The `laya-worker` line reports the isolated decision worker (issues
+#7, #32). `ok` means a dial of the socket connected, which is the only
+statement the check can make about liveness. `info` means nothing is up
+and nothing has failed: the worker spawns on the first router-eligible
+request and exits when idle, so an idle install is normal. `warn` means
+nothing is up and the log holds a failure, and the line names both the
+failure and its age (`last failure ... 2h ago`), because the log is
+append-only and rolls only at 1 MB. Lines older than 6h are additionally
+marked `stale evidence, a fixed defect keeps this line`. Client-side
+failures carry an ISO-8601 UTC stamp; a line written before stamps
+existed reports the log file's mtime and says `at least`, so the age is
+never more precise than the evidence. Move the log aside
+(`mv ~/.local/state/minder/laya-worker.log {,.old}`) to clear old
+evidence. The worker is spawned by the proxy, so it runs the staged share
+the proxy imported — after `install.sh`, restart the proxy service or an
+already-listening worker keeps the old code.
 - The router's own modes (`~/.config/minder/minder.json`,
 `difficulty_router`): `shadow` consults and records without acting,
 `active` may move effort in either direction, `lower` consults and

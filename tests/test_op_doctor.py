@@ -5,6 +5,7 @@ dial a real network service — the one probe test dials a closed
 loopback port). Staleness is deterministic via now= injection.
 """
 import json
+import os
 import time
 
 from minder_memory import db as _db
@@ -311,3 +312,76 @@ def test_difficulty_router_off_is_informational(tmp_path, monkeypatch):
                            [{"event": "difficulty_skipped"}])
     assert check["status"] == "info"
     assert "laya" in check["detail"]
+
+
+# --- laya decision worker check (issue #32) ---------------------------
+
+def _worker_report(tmp_path, monkeypatch, *, sock=True, log_lines=None,
+                   log_age=None, live=None):
+    """Run doctor with the worker's socket/log pointed at tmp_path and the
+    liveness probe replaced by a fixed answer. The probe is the check's
+    only evidence about whether the worker is up, so the test states it
+    rather than dialing a socket."""
+    dbp = _mig(tmp_path)
+    sock_path = tmp_path / "laya-worker.sock"
+    if sock:
+        sock_path.write_text("")
+    log = tmp_path / "laya-worker.log"
+    if log_lines:
+        log.write_text("\n".join(log_lines) + "\n")
+        if log_age is not None:
+            st = log.stat()
+            age_ns = int(log_age * 1_000_000_000)
+            os.utime(log, ns=(st.st_atime_ns - age_ns, st.st_mtime_ns - age_ns))
+    monkeypatch.setenv("MINDER_LAYA_WORKER_SOCK", str(sock_path))
+    report = doctor.run_checks(dbp, probe=False, now=time.time(),
+                               probe_worker=(lambda _sock: live)
+                               if live is not None else None)
+    return next(c for c in report["checks"] if c["id"] == "laya-worker")
+
+
+def test_live_worker_answers_ok_even_when_the_log_tail_names_a_failure(
+        tmp_path, monkeypatch):
+    """The live case: `install.sh` restarted the proxy, a worker is alive
+    and answering, and the log still holds the `spawn_failed` line from
+    before the fix. Reading the tail made a healthy install warn."""
+    check = _worker_report(tmp_path, monkeypatch, live=True, log_lines=[
+        "minder-decision-worker-client: spawn_failed: no worker after spawn"])
+    assert check["status"] == "ok"
+    assert "spawn_failed" not in check["detail"]
+
+
+def test_stale_worker_failure_is_labelled_stale(tmp_path, monkeypatch):
+    """A dead worker plus an old log line: the warn must say how old the
+    evidence is, because the log has no timestamps and only rotates at
+    1 MB, so a fixed defect would otherwise warn forever."""
+    check = _worker_report(tmp_path, monkeypatch, live=False, log_age=7200,
+                           log_lines=["minder-decision-worker: request error: "
+                                      "BrokenPipeError(32, 'Broken pipe')"])
+    assert check["status"] == "warn"
+    assert "spawn_failed" not in check["detail"]
+    assert "BrokenPipeError" in check["detail"]
+    assert "2h" in check["detail"]
+    assert "stale" in check["detail"]
+
+
+def test_a_worker_that_never_failed_is_context_not_a_finding(
+        tmp_path, monkeypatch):
+    """Spawn-on-demand means "nothing up right now" is a normal install.
+    Only a worker that left a failure behind is a warn, and then the
+    reason is the log line, not the absence."""
+    check = _worker_report(tmp_path, monkeypatch, sock=False, live=False)
+    assert check["status"] == "info"
+    assert "spawn-on-demand" in check["detail"]
+
+
+def test_recent_worker_failure_warns_without_the_stale_label(
+        tmp_path, monkeypatch):
+    """Fresh evidence is still evidence: a worker that failed seconds ago
+    is a plain warn, not a stale one."""
+    check = _worker_report(tmp_path, monkeypatch, live=False, log_age=60,
+                           log_lines=["minder-decision-worker-client: "
+                                      "spawn_failed: no worker after spawn"])
+    assert check["status"] == "warn"
+    assert "spawn_failed" in check["detail"]
+    assert "stale" not in check["detail"]

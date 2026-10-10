@@ -331,7 +331,7 @@ def test_doctor_reports_the_decision_worker(tmp_path, monkeypatch, capsys):
     state = tmp_path / "state"
     state.mkdir()
     monkeypatch.setenv("MINDER_STATE_DIR", str(state))
-    report = doctor.run_checks(dbp, probe=False)
+    report = doctor.run_checks(dbp, probe=False, probe_worker=lambda _s: False)
     worker = next(c for c in report["checks"] if c["id"] == "laya-worker")
     assert worker["status"] == "info"
     assert "spawn" in worker["detail"]
@@ -339,7 +339,7 @@ def test_doctor_reports_the_decision_worker(tmp_path, monkeypatch, capsys):
     (state / "laya-worker.log").write_text(
         "minder-decision-worker: request error: "
         "ValueError('unsupported protocol version')\n")
-    report = doctor.run_checks(dbp, probe=False)
+    report = doctor.run_checks(dbp, probe=False, probe_worker=lambda _s: False)
     worker = next(c for c in report["checks"] if c["id"] == "laya-worker")
     assert worker["status"] == "warn"
     assert "unsupported protocol version" in worker["detail"]
