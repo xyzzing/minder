@@ -5,6 +5,17 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The `difficulty-router` warn names the abstention it is actually
+  looking at.** Flipping `difficulty_router` to `laya` applied no bands,
+  and the line still read "the router is outranked, not broken; a
+  client-declared effort wins in every mode but `laya`" - the diagnosis
+  from the store the message was written against, now pointing at the
+  wrong repair. `minder-op doctor` counts abstentions per recorded reason
+  and names the dominant one: `client_effort` is precedence,
+  `below_confidence` is the floor working and `laya_min_confidence` is the
+  dial, `malformed_response` is the worker. The cause comes from the
+  ledger, so the line stays true as the config changes.
+
 - **The proxy's effective upstream is reported, not assumed (issue
   #33).** `minder-op doctor` has an `engine-upstream` line that reads
   `systemctl --user show minder-proxy.service -p Environment`, systemd's

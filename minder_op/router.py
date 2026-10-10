@@ -14,10 +14,16 @@ DEFAULT_PROXY_CONFIG = Path.home() / ".config" / "minder" / "minder.json"
 DEFAULT_STATE_DIR = Path.home() / ".local" / "state" / "minder"
 LEDGER_NAME = "events.jsonl"
 ROUTER_MODES = ("off", "shadow", "active", "lower", "laya")
+# The reasons the proxy writes on an abstention (minder_decision/router.py
+# `opinion`). Named here so the check can say which kind it is looking at
+# rather than only how many there were.
+ROUTER_SKIP_CLIENT = "client_effort"
+ROUTER_SKIP_CONFIDENCE = "below_confidence"
+ROUTER_SKIP_MALFORMED = "malformed_response"
 
 
 def router_state(proxy_config, events_ledger):
-    """(mode, applied, abstained) from the proxy config and the ledger.
+    """(mode, applied, abstained, reasons) from config and ledger.
 
     The ledger is a jsonl of `minder.log` records; only `type` and
     `router` are read. Counts are totals over the whole file, which is
@@ -30,6 +36,7 @@ def router_state(proxy_config, events_ledger):
     except (OSError, ValueError):
         mode = None
     applied = abstained = 0
+    reasons = {}
     try:
         with open(events_ledger) as fh:
             for line in fh:
@@ -44,9 +51,11 @@ def router_state(proxy_config, events_ledger):
                     applied += 1
                 elif rec.get("event") == "difficulty_skipped":
                     abstained += 1
+                    reason = str(rec.get("reason") or "unrecorded")
+                    reasons[reason] = reasons.get(reason, 0) + 1
     except OSError:
         pass
-    return mode, applied, abstained
+    return mode, applied, abstained, reasons
 
 
 def router_check(proxy_config, events_ledger):
@@ -59,7 +68,8 @@ def router_check(proxy_config, events_ledger):
     a client-declared effort outranks it in every mode but `laya`. A
     denominator check (M2): `skipped=0, routed=0` means no eligible
     request, which is a different problem."""
-    mode, applied, abstained = router_state(proxy_config, events_ledger)
+    mode, applied, abstained, reasons = router_state(
+        proxy_config, events_ledger)
     if mode in (None, "off"):
         return ("difficulty-router", "info",
                 "difficulty router off (config: "
@@ -72,6 +82,34 @@ def router_check(proxy_config, events_ledger):
         return ("difficulty-router", "info",
                 f"mode {mode}: no router-eligible request recorded yet")
     return ("difficulty-router", "warn",
-            f"mode {mode}: {abstained} abstention(s), 0 applied - the "
-            "router is outranked, not broken; a client-declared effort "
-            "wins in every mode but `laya` - see docs/operator-cli.md")
+            f"mode {mode}: {abstained} abstention(s), 0 applied - "
+            f"{_reason_text(reasons)} - see docs/operator-cli.md")
+
+
+def _reason_text(reasons):
+    """What the abstentions actually were, which decides the repair.
+
+    The #7 message blamed a client-declared effort, and that was right for
+    the store it was written against. Flipping the mode to `laya` did not
+    apply a band either, and the same message kept saying `outranked`
+    while the ledger said `below_confidence` - the floor, working. Naming
+    the cause from the ledger rather than from the mode is what keeps the
+    line true after the config changes."""
+    if not reasons:
+        return "the reason was not recorded"
+    order = sorted(reasons.items(), key=lambda kv: (-kv[1], kv[0]))
+    listed = ", ".join(f"{count} {reason}" for reason, count in order)
+    top, count = order[0]
+    if top == ROUTER_SKIP_CLIENT:
+        cause = ("outranked, not broken: a client-declared effort wins in "
+                 "every mode but `laya`")
+    elif top == ROUTER_SKIP_CONFIDENCE:
+        cause = ("the confidence floor declining every prior, not an "
+                 "outranked router; `laya_min_confidence` is the dial and "
+                 "the prior is not separating the labels")
+    elif top == ROUTER_SKIP_MALFORMED:
+        cause = ("the decision worker answering unparseably, not a policy "
+                 "declining; check the `laya-worker` line")
+    else:
+        cause = "see `minder-op events ls --type difficulty_skipped`"
+    return f"causes: {listed}; {cause}"

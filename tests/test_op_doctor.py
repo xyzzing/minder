@@ -307,6 +307,45 @@ def test_difficulty_router_distinguishes_no_traffic_from_inert(tmp_path,
     assert "no router-eligible request" in check["detail"]
 
 
+def test_difficulty_router_names_the_cause_from_the_ledger_not_the_mode(
+        tmp_path, monkeypatch):
+    """The #7 message blamed a client-declared effort. After the mode
+    flipped to `laya` no band applied either, and it kept saying
+    `outranked` while the ledger said `below_confidence` - the floor
+    working, a different repair. The cause has to come from the ledger."""
+    lines = [{"event": "difficulty_skipped", "reason": "below_confidence",
+              "router": "laya"} for _ in range(4)]
+    check = _router_report(tmp_path, monkeypatch, "laya", lines)
+    assert check["status"] == "warn"
+    assert "4 below_confidence" in check["detail"]
+    assert "confidence floor" in check["detail"]
+    assert "outranked, not broken" not in check["detail"]
+
+
+def test_difficulty_router_keeps_the_client_cause_when_it_is_the_cause(
+        tmp_path, monkeypatch):
+    """Not a rewrite that loses the original finding: on a store where the
+    abstentions really are client effort, the line still says outranked."""
+    lines = [{"event": "difficulty_skipped", "reason": "client_effort",
+              "router": "laya"} for _ in range(5)]
+    check = _router_report(tmp_path, monkeypatch, "laya", lines)
+    assert check["status"] == "warn"
+    assert "5 client_effort" in check["detail"]
+    assert "outranked, not broken" in check["detail"]
+
+
+def test_difficulty_router_reports_a_mixed_ledger_by_count(tmp_path,
+                                                           monkeypatch):
+    """M2: one aggregate number over a mixed ledger is the denominator
+    error this check is supposed to avoid, so each reason is counted."""
+    lines = ([{"event": "difficulty_skipped", "reason": "below_confidence"}
+              for _ in range(3)]
+             + [{"event": "difficulty_skipped", "reason": "malformed_response"}])
+    check = _router_report(tmp_path, monkeypatch, "laya", lines)
+    assert "3 below_confidence" in check["detail"]
+    assert "1 malformed_response" in check["detail"]
+
+
 def test_difficulty_router_off_is_informational(tmp_path, monkeypatch):
     check = _router_report(tmp_path, monkeypatch, "off",
                            [{"event": "difficulty_skipped"}])

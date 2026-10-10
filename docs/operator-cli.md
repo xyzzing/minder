@@ -512,10 +512,26 @@ rollback path, so read it before the edit.
    minder-op doctor | grep difficulty-router
    ```
 
-   `0 applied` with abstentions still means the client's effort wins -
-   check that the client's declared effort is below the band it is being
-   compared against (`off` and `low` lose to a `routine` band, `xhigh`
-   does not).
+   `0 applied` with abstentions no longer means one thing. The
+   `difficulty-router` line breaks the abstentions down by the reason the
+   proxy recorded, and the repair depends on which one dominates:
+
+   - `N client_effort` - outranked, not broken. A client-declared effort
+     wins in every mode but `laya`, and in `laya` it still wins unless the
+     band adds thinking. Check that the client's effort is below the band
+     it is compared against (`off` and `low` lose to a `routine` band,
+     `xhigh` does not).
+   - `N below_confidence` - the floor declining every prior, which is the
+     floor working. `laya_min_confidence` is the dial, but lowering it
+     buys noise unless the prior separates the labels; measure the
+     confidence the worker actually returns before touching it.
+   - `N malformed_response` - the worker or the protocol, not a policy
+     decision. Read the `laya-worker` line.
+
+   A flipped mode with no applied bands is normal on a store where most
+   requests carry a client effort: the old line kept calling that
+   `outranked` after the flip, which is the wrong repair. The counts come
+   from the ledger, so the line stays true as the config changes.
 
 ## Deferred (+ — deliberately not built here)
 

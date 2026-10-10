@@ -31,6 +31,16 @@ commit hash behind it; the instruction gate checks the hash exists.
   unstamped line reporting the file's mtime as a floor ("at least"). A
   worker that is not up and has never failed is `info`, not a finding.
   (`minder_op/worker.py`.) (ab42a08)
+- `doctor`'s `difficulty-router` line takes its cause from the ledger,
+  never from the configured mode. Flipping `difficulty_router` to `laya`
+  applied no bands on the live store, and the `warn` still read "the
+  router is outranked, not broken; a client-declared effort wins" - which
+  was true of the store the message was written against and false of the
+  one it was now running on. The abstentions were `below_confidence`
+  (the floor working) and `malformed_response` (the worker), each needing
+  a different repair, and an aggregate count hid which. The check counts
+  abstentions per recorded reason and names the dominant one.
+  (`minder_op/router.py`.) (14a6317)
 - `difficulty_skipped reason=client_effort` on every request is the
   approved precedence working, not the router being broken: the dsh
   profile declares `reasoningEfforts` for `qwen-auto`, so the client
