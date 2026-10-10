@@ -283,12 +283,6 @@ def main():
             json.dumps({"examples": rows}, indent=1, ensure_ascii=True) + "\n")
         print(f"wrote fitting/{name}.json ({len(rows)} rows)")
 
-    import shutil
-    try:
-        import yaml  # noqa: F401
-        HAS_YAML = True
-    except ImportError:
-        HAS_YAML = False
     # The task file is simple enough to emit without PyYAML.
     lines = [
         "name: minder-difficulty",

@@ -49,7 +49,7 @@ def main():
 
     task, rows = load_rows()
     OUT.mkdir(parents=True, exist_ok=True)
-    print(f"backend: loading laya on cpu ...", flush=True)
+    print("backend: loading laya on cpu ...", flush=True)
     started = time.perf_counter()
     backend = create_backend("pytorch", "convaiinnovations/laya", "cpu")
     print(f"loaded in {time.perf_counter() - started:.1f}s", flush=True)
