@@ -190,6 +190,22 @@ def build_parser():
                                "rate proxy over local evidence")
     rt_amb.add_argument("--days", type=int, default=30)
 
+    dif = sub.add_parser("difficulty", help="task-difficulty replay "
+                         "(issue #34)")
+    dif_sub = dif.add_subparsers(dest="subcommand", required=True)
+    dif_rep = dif_sub.add_parser("replay", help="offline replay of "
+                                 "difficulty cases; emits an 8C-schema "
+                                 "report")
+    dif_rep.add_argument("--cases", required=True)
+    dif_rep.add_argument("--provider", default="null",
+                         choices=["laya", "null"],
+                         help="difficulty provider to replay (null is the "
+                              "trivial never-acts baseline; laya serves "
+                              "the specialization bundle when "
+                              "MINDER_LAYA_SPECIALIZATION is set)")
+    dif_rep.add_argument("--out", help="persist the replay report JSON")
+    dif_rep.add_argument("--json", action="store_true")
+
     rs = sub.add_parser("resume", help="résumé evidence: career facts, "
                                        "approved wordings, JD intents")
     rs_sub = rs.add_subparsers(dest="subcommand", required=True)
@@ -512,6 +528,8 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_routes_replay(args, path)
     if command == "routes" and sub == "ambiguity":
         return _cmd_routes_ambiguity(args, path)
+    if command == "difficulty" and sub == "replay":
+        return _cmd_difficulty_replay(args, path)
     if command == "resume" and sub == "assert":
         return _cmd_resume_assert(args, path)
     if command == "resume" and sub == "approve":
@@ -1287,6 +1305,53 @@ def _cmd_routes_replay(args, path):
         if args.out:
             print(f"report written: {args.out}")
         print("replay is offline and observe-only; reports pin via "
+              "benchmark baseline create --yes")
+    return EXIT_OK
+
+
+def _cmd_difficulty_replay(args, path):
+    from minder_decision import difficulty_eval
+    provider = None
+    if args.provider == "laya":
+        from minder_decision.providers.laya import try_laya_client
+        provider = try_laya_client()
+        if provider is None:
+            print("error: laya provider unavailable (package missing or "
+                  "no recognised surface; MINDER_LAYA_DEVICE/MINDER_LAYA_"
+                  "MODEL/MINDER_LAYA_SPECIALIZATION configure it)",
+                  file=sys.stderr)
+            return EXIT_USAGE
+    try:
+        report = difficulty_eval.replay_cases(args.cases, provider=provider,
+                                              db_path=path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    if args.out:
+        from minder_op import benchmark_cli
+        benchmark_cli.write_json_file(args.out, report)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        fmt.kv([(key, report["metrics"][key]) for key in
+                ("comparable_runs", "verified_completion_rate",
+                 "unsafe_executions", "harmful_frontier_acceptances",
+                 "external_prohibited_egress")])
+        detail = report["difficulty_detail"]
+        cal = report["calibration_detail"]
+        fmt.kv([("provider", detail["provider"]),
+                ("correct", detail["correct"]),
+                ("abstentions", detail["abstentions"]),
+                ("acted", detail["acted"]),
+                ("coverage", detail["coverage"]),
+                ("selective_accuracy", detail["selective_accuracy"]),
+                ("mean_band_distance", detail["mean_band_distance"]),
+                ("brier", cal["brier"]),
+                ("ece", cal["ece"]),
+                ("label_status", detail["label_status"])])
+        if args.out:
+            print(f"report written: {args.out}")
+        print("replay is offline; reports pin via "
               "benchmark baseline create --yes")
     return EXIT_OK
 
