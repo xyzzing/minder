@@ -25,6 +25,14 @@ python3 -m minder_op routes eval [--declared-domain D] [--task T]
 python3 -m minder_op routes ls [--limit N]
 python3 -m minder_op routes replay --cases PATH [--out PATH] [--json]
 python3 -m minder_op routes ambiguity [--days 30]
+python3 -m minder_op difficulty replay --cases PATH [--provider laya|null] [--out PATH] [--json]
+# offline replay of the difficulty-core-v1 eval set through
+# resolve_difficulty. `--provider laya` serves the laya-studio
+# specialization bundle when MINDER_LAYA_SPECIALIZATION points at one
+# (model_version reads `laya-spec/<bundle>`), else the base head; null
+# is the never-acts baseline. The report carries accuracy, coverage and
+# selective accuracy under the confidence floor, mean band distance,
+# and Brier/ECE (ADR-0005).
 python3 -m minder_op resume assert --claim C [--variant P ...] [--actor U]
 python3 -m minder_op resume approve --assertion ID --phrase P [--scope any|JD] --actor U
 python3 -m minder_op resume uncertain --assertion ID
@@ -540,6 +548,55 @@ rollback path, so read it before the edit.
    requests carry a client effort: the old line kept calling that
    `outranked` after the flip, which is the wrong repair. The counts come
    from the ledger, so the line stays true as the config changes.
+
+## Serving a specialized difficulty bundle (issue #34, ADR-0005)
+
+The difficulty answers come from the laya decision head by default. A
+laya-studio specialization bundle replaces them for the
+task-difficulty contract only - every other contract (routing, triage,
+skill-select) keeps the base head. The measured case is in ADR-0005:
+the head acts at chance on the difficulty rubric, the whitened-
+prototype bundle acts at 0.754 selective accuracy where the head reads
+0.625.
+
+1. **Evidence first, env second.**
+
+   ```bash
+   python3 -m minder_op difficulty replay \
+     --cases benchmarks/difficulty-core-v1/cases/difficulty_cases.json \
+     --provider laya --out /tmp/base.json
+   MINDER_LAYA_SPECIALIZATION=presets/laya-specializations/difficulty-v1 \
+     python3 -m minder_op difficulty replay \
+     --cases benchmarks/difficulty-core-v1/cases/difficulty_cases.json \
+     --provider laya --out /tmp/spec.json
+   ```
+
+   Compare `selective_accuracy` and `coverage`: the bundle is worth
+   serving when it beats the head where it acts. The eval labels are
+   owner-reviewable (`label_status` in the case file) - read ADR-0005
+   before quoting absolute numbers.
+
+2. **Set the env on the proxy, not the worker.** The worker child
+   inherits the proxy's environment, so one drop-in covers both:
+
+   ```bash
+   systemctl --user edit minder-proxy.service
+   # [Service]
+   # Environment=MINDER_LAYA_SPECIALIZATION=<share>/presets/laya-specializations/difficulty-v1
+   systemctl --user restart minder-proxy.service
+   ```
+
+   The bundle path must exist on the share the proxy imports; a path
+   that does not load prints one `MINDER_LAYA_SPECIALIZATION ... did
+   not load` line to stderr (the worker's `laya-worker.log`) and the
+   base head serves - the flag is then inert, which the replay in step
+   1 would have shown as `provider: laya/...` instead of
+   `provider: laya-spec/...`.
+
+3. **Rollback is unsetting the env and restarting.** Nothing else
+   changes: no migration, no ledger state. A bundle that fails
+   mid-request falls open to the base head with one
+   `specialization bundle failed` line in the same log.
 
 ## Deferred (+ — deliberately not built here)
 

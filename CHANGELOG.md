@@ -5,6 +5,28 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The difficulty router can serve a laya-studio specialization
+  bundle (issue #34, ADR-0005).** The laya decision head acts at chance
+  on the difficulty rubric; a whitened-prototype classifier fitted over
+  the frozen encoder reads 0.754 selective accuracy at 33% coverage
+  where the head reads 0.625 at 24% (provisional eval labels, pending
+  owner review). `MINDER_LAYA_SPECIALIZATION` points at the shipped
+  bundle (`presets/laya-specializations/difficulty-v1`); the
+  task-difficulty contract is answered from the artifact, every other
+  contract keeps the base head (routing-core-v1 replays byte-
+  identically with the seam active), and any bundle failure falls open
+  with a named stderr line. The flat prototype distribution carries its
+  own measured confidence scale (`SPEC_MARGIN_SCALE`, floor 0.7 at a
+  0.035 margin); the head's 2.0x scale would have abstained forever.
+  Evidence surface: `minder-op difficulty replay` over the new
+  difficulty-core-v1 suite (200 agent-drafted cases plus a laya-studio
+  fitting corpus, hash-checked disjoint), reporting accuracy, coverage,
+  selective accuracy, mean band distance, and Brier/ECE via the new
+  `minder_core/calibration.py` (the prd-v0.10 T30 slice). laya itself
+  moved 0.3.7 -> 0.3.29 for laya-studio compatibility; the
+  routing-core-v1 replay re-baselined identically (35/40, 0 protected
+  violations) before anything else shipped.
+
 - **The `difficulty-router` warn names the abstention it is actually
   looking at.** Flipping `difficulty_router` to `laya` applied no bands,
   and the line still read "the router is outranked, not broken; a

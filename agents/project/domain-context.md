@@ -41,6 +41,23 @@ commit hash behind it; the instruction gate checks the hash exists.
   a different repair, and an aggregate count hid which. The check counts
   abstentions per recorded reason and names the dominant one.
   (`minder_op/router.py`.) (14a6317)
+- A specialized model's derived score must corroborate its argmax, not
+  average its distribution. The laya-studio whitened-prototype softmax
+  is flat, so its expected label index sits near the scale's middle
+  whatever the argmax says, and `resolve_difficulty`'s escalate-only
+  score cross-check dragged nearly every label upward end to end
+  (selective accuracy 0.75 -> 0.66) while every offline number looked
+  fine - the standalone measurement never ran the score through
+  resolve. With one distribution there is no independent second
+  signal; a derived score that fights the argmax is not a cross-check,
+  it is a second wrong opinion. (4163168)
+- A specialized bundle that fails to load must name itself. Setting
+  `MINDER_LAYA_SPECIALIZATION` to a path that does not load silently
+  serves the base head - an operator flip that changes nothing, the
+  same inert-flag shape as the router's `client_effort` era. Both
+  bundle failure sites print one named stderr line (load: the path and
+  reason; request-time: the exception), once per process, landing in
+  `laya-worker.log` on the worker path. (579375a)
 - `difficulty_skipped reason=client_effort` on every request is the
   approved precedence working, not the router being broken: the dsh
   profile declares `reasoningEfforts` for `qwen-auto`, so the client
