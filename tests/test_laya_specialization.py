@@ -142,10 +142,9 @@ def test_seam_loads_the_bundle_and_answers_difficulty(monkeypatch):
     assert resp.choice_probs["difficulty"] == {
         "mechanical": 0.34, "routine": 0.27, "complex": 0.21,
         "expert_or_ambiguous": 0.18}
-    # the score is the expected label index over the same distribution
-    expected = 0 * 0.34 + 1 * 0.27 + 2 * 0.21 + 3 * 0.18
-    assert resp.score_values["difficulty_score"] == pytest.approx(
-        expected, abs=1e-9)
+    # the score corroborates the argmax (an expected index over the flat
+    # distribution would escalate through resolve_difficulty's cross-check)
+    assert resp.score_values["difficulty_score"] == 0.0
     # confidence uses the specialized scale: clip01(20 x margin)
     margin = 0.34 - 0.27
     assert resp.confidence == pytest.approx(min(1.0, margin * 20.0))

@@ -127,15 +127,20 @@ class SpecializedLayaClient:
         if not isinstance(probs, dict) or not probs:
             raise ValueError("bundle returned no probability distribution")
         choice = answer.get("choice") or max(probs, key=probs.get)
-        score = sum(index * float(probs.get(label, 0.0))
-                    for index, label in enumerate(
-                        ("mechanical", "routine", "complex",
-                         "expert_or_ambiguous")))
+        # The score corroborates the argmax rather than averaging the
+        # distribution: the prototype softmax is flat, so its expected
+        # index sits near the scale's middle regardless of the argmax,
+        # and resolve_difficulty's escalate-only cross-check would drag
+        # nearly every label upward (measured: selective accuracy fell
+        # 0.75 -> 0.66 end to end). With one distribution there is no
+        # independent second signal; the base head keeps its real
+        # cross-check on its own path.
+        score = float(("mechanical", "routine", "complex",
+                       "expert_or_ambiguous").index(choice))
         answers = {
             "difficulty": {"type": "choice", "choice": choice,
                            "probabilities": dict(probs)},
-            "difficulty_score": {"type": "score",
-                                 "score": max(0.0, min(3.0, score))},
+            "difficulty_score": {"type": "score", "score": score},
         }
         static = LayaSystemOneClient(
             _StaticAnswerAgent(answers, raw.get("usage") or {}),
