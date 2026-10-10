@@ -277,3 +277,60 @@ def test_install_writes_domain_profiles(tmp_path):
     for name in ("finance", "legal"):
         assert {"l1_budget", "l2_budget", "spend_guardrail_tokens",
                 "frontier_budget"} <= set(cfg["profiles"][name])
+
+
+# --- the proxy unit's upstream vs an operator drop-in (issue #33) ---------
+# install.sh rewrote the base unit's MINDER_UPSTREAM every run while the
+# operator's minder-proxy.service.d/upstream.conf declared a different one
+# and silently outranked it. The installer ran CAP against its own default,
+# so model_caps.json described a model the proxy never dials.
+
+def _scratch_home_with_dropin(tmp_path, upstream):
+    home = scratch_home(tmp_path)
+    unit_dir = home / ".config" / "systemd" / "user"
+    dropin = unit_dir / "minder-proxy.service.d"
+    dropin.mkdir(parents=True)
+    (dropin / "upstream.conf").write_text(
+        "[Service]\n"
+        f"Environment=MINDER_UPSTREAM={upstream}\n")
+    return home, dropin / "upstream.conf"
+
+
+def test_installer_names_a_drop_in_that_outranks_its_own_upstream(tmp_path):
+    """The installer still writes the base unit - the drop-in is the
+    operator's mechanism, not the installer's - but it must say plainly
+    which value the proxy will use and which one it just wrote."""
+    with MockUpstream("default") as mock:
+        home, dropin = _scratch_home_with_dropin(
+            tmp_path, "http://127.0.0.1:8081")
+        dropin_text = dropin.read_text()
+        # the drop-in declares a server the installer was never told about
+        r = run_installer(home, mock.url)
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = r.stdout
+    assert "drop-in" in out
+    assert "http://127.0.0.1:8081" in out
+    assert mock.url in out
+    # the operator's file is byte-untouched
+    assert dropin.read_text() == dropin_text
+
+
+def test_installer_stays_quiet_without_a_dropin(tmp_path):
+    """No drop-in means the base unit is the whole story, and a warning
+    there would train the operator to ignore the one that matters."""
+    with MockUpstream("default") as mock:
+        home = scratch_home(tmp_path)
+        r = run_installer(home, mock.url)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "drop-in" not in r.stdout
+
+
+def test_installer_does_not_warn_when_the_dropin_agrees(tmp_path):
+    """The finding is a divergence, not the existence of a drop-in: an
+    operator who keeps a drop-in matching the installer's value gets the
+    same quiet run as one who has none."""
+    with MockUpstream("default") as mock:
+        home, _dropin = _scratch_home_with_dropin(tmp_path, mock.url)
+        r = run_installer(home, mock.url)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "drop-in" not in r.stdout

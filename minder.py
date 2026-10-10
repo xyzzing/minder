@@ -20,6 +20,10 @@ CFG_PATH = pathlib.Path(os.environ.get(
     "MINDER_CONFIG", os.path.expanduser("~/.config/minder/minder.json")))
 CAPS_PATH = pathlib.Path(os.environ.get(
     "MINDER_CAPS", os.path.expanduser("~/.config/minder/model_caps.json")))
+# The systemd user unit install.sh writes for the proxy. It is also the
+# unit whose Environment decides the upstream the proxy dials, which is
+# what doctor compares against the engine registry (issue #33).
+PROXY_UNIT = "minder-proxy.service"
 
 DEFAULTS = {
     "fail_threshold": 2,       # consecutive failures of one key before L1

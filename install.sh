@@ -430,6 +430,35 @@ else
 # operator can start it themselves.
 UNIT_DIR="$HOME/.config/systemd/user"
 mkdir -p "$UNIT_DIR"
+# A drop-in is applied after the base unit, so an operator's
+# minder-proxy.service.d/upstream.conf outranks whatever is written here:
+# the effective upstream is the drop-in's, and the base unit is a value
+# nothing reads. Writing it silently is how model_caps.json ends up
+# describing a model the proxy never dials, so name both values instead
+# (issue #33).
+DROPIN_DIR="$UNIT_DIR/minder-proxy.service.d"
+DROPIN_UPSTREAM=""
+if [ -d "$DROPIN_DIR" ]; then
+  DROPIN_UPSTREAM="$(python3 - "$DROPIN_DIR" <<'PYEOF'
+import pathlib
+import re
+import sys
+values = []
+for path in sorted(pathlib.Path(sys.argv[1]).glob("*.conf")):
+    try:
+        text = path.read_text()
+    except OSError:
+        continue
+    for line in text.splitlines():
+        for match in re.finditer(r"^\s*Environment=\s*(.*)$", line):
+            for item in match.group(1).split():
+                key, _sep, value = item.partition("=")
+                if key == "MINDER_UPSTREAM":
+                    values.append(value.strip('"').strip("'"))
+print(values[-1] if values else "")
+PYEOF
+)"
+fi
 cat > "$UNIT_DIR/minder-proxy.service" <<EOF
 [Unit]
 Description=minder Turnstile proxy (escalation watchdog transport)
@@ -445,6 +474,14 @@ RestartSec=3
 [Install]
 WantedBy=default.target
 EOF
+if [ -n "$DROPIN_UPSTREAM" ] && [ "$DROPIN_UPSTREAM" != "$UPSTREAM" ]; then
+  say "[8] NOTE: a drop-in in $DROPIN_DIR declares"
+  say "    MINDER_UPSTREAM=$DROPIN_UPSTREAM, which systemd applies after the"
+  say "    base unit just written with MINDER_UPSTREAM=$UPSTREAM. The proxy will"
+  say "    dial $DROPIN_UPSTREAM; the base-unit value is inert while the"
+  say "    drop-in stands. The drop-in is the operator's file and was not"
+  say "    touched. To make the installer own the upstream: rm -r $DROPIN_DIR"
+fi
 if [ "$START_UNIT" != "1" ]; then
   say "[8] --no-start: proxy unit written, not enabled"
 elif command -v systemctl >/dev/null 2>&1 && [ -z "${MINDER_NO_SYSTEMD:-}" ]; then

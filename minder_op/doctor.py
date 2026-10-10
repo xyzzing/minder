@@ -19,9 +19,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import minder
 from minder_op import benchmark as bench
 from minder_op.ages import age_text as _age_text
 from minder_op import queries, router
+from minder_op import unit_upstream
 from minder_op.worker import worker_check
 from minder_op.queries import DBError
 
@@ -324,6 +326,13 @@ def run_checks(db_path, probe=True, now=None, proxy_config=None,
                 add("engine", status,
                     f"active '{active['name']}' at {active['upstream']} "
                     f"({state}, {health})")
+                # The registry's upstream is a config claim; the unit's
+                # Environment is what the proxy actually dials, and a
+                # drop-in wins over the base unit. (issue #33)
+                add(*unit_upstream.check(
+                    minder.PROXY_UNIT, active["upstream"],
+                    active["unit_state"],
+                    run=engines_mod._default_run))
             running = [r["name"] for r in rows
                        if r.get("unit_state") == "active"]
             if len(running) > 1:

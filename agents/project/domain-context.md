@@ -64,6 +64,20 @@ commit hash behind it; the instruction gate checks the hash exists.
   (Strata HIP server, loopback :8081) is mutually exclusive with
   llama-server on GPU VRAM: stop one engine before starting the other.
   (#1)
+- systemd applies that drop-in *after* the base unit, so the drop-in wins
+  and the base unit's `MINDER_UPSTREAM` becomes a value nothing reads.
+  `install.sh` rewrites the base unit every run from `MINDER_UPSTREAM` or
+  its own loopback `:8080` default, and ran CAP against that value
+  while the proxy dialled the drop-in's - so `model_caps.json` described a
+  model the proxy never contacted, and `systemctl --user cat` showed both
+  files without saying which one applied. The installer now prints both
+  values and leaves the drop-in alone; `minder-op doctor` has an
+  `engine-upstream` line that reads the effective value from
+  `systemctl --user show <unit> -p Environment` and warns when it differs
+  from the registry's active engine, naming the masked base-unit value.
+  The check queries the *proxy* unit, not the engine's: an engine unit is
+  a server that listens on a port and declares no upstream.
+  (`minder_op/unit_upstream.py`.) (dd34ed2)
 - The Strata upstream serves one sequence at a time (FIFO), so
   concurrent minder-routed requests queue behind each other, and its
   tuning tooling stops the server mid-run - honest 502s from the proxy

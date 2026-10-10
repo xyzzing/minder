@@ -194,6 +194,26 @@ a level nor refunds the budget of a loop that is still there. `is_failure`
 still answers yes, deliberately: the memory store's event vocabulary is
 `tool_failure|tool_success|verification`, and a decline is closer to
 needing a lesson than to a verified success.
+- The `engine-upstream` line says which upstream the proxy unit will
+actually dial (issues #33). It reads
+`systemctl --user show minder-proxy.service -p Environment`, which is
+systemd's own merge of the base unit and every drop-in, and compares it
+with the upstream of the active engine in `~/.config/minder/minder.json`.
+`ok` means they agree. `warn` means the proxy is dialling something else,
+and when the base unit and a drop-in disagree the line names both and says
+which one masks the other. `info` means the key is not in the unit at all,
+so the proxy takes it from its own environment and the registry value is
+unverified. The query targets the proxy unit, not the engine's: an engine
+unit is a server listening on a port and declares no upstream.
+
+Related, from the same cause: `install.sh` always writes the base unit's
+`MINDER_UPSTREAM` from its own `--upstream`/env value or the
+`http://127.0.0.1:8080` default, and systemd applies a drop-in after that
+file, so the drop-in wins and the base-unit value becomes inert. The
+installer now prints both values when they differ and leaves the drop-in
+alone — it is the operator's mechanism for switching engines by hand. Run
+`minder-op engine switch NAME --yes` to change engines through the
+registry instead, which flips the config and the units together.
 - Verdict semantics: `fail` -> exit 1 (broken); `warn` -> exit 0 but
 look (missing wiring, silent-for-a-week hook); `info` -> context
 only (proxy not running, no baseline pinned).

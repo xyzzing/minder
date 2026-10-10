@@ -5,6 +5,21 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The proxy's effective upstream is reported, not assumed (issue
+  #33).** `minder-op doctor` has an `engine-upstream` line that reads
+  `systemctl --user show minder-proxy.service -p Environment`, systemd's
+  merge of the base unit and its drop-ins, and compares it with the active
+  engine's upstream in the config. A divergence warns and names both
+  values; a base unit a drop-in masks is called out as masked. `install.sh`
+  no longer rewrites the base unit's `MINDER_UPSTREAM` in silence: when a
+  drop-in declares a different one it prints both and says which the proxy
+  will dial, and it leaves the drop-in file untouched. Before this, an
+  unqualified `bash install.sh` pointed the base unit at the installer's
+  `:8080` default, ran CAP against it, and wrote `model_caps.json` for a
+  model the proxy never dialled, because the operator's
+  `minder-proxy.service.d/upstream.conf` had been outranking that line the
+  whole time.
+
 - **`doctor`'s `laya-worker` line stopped reading the log tail as evidence
   of liveness (issue #32).** A healthy install warned: `spawn_failed: no
   worker after spawn`, while a worker was alive on that socket and
