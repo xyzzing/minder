@@ -67,13 +67,13 @@ def test_label_status_is_reviewable():
 def test_fitting_corpus_never_shares_an_input_with_the_eval_set():
     eval_hashes = {_norm(c["state"]["task"]) for c in _doc()["cases"]}
     fit_dir = SUITE / "fitting"
-    assert (fit_dir / "specialization.json").exists()
-    assert (fit_dir / "validation.json").exists()
+    for name in ("specialization", "validation", "hard"):
+        assert (fit_dir / f"{name}.json").exists()
     for part in sorted(fit_dir.glob("*.json")):
         data = json.loads(part.read_text())
         for ex in data["examples"]:
             assert ex["label"] in LABELS, ex["id"]
-            assert ex["split"] in ("specialization", "validation"), ex["id"]
+            assert ex["split"] in ("specialization", "validation", "hard"), ex["id"]
             if _norm(ex["input"]) in eval_hashes:
                 pytest.fail(f"fitting row {ex['id']} duplicates the eval set")
 
