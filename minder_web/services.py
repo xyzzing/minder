@@ -233,7 +233,12 @@ def decisions_page(db_path, limit=DEFAULT_LIMIT):
 # Difficulty-router events live in the proxy's raw audit ledger
 # (events.jsonl), not in memory.sqlite — the console reads that file
 # directly, read-only, like the CLI does.
-_DIFFICULTY_EVENTS = ("difficulty_shadow", "difficulty_routed")
+# `difficulty_skipped` is the row that explains an empty table: on a live
+# install it was the only difficulty event present (872 of them, zero
+# applied bands), and without it the console could not tell an outranked
+# router from a router that never ran.
+_DIFFICULTY_EVENTS = ("difficulty_shadow", "difficulty_routed",
+                      "difficulty_skipped")
 
 
 def difficulty_page(limit=DEFAULT_LIMIT):

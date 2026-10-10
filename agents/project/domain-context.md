@@ -32,7 +32,14 @@ commit hash behind it; the instruction gate checks the hash exists.
   approved precedence working, not the router being broken: the dsh
   profile declares `reasoningEfforts` for `qwen-auto`, so the client
   sends an effort and outranks laya. The router only runs for clients
-  that send none. (e8e4d06)
+  that send none. Measured on one store: 12,452 auto requests answered
+  with `off`, 872 skips, zero `difficulty_routed` - an enabled router
+  that changed nothing. `difficulty_router: laya` is the operator's
+  answer and the only mode where a band may replace a client-declared
+  effort, and only when it schedules strictly more thinking; `minder-op
+  doctor`'s `difficulty-router` line reports the inert condition
+  (enabled, abstentions, 0 applied) instead of leaving it to be
+  discovered from the ledger. (e8e4d06)
 - `install.sh` resolves the hooks.json guard mode through
   `dsh/dsh_install.py guard-default`: the `MINDER_SUCCESS_GUARD` env
   value, else the mode the live hooks.json already declares, else the

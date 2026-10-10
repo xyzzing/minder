@@ -21,8 +21,11 @@ import minder
 
 # `shadow` only records; `active` applies the band in both directions
 # (issue #7's four-level ladder); `lower` applies it only when it cuts
-# effort, so a local prior can save reasoning without ever inflating spend.
-ROUTER_MODES = ("shadow", "active", "lower")
+# effort, so a local prior can save reasoning without ever inflating
+# spend; `laya` does what `lower` does and additionally lets the band
+# outrank a client-declared effort, but only upward - see
+# `outranks_client_effort`.
+ROUTER_MODES = ("shadow", "active", "lower", "laya")
 # Why the router had no opinion on a request it was enabled for. Each is a
 # different defect: `no_client` is a wiring or config failure,
 # `malformed_response` is the worker or the protocol, `below_confidence` is
@@ -75,6 +78,39 @@ def client_effort_wins(client_effort, caps):
     return client_effort in _accepted_efforts(caps)
 
 
+def may_outrank_client(cfg):
+    """Whether the proxy has to ask the router before honoring a
+    client-declared effort. Only `laya` mode asks: in every other mode the
+    approved precedence puts the client above laya, and the proxy can skip
+    the worker entirely."""
+    return router_mode(cfg) == "laya"
+
+
+def outranks_client_effort(mode, band_effort, client_effort):
+    """Whether an enabled router may ignore a client-declared effort
+    (issue #7 rollout).
+
+    The approved precedence puts a client effort above laya, and the live
+    dsh profile declares an effort on every request - so on that install
+    `active` and `lower` abstain on every request and the router is inert
+    (measured: 12,452 requests answered with thinking off, 872
+    `difficulty_skipped reason=client_effort`, zero applied bands).
+    `laya` mode is the operator's answer to that: the worker's band may
+    win, but only when it schedules strictly MORE thinking than the
+    client asked for. A client that asked for xhigh keeps it, so the mode
+    can never inflate spend - the same one-way ratchet `lower` runs on,
+    pointed at the client instead of at the scheduler.
+    """
+    from minder_decision.difficulty import EFFORT_RANKS
+    if mode != "laya":
+        return False
+    band = EFFORT_RANKS.get(str(band_effort or "").strip().lower())
+    client = EFFORT_RANKS.get(str(client_effort or "").strip().lower())
+    if band is None or client is None:
+        return False
+    return band > client
+
+
 def record_client_skipped(session_fp, cfg):
     """Record that an enabled router was outranked by a client effort. Silent
     when the router is off, so the off path stays event-free. `minder.log` is
@@ -115,14 +151,17 @@ def opinion(req, session_fp, cfg, level, client_effort, caps):
             minder.log(session_fp, "difficulty_skipped",
                        reason=ROUTER_SKIP_MARKER, router=mode)
             return None
-        if client_effort_wins(client_effort, caps):
-            minder.log(session_fp, "difficulty_skipped",
-                       reason=ROUTER_SKIP_CLIENT, router=mode)
-            return None
         from minder_decision.contracts import task_difficulty_contract
         from minder_decision.difficulty import (confidence_floor, effort_rank,
                                                 resolve_difficulty)
         client = _decision_client()
+        # Every mode but `laya` defers to a client-declared effort before
+        # dialing the worker; `laya` has to see the band first to know
+        # whether it may replace the client's value.
+        if client_effort_wins(client_effort, caps) and mode != "laya":
+            minder.log(session_fp, "difficulty_skipped",
+                       reason=ROUTER_SKIP_CLIENT, router=mode)
+            return None
         if client is None:
             minder.log(session_fp, "difficulty_skipped",
                        reason=ROUTER_SKIP_NO_CLIENT, router=mode)
@@ -144,6 +183,21 @@ def opinion(req, session_fp, cfg, level, client_effort, caps):
                        else ROUTER_SKIP_MALFORMED, router=mode)
             return None
         label, band = resolved
+        if client_effort in _accepted_efforts(caps):
+            # A client-declared effort outranks laya by default. `laya`
+            # mode is the exception the rollout needs: the band may
+            # replace a value the client itself sent, but only with
+            # strictly more thinking. Any other mode, and any band that
+            # would not add thinking, keeps the client's choice and
+            # records why the router abstained.
+            if not outranks_client_effort(mode, band.get("effort"),
+                                          client_effort):
+                minder.log(session_fp, "difficulty_skipped",
+                           reason=ROUTER_SKIP_CLIENT, router=mode)
+                return None
+            minder.log(session_fp, "difficulty_client_outranked",
+                       client_effort=client_effort,
+                       band_effort=band.get("effort"), router=mode)
         direction = band_direction(band, req.get("messages"), effort_rank)
         if mode == "shadow":
             minder.log(session_fp, "difficulty_shadow", label=label,

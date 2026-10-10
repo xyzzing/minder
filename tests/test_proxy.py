@@ -1027,6 +1027,62 @@ def test_r1_client_effort_records_skipped_reason(proxy_over_mock, tmp_path,
         stop(mock, srv)
 
 
+def test_r1b_laya_mode_outranks_the_clients_default_off(proxy_over_mock,
+                                                        tmp_path,
+                                                        monkeypatch):
+    """The rollout condition, measured on the live ledger: the dsh profile
+    declares an effort for every request, so `active` and `lower` never
+    fire and thinking stays off on 12k+ requests. `laya` mode lets the
+    worker's band through, but only when it is strictly more thinking
+    than what the client asked for."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort_levels=["off", "low", "medium", "xhigh"])
+        _difficulty_cfg(tmp_path, "laya", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "off",
+                           "messages": [{"role": "user",
+                                         "content": "refactor this module"}]})
+        kwargs = mock.last_body["chat_template_kwargs"]
+        # routine band: medium, not the client's off
+        assert kwargs["reasoning_effort"] == "medium"
+        assert kwargs["thinking_budget"] == 2048
+        # the band's ceiling, not the client's 32
+        assert mock.last_body["max_tokens"] == 8192
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_routed" in ledger
+        assert '"reason": "client_effort"' not in ledger
+        assert '"difficulty_client_outranked"' in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
+def test_r1c_laya_mode_keeps_a_client_effort_it_cannot_lower(proxy_over_mock,
+                                                             tmp_path,
+                                                             monkeypatch):
+    """`laya` is not a blanket override: xhigh stays xhigh, and the
+    abstention is still recorded with its reason."""
+    mock, srv, url = proxy_over_mock("default")
+    try:
+        write_caps("kwargs", effort_levels=["off", "low", "xhigh"])
+        _difficulty_cfg(tmp_path, "laya", monkeypatch)
+        _fake_difficulty_client(monkeypatch, "routine", 1.0)
+        chat_request(url, {"model": "qwen-auto", "max_tokens": 32,
+                           "reasoning_effort": "xhigh",
+                           "messages": [{"role": "user",
+                                         "content": "refactor this module"}]})
+        assert mock.last_body["chat_template_kwargs"]["reasoning_effort"] \
+            == "xhigh"
+        ledger = (tmp_path / "state" / "events.jsonl").read_text()
+        assert "difficulty_skipped" in ledger
+        assert '"reason": "client_effort"' in ledger
+    finally:
+        clear_caps()
+        stop(mock, srv)
+
+
 def test_r2_router_off_stays_silent(proxy_over_mock, tmp_path, monkeypatch):
     """A disabled router must not add ledger noise - the off path is a
     zero-behavior-change path (test_t10 pins the request body)."""

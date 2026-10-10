@@ -41,7 +41,7 @@ DEFAULTS = {
     "l1_budget": 2048,
     "l2_budget": 10240,
     # laya fast decision layer (task difficulty prior; never a solver)
-    "difficulty_router": "off",   # off | shadow | active
+    "difficulty_router": "off",   # off | shadow | active | lower | laya
     "laya_min_confidence": 0.7,   # below this the router has no opinion
     "laya_timeout_ms": 1500,      # wall-clock cap on one classify pass
     "spend_guardrail_tokens": 50000,  # session thinking-token cap (0 = off)

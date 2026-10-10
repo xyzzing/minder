@@ -64,3 +64,21 @@ def test_difficulty_newest_first_and_limit(tmp_path, monkeypatch):
     # newest (last written) first: the ts with :04 appears before :00
     assert "10:00:04" in text
     assert "10:00:00" not in text
+
+
+def test_difficulty_page_shows_abstentions_with_their_reason(tmp_path,
+                                                             monkeypatch):
+    """The live store's only difficulty rows were abstentions: 872
+    `difficulty_skipped`, zero applied bands. A console that filters them
+    out shows an empty page and the operator reads that as "never ran"."""
+    state = tmp_path / "state"
+    state.mkdir()
+    skipped = {"event": "difficulty_skipped", "ts": TS,
+               "reason": "client_effort", "router": "shadow"}
+    seed_difficulty_ledger(state, [skipped, ROUTED])
+    monkeypatch.setenv("MINDER_STATE_DIR", str(state))
+    client = client_for(new_db(tmp_path), monkeypatch)
+    text = client.get("/difficulty").text
+    assert "skipped" in text
+    assert "client_effort" in text
+    assert "routed" in text

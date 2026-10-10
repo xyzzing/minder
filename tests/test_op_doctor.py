@@ -250,3 +250,64 @@ def test_hook_flags_check_reports_absent_hooks_json(tmp_path, monkeypatch):
     report = doctor.run_checks(dbp, probe=False, now=time.time())
     check = next(c for c in report["checks"] if c["id"] == "hook-flags")
     assert check["status"] == "info"
+
+
+# --- difficulty-router check (issue #7) ---------------------------------
+# The live install ran with the router enabled and never applied a band:
+# 12,452 auto requests answered with thinking off, 872 difficulty_skipped
+# all reason=client_effort. doctor said nothing about it.
+
+def _router_files(tmp_path, mode, ledger_lines):
+    cfg = tmp_path / "minder.json"
+    cfg.write_text(json.dumps({"difficulty_router": mode}))
+    ledger = tmp_path / "events.jsonl"
+    ledger.write_text("".join(json.dumps(rec) + "\n" for rec in ledger_lines))
+    return cfg, ledger
+
+
+def _router_report(tmp_path, monkeypatch, mode, ledger_lines):
+    dbp = _mig(tmp_path)
+    cfg, ledger = _router_files(tmp_path, mode, ledger_lines)
+    report = doctor.run_checks(dbp, probe=False, now=time.time(),
+                               proxy_config=cfg, events_ledger=ledger)
+    return next(c for c in report["checks"] if c["id"] == "difficulty-router")
+
+
+def test_difficulty_router_warns_when_enabled_but_never_applied(tmp_path,
+                                                                monkeypatch):
+    """Enabled + abstentions + zero applied bands is the inert-router
+    condition, and the detail has to name the cause, not just the count."""
+    lines = [{"event": "difficulty_skipped", "reason": "client_effort",
+              "router": "shadow"} for _ in range(3)]
+    check = _router_report(tmp_path, monkeypatch, "shadow", lines)
+    assert check["status"] == "warn"
+    assert "3 abstention" in check["detail"]
+    assert "0 applied" in check["detail"]
+    assert "laya" in check["detail"]
+    # an inert router is a config finding, not a broken install
+    assert check["status"] != "fail"
+
+
+def test_difficulty_router_reports_applied_bands(tmp_path, monkeypatch):
+    lines = [{"event": "difficulty_skipped", "reason": "client_effort"},
+             {"event": "difficulty_routed", "band": "routine"}]
+    check = _router_report(tmp_path, monkeypatch, "active", lines)
+    assert check["status"] == "ok"
+    assert "1 band" in check["detail"]
+
+
+def test_difficulty_router_distinguishes_no_traffic_from_inert(tmp_path,
+                                                               monkeypatch):
+    """M2: zero abstentions and zero applications means nothing was
+    eligible, which is a different problem from being outranked."""
+    check = _router_report(tmp_path, monkeypatch, "laya",
+                           [{"event": "auto_effort", "effort": "off"}])
+    assert check["status"] == "info"
+    assert "no router-eligible request" in check["detail"]
+
+
+def test_difficulty_router_off_is_informational(tmp_path, monkeypatch):
+    check = _router_report(tmp_path, monkeypatch, "off",
+                           [{"event": "difficulty_skipped"}])
+    assert check["status"] == "info"
+    assert "laya" in check["detail"]

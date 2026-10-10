@@ -160,8 +160,16 @@ the proxy service or an already-listening worker keeps the old code.
 - The router's own modes (`~/.config/minder/minder.json`,
 `difficulty_router`): `shadow` consults and records without acting,
 `active` may move effort in either direction, `lower` consults and
-applies the band only when it lowers effort — never a raise. A client
-that set its own effort always wins, in every mode. Only presets
+applies the band only when it lowers effort - never a raise, `laya`
+applies the band over a client-declared effort but only when the band
+schedules strictly more thinking than the client asked for. In every
+mode except `laya` a client that set its own effort wins, and that
+precedence is why the router can be enabled and still change nothing:
+on a live store that had served 12,452 auto requests the ledger held
+872 `difficulty_skipped reason=client_effort` and zero applied bands.
+If `minder-op events ls --type difficulty_routed` is empty while
+`difficulty_skipped` is not, the router is outranked rather than
+broken, and `laya` is the mode that addresses it. Only presets
 marked `"class": "auto"` reach the router at all, and the router is
 `shadow` by default, so a store with no `difficulty_*` events means
 the router has never been consulted — check for `auto_effort` events
@@ -413,6 +421,77 @@ plane-level number, so it belongs where the plane is read; the per-lesson
 impact split issue #16 added has no base rate to be read against without
 it. No retrieval behaviour changed: the same lesson that fired before
 this change fires now.
+
+## Flipping the difficulty router on (issue #7 rollout)
+
+The router ships `off`. Turning it on is a config edit against the
+proxy's own file plus a proxy restart, and the order below is the
+rollback path, so read it before the edit.
+
+1. **Install first, flip second.** The worker is spawned by the proxy and
+   the proxy imports the staged share, so the code that decides is
+   `$HOME/.local/share/minder`, not the checkout. Diff it against the
+   checkout before restarting anything:
+
+   ```bash
+   diff -ru minder_decision ~/.local/share/minder/minder_decision
+   diff -u proxy.py ~/.local/share/minder/proxy.py
+   ```
+
+   A missing `may_outrank_client` in the staged `router.py` means the
+   share is stale and `laya` will behave exactly like `active`. Re-run
+   `install.sh` (it re-stages `minder.py`, `adapter.py`, `proxy.py`,
+   `hook.py`, `minder_decision/`, `minder_op/`, `minder_memory/`) rather
+   than copying files in by hand.
+2. **Shadow period before any application.** Set
+   `difficulty_router: shadow` in `~/.config/minder/minder.json`, restart
+   the proxy, and read the ledger for a working day:
+
+   ```bash
+   systemctl --user restart minder-proxy.service
+   minder-op events ls --type difficulty_shadow --limit 20
+   minder-op doctor | grep difficulty-router
+   ```
+
+   `shadow` consults the worker and records without touching a request.
+   `difficulty-router: ok ... N band(s) applied` only ever appears once
+   the router is in an applying mode, so in shadow expect `info` with no
+   eligible traffic or `warn` naming the abstentions.
+3. **Flip.** `difficulty_router: laya`, restart the proxy. Only the one
+   config value changed, and `laya` can only add thinking, so the worst
+   case is a request that thinks more than the client asked.
+4. **Rollback is one edit and one restart.** Keep the previous value
+   before step 3 (`cp ~/.config/minder/minder.json{,.bak}`):
+
+   ```bash
+   python3 - <<'EOF'
+   import json, pathlib
+   p = pathlib.Path.home() / ".config/minder/minder.json"
+   cfg = json.loads(p.read_text()); cfg["difficulty_router"] = "off"
+   p.write_text(json.dumps(cfg, indent=2) + chr(10))
+   EOF
+   systemctl --user restart minder-proxy.service
+   ```
+
+   Nothing else has to be undone. The router writes no DB state and no
+   migration; its only output is ledger lines in `events.jsonl`, which
+   are append-only evidence and stay. A live worker keeps running the
+   code the proxy imported, so restart the proxy (not just the worker)
+   after any re-install; `rm ~/.local/state/minder/laya-worker.sock` is
+   enough to drop a wedged worker, and moving `laya-worker.log` aside
+   clears stale `warn` evidence.
+5. **Confirm the flip did something.** `laya` mode is only worth keeping
+   if bands are actually applied:
+
+   ```bash
+   minder-op events ls --type difficulty_routed --limit 5
+   minder-op doctor | grep difficulty-router
+   ```
+
+   `0 applied` with abstentions still means the client's effort wins -
+   check that the client's declared effort is below the band it is being
+   compared against (`off` and `low` lose to a `routine` band, `xhigh`
+   does not).
 
 ## Deferred (+ — deliberately not built here)
 

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from minder_op import benchmark as bench
-from minder_op import queries
+from minder_op import queries, router
 from minder_op.queries import DBError
 
 FLAG_VOCAB = {
@@ -79,11 +79,18 @@ def _probe_proxy(port):
         return False, f"not running on :{port} ({exc})"
 
 
-def run_checks(db_path, probe=True, now=None):
+def run_checks(db_path, probe=True, now=None, proxy_config=None,
+               events_ledger=None):
     """Returns {"healthy": bool, "checks": [{id, status, detail}], ...}.
     Never raises on a missing/corrupt store - that's a `fail` finding,
     not a crash."""
     now = time.time() if now is None else now
+    proxy_config = (router.DEFAULT_PROXY_CONFIG if proxy_config is None
+                    else Path(proxy_config))
+    if events_ledger is None:
+        state_dir = os.environ.get("MINDER_STATE_DIR")
+        events_ledger = (Path(state_dir) if state_dir
+                         else router.DEFAULT_STATE_DIR) / router.LEDGER_NAME
     checks = []
 
     def add(cid, status, detail):
@@ -360,6 +367,8 @@ def run_checks(db_path, probe=True, now=None):
     except Exception as exc:  # never let a health check crash doctor
         add("laya-worker", "info", f"worker state unavailable: {exc}")
 
+    add(*router.router_check(proxy_config, events_ledger))
+
     return {
         "healthy": not any(c["status"] == "fail" for c in checks),
         "checks": checks,
@@ -376,7 +385,7 @@ def share_path_referenced(config_path, share_str):
 
 def render(report):
     for check in report["checks"]:
-        print(f"{check['status']:<5} {check['id']:<11} {check['detail']}")
+        print(f"{check['status']:<5} {check['id']:<17} {check['detail']}")
     verdict = "healthy" if report["healthy"] else "NOT healthy"
     print()
     print(f"verdict: {verdict} "

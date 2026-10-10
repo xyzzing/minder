@@ -5,6 +5,19 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The difficulty router has a mode that can beat the client's effort
+  (issue #7).** `difficulty_router` takes a fifth value, `laya`: the
+  worker's band replaces a client-declared `reasoning_effort`, but only
+  when the band schedules strictly more thinking than the client asked
+  for, so `laya` can add thinking and never removes it. The other modes
+  keep the approved precedence. That precedence had made the router inert
+  on the live install - 12,452 auto requests answered with thinking off,
+  872 `difficulty_skipped reason=client_effort`, zero applied bands -
+  because the dsh harness declares an effort on nearly every request.
+  `minder-op doctor` now has a `difficulty-router` line that names the
+  condition (enabled, abstentions, 0 applied) and separates it from a
+  store with no router-eligible traffic.
+
 - **The learning plane now states its own hit rate (issue #20).**
   `minder-op status` prints `retrieval_asked`, `retrieval_hits`,
   `retrieval_misses` and `retrieval_hit_rate`; `minder-op lessons

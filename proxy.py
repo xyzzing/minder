@@ -460,11 +460,33 @@ def _downgrade_band(band, session_fp, cfg):
     return new_band
 
 
+def _apply_band_opinion(opinion, req, session_fp, cfg):
+    """Apply a laya band to the request and audit it. Returns the applied
+    params. The spending guardrail downgrades one band on a session already
+    over its thinking-token cap; `max_tokens` stays a ceiling."""
+    label, band = opinion
+    if band.get("guardrail") and _spend_capped(session_fp, cfg):
+        downgraded = _downgrade_band(band, session_fp, cfg)
+        if downgraded is not None:
+            band = downgraded
+            label = band["label"]
+    from minder_decision.difficulty import apply_band
+    applied = apply_band(req, band, cfg)
+    minder.log(session_fp, "difficulty_routed", label=label,
+               band=band["label"], effort=applied["effort"],
+               budget=applied["budget"], max_tokens=applied["max_tokens"],
+               guardrail=applied["guardrail"],
+               direction=_routed_direction(band, req))
+    return (applied["effort"], applied["budget"], applied["guardrail"])
+
+
 def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None,
                         level=None):
     """class: auto — per-request effort scheduling; precedence: escalation
     marker (level-aware) > client/UI reasoning_effort > laya difficulty
-    band > X-Minder-Mode > activity classifier.
+    band > X-Minder-Mode > activity classifier. `difficulty_router: laya`
+    moves the laya band above the client effort, but only when the band
+    schedules strictly more thinking than the client asked for.
     A client-passed effort is honored only if it is a known semantic name or
     in the CAP-measured vocabulary; anything else is ignored (fail-open).
     On escalation the level selects the effort AND the thinking budget
@@ -477,40 +499,39 @@ def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None,
     accepted = (caps or {}).get("effort_levels") or []
     budget = None
     guardrail = None
+    opinion = None
     if level:
         effort = LEVEL_EFFORT.get(level, "high")
         budget = _level_budget(level, cfg)
         minder.log(session_fp, "auto_effort", effort=effort,
                    escalated=True, level=level, budget=budget)
     elif client_effort in _KNOWN_EFFORTS or client_effort in accepted:
-        effort = client_effort
-        minder.log(session_fp, "auto_effort", effort=effort,
-                   escalated=False, source="client")
-        # the router was outranked, not unused: record it so the shadow
-        # period's denominator counts this request instead of missing it
-        decision_router.record_client_skipped(session_fp, cfg)
+        # A client- or UI-declared effort outranks laya (approved
+        # precedence). That is also why the router was inert on the live
+        # install: the dsh profile declares an effort on every request, so
+        # this branch answered 12,452 of them with thinking off and the
+        # worker was never dialed. `laya` mode is the operator's answer -
+        # the worker gets a chance at the client's value, upward only.
+        if decision_router.may_outrank_client(cfg):
+            opinion = decision_router.opinion(
+                req, session_fp, cfg, level, client_effort, caps)
+        else:
+            # the router was outranked, not unused: record it so the
+            # shadow period's denominator counts this request anyway
+            decision_router.record_client_skipped(session_fp, cfg)
+        if opinion is None:
+            effort = client_effort
+            minder.log(session_fp, "auto_effort", effort=effort,
+                       escalated=False, source="client")
+        else:
+            effort, budget, guardrail = _apply_band_opinion(
+                opinion, req, session_fp, cfg)
     else:
         opinion = decision_router.opinion(
             req, session_fp, cfg, level, client_effort, caps)
         if opinion is not None:
-            label, band = opinion
-            # spending guardrail: a session over its thinking-token cap is
-            # downgraded one band (deep -> standard -> fast) on this request
-            if band.get("guardrail") and _spend_capped(session_fp, cfg):
-                downgraded = _downgrade_band(band, session_fp, cfg)
-                if downgraded is not None:
-                    band = downgraded
-                    label = band["label"]
-            from minder_decision.difficulty import apply_band
-            applied = apply_band(req, band, cfg)
-            effort = applied["effort"]
-            budget = applied["budget"]
-            guardrail = applied["guardrail"]
-            minder.log(session_fp, "difficulty_routed", label=label,
-                       band=band["label"], effort=effort, budget=budget,
-                       max_tokens=applied["max_tokens"],
-                       guardrail=guardrail,
-                       direction=_routed_direction(band, req))
+            effort, budget, guardrail = _apply_band_opinion(
+                opinion, req, session_fp, cfg)
         elif mode in MODE_EFFORT:
             effort = MODE_EFFORT[mode]
             minder.log(session_fp, "auto_effort", effort=effort,
