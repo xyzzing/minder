@@ -5,6 +5,41 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The difficulty confidence scale is fitted, gated, and rolled out as
+  one command (issue #36).** `MINDER_LAYA_MARGIN_SCALE` decides how much
+  of a top-two margin counts as trust, and it had never been fitted: the
+  specialization's 20.0 was hand-picked off 34 rows. `minder-op
+  calibrate fit` sweeps candidate scales on the fitting split, `gate`
+  replays the 200 eval cases at the winner and compares it with the
+  suite's pinned baseline, and `promote --yes` pins a record carrying
+  the scale, the confidence source, the floor, the label digest, the
+  bundle revision, the baseline report the verdict was computed against,
+  and the verdict. A fitting split that shares a case with the eval set
+  is refused rather than scored (prd-v0.10 6.9.3), and a candidate that
+  acts on nothing fails the gate whatever its accuracy. A baseline that
+  does not name the margin scale it was replayed at is refused too:
+  `difficulty replay` now records `margin_scale` and `confidence_floor`
+  in its report, since a comparison of a fitted scale against a replay
+  at an unknown one has no denominator. Each provider declares its own
+  default as `margin_scale_default` - 2.0 for the base head, 20.0 for the
+  bundle - rather than the gate assuming one.
+
+  On the current bundle the fitted 18.0 beat the shipped 20.0: selective
+  accuracy 0.7797 at 29.5% coverage against 0.7385 at 32.5%, ECE 0.257
+  against 0.281 (provisional labels, pending owner review). `calibrate
+  apply --yes` installs the pinned scale as a systemd drop-in - never an
+  edit of the base unit - verifies the unit loaded it, and removes it
+  again if the verification fails; `calibrate rollback` takes it back
+  off. `calibrate status` and a new `calibration` row in `doctor` report
+  the pinned scale against the effective one and warn when relabelling,
+  a suite change, a bundle re-export, or a replaced baseline report has
+  invalidated the record - a baseline re-pinned at another scale shows
+  up as `baseline_scale` drift even though its fingerprint is unchanged.
+  Both also print the scale the current process would map with, because
+  pinning a scale and installing one are different claims.
+  `minder_core.calibration.fit_margin_scale` is the fitter;
+  `minder_decision/calibrate.py` is the loop.
+
 - **The difficulty router can serve a laya-studio specialization
   bundle (issue #34, ADR-0005).** The laya decision head acts at chance
   on the difficulty rubric; a whitened-prototype classifier fitted over

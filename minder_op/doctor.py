@@ -23,7 +23,7 @@ import minder
 from minder_op import benchmark as bench
 from minder_op.ages import age_text as _age_text
 from minder_op import queries, router
-from minder_op import unit_upstream
+from minder_op import rollout, unit_upstream
 from minder_op.worker import worker_check
 from minder_op.queries import DBError
 
@@ -352,6 +352,16 @@ def run_checks(db_path, probe=True, now=None, proxy_config=None,
         add("laya-worker", "info", f"worker state unavailable: {exc}")
 
     add(*router.router_check(proxy_config, events_ledger))
+
+    # The calibration promotion (issue #36): which margin scale the
+    # router's confidence floor is fitted against, and whether the
+    # proxy unit actually loads it. The record and the unit are two
+    # different claims and the repo has been bitten twice by a config
+    # naming a thing the running process never loaded.
+    try:
+        add(*rollout.promotion_check())
+    except Exception as exc:  # never let a health check crash doctor
+        add("calibration", "info", f"promotion state unavailable: {exc}")
 
     return {
         "healthy": not any(c["status"] == "fail" for c in checks),

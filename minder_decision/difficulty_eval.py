@@ -16,7 +16,8 @@ import json
 from datetime import datetime, timezone
 
 from .contracts import TASK_DIFFICULTY_ID, task_difficulty_contract
-from .difficulty import LABELS, resolve_difficulty
+from .difficulty import LABELS, confidence_floor, resolve_difficulty
+from .providers.laya import margin_scale
 
 SUITE_ID = "difficulty-core-v1"
 
@@ -91,6 +92,14 @@ def replay_cases(cases_path, *, provider=None, cfg=None, db_path=None,
     correct = 0
     abstentions = 0
     band_distance = 0
+    # The confidence the floor gates on is clip01(scale x margin), so a
+    # report that does not name its scale is a number without units: two
+    # replays of the same cases at different scales look
+    # interchangeable, and that comparison is exactly the calibration
+    # gate's denominator. Read it from the environment the provider
+    # would have seen - the gate replays the candidate under the fitted
+    # scale - rather than assuming the shipped constant.
+    scale_in_force = margin_scale()
     records = []  # (confidence, hit) for the calibration detail
     dists = []    # (choice distribution, gold label) for Brier
     runs = []
@@ -153,6 +162,8 @@ def replay_cases(cases_path, *, provider=None, cfg=None, db_path=None,
         "difficulty_detail": {
             "contract_id": TASK_DIFFICULTY_ID,
             "provider": provider_name,
+            "margin_scale": scale_in_force,
+            "confidence_floor": confidence_floor(cfg or {}),
             "correct": correct,
             "abstentions": abstentions,
             "label_status": doc.get("label_status", ""),

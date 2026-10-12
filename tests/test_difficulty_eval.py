@@ -166,3 +166,23 @@ def test_selective_summary_pins_the_floor_semantics():
     assert nothing["acted"] == 0
     assert nothing["selective_accuracy"] is None
     assert nothing["coverage"] == 0.0
+
+
+def test_cli_replay_reports_the_scale_its_confidences_were_mapped_at(
+        tmp_path, monkeypatch, capsys):
+    """A replay's selective accuracy is a function of the scale its
+    confidences were mapped at, so the report has to name it: the
+    promotion gate reads that field as its denominator, and a report
+    from before the field existed must be refused rather than assumed
+    to be at the shipped scale."""
+    from minder_op.cli import EXIT_OK, main
+    monkeypatch.setenv("MINDER_LAYA_MARGIN_SCALE", "12.5")
+    dbp = _mig(tmp_path)
+    out = tmp_path / "report.json"
+    code = main(["--db", str(dbp), "difficulty", "replay", "--cases", CASES,
+                 "--provider", "null", "--out", str(out)])
+    assert code == EXIT_OK
+    saved = json.load(open(out))
+    assert saved["difficulty_detail"]["margin_scale"] == 12.5
+    assert saved["difficulty_detail"]["confidence_floor"] == 0.7
+    assert "margin_scale" in capsys.readouterr().out

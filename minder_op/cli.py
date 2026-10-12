@@ -14,6 +14,8 @@ from pathlib import Path
 
 from minder_op import format as fmt
 from minder_op import queries
+from minder_op import calibrate_cmd, decision_eval
+from minder_decision import calibrate
 
 EXIT_OK = 0
 EXIT_USAGE = 1
@@ -205,6 +207,41 @@ def build_parser():
                               "MINDER_LAYA_SPECIALIZATION is set)")
     dif_rep.add_argument("--out", help="persist the replay report JSON")
     dif_rep.add_argument("--json", action="store_true")
+
+    cal = sub.add_parser("calibrate", help="fit, gate and roll out the "
+                         "difficulty confidence scale (issue #36)")
+    cal_sub = cal.add_subparsers(dest="calibrate_command", required=True)
+    for verb, help_text in (
+            ("fit", "sweep the margin scale on the fitting split only"),
+            ("gate", "fit, replay the eval set, print the promotion verdict"),
+            ("promote", "gate, then pin the record (needs --yes)"),
+            ("status", "what is pinned, what the unit loads, what drifted"),
+            ("apply", "install the pinned scale as a drop-in (needs --yes)"),
+            ("rollback", "remove the drop-in and restart")):
+        verb_parser = cal_sub.add_parser(verb, help=help_text)
+        if verb in ("fit", "gate", "promote"):
+            verb_parser.add_argument("--cases",
+                                     default=calibrate_cmd.DEFAULT_CASES)
+            verb_parser.add_argument("--fitting",
+                                     default=calibrate_cmd.DEFAULT_FITTING,
+                                     help="fitting split; must stay "
+                                          "disjoint from --cases (6.9.3)")
+            verb_parser.add_argument("--provider", default="laya",
+                                     choices=["laya", "null"],
+                                     help="provider under calibration")
+            verb_parser.add_argument("--bundle",
+                                     default=calibrate_cmd.DEFAULT_BUNDLE,
+                                     help="specialization bundle the "
+                                          "provider answers from")
+            verb_parser.add_argument(
+                "--floor", type=float,
+                default=calibrate.DEFAULT_CONFIDENCE_FLOOR,
+                help="confidence floor the scale is fitted against")
+        if verb in ("promote", "apply"):
+            verb_parser.add_argument("--yes", action="store_true")
+        if verb in ("status", "apply", "rollback"):
+            verb_parser.add_argument("--unit", help="systemd user unit "
+                                     "(default: the proxy unit)")
 
     rs = sub.add_parser("resume", help="résumé evidence: career facts, "
                                        "approved wordings, JD intents")
@@ -521,15 +558,19 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
     if command == "families" and sub == "holdout-unlock":
         return _cmd_families_unlock(args, path)
     if command == "routes" and sub == "eval":
-        return _cmd_routes_eval(args, path)
+        return decision_eval.cmd_routes_eval(args, path)
     if command == "routes" and sub == "ls":
-        return _cmd_routes_ls(args, path)
+        return decision_eval.cmd_routes_ls(args, path)
     if command == "routes" and sub == "replay":
-        return _cmd_routes_replay(args, path)
+        return decision_eval.cmd_routes_replay(args, path)
     if command == "routes" and sub == "ambiguity":
         return _cmd_routes_ambiguity(args, path)
     if command == "difficulty" and sub == "replay":
-        return _cmd_difficulty_replay(args, path)
+        return decision_eval.cmd_difficulty_replay(args, path)
+    if command == "calibrate":
+        # the calibration loop lives in its own module (issue #36): the
+        # command table is self-contained and cli.py is already over C2
+        return calibrate_cmd.cmd_calibrate(args)
     if command == "resume" and sub == "assert":
         return _cmd_resume_assert(args, path)
     if command == "resume" and sub == "approve":
@@ -1212,150 +1253,6 @@ def _cmd_families_unlock(args, path):
     return EXIT_OK
 
 
-def _cmd_routes_eval(args, path):
-    from minder_decision import routing
-    from minder_decision.providers.null import NullClient
-    provider = {"rules": routing.RulesRouteProvider,
-                "null": NullClient}.get(args.provider)
-    provider = provider() if provider else None
-    if args.provider == "laya":
-        from minder_decision.providers.laya import try_laya_client
-        provider = try_laya_client()
-        if provider is None:
-            print("error: laya provider unavailable", file=sys.stderr)
-            return EXIT_USAGE
-    result = routing.assess_route(
-        declared_domain=args.declared_domain, task_id=args.task,
-        session_id=args.session, subject_changed=args.subject_changed,
-        provider=provider, record=True, db_path=path)
-    if result.get("error"):
-        print(f"error: {result['error']}", file=sys.stderr)
-        return EXIT_USAGE
-    decision = result["decision"]
-    fmt.kv([("trace_id", result["trace_id"]),
-            ("policy_transition", result["policy_transition"]),
-            ("candidate_domain", result["candidate_domain"]),
-            ("intent_kind (advisory)", result["intent_kind"]),
-            ("abstained", result["abstained"]),
-            ("validation", result["validation"]),
-            ("override", decision.override or "-")])
-    print()
-    print("observe-only: a route proposal never applies itself; task "
-          "contexts change only via explicit declaration")
-    return EXIT_OK
-
-
-def _cmd_routes_ls(args, path):
-    from minder_decision import routing
-    rows = routing.list_routes(limit=args.limit, db_path=path)
-    fmt.table([{"id": r["trace_id"], "ts": r["ts"],
-                "declared": r["declared_domain"] or "-",
-                "candidate": r["candidate_domain"] or "-",
-                "transition": r["transition"],
-                "conf": r["confidence"],
-                "abst": r["abstained"],
-                "provenance": r["provenance"],
-                "validation": r["validation_result"]} for r in rows],
-              [("id", "id"), ("ts", "ts"), ("declared", "declared"),
-               ("candidate", "candidate"), ("transition", "transition"),
-               ("conf", "conf"), ("abst", "abst"),
-               ("provenance", "provenance"),
-               ("validation", "validation")])
-    return EXIT_OK
-
-
-def _cmd_routes_replay(args, path):
-    from minder_decision import routing
-    from minder_decision.providers.null import NullClient
-    provider = {"rules": routing.RulesRouteProvider,
-                "null": NullClient}.get(args.provider)
-    provider = provider() if provider else None
-    if args.provider == "laya":
-        from minder_decision.providers.laya import try_laya_client
-        provider = try_laya_client()
-        if provider is None:
-            print("error: laya provider unavailable (package missing or "
-                  "no recognised surface; MINDER_LAYA_DEVICE/MINDER_LAYA_"
-                  "MODEL configure it)", file=sys.stderr)
-            return EXIT_USAGE
-    try:
-        report = routing.replay_cases(args.cases, provider=provider,
-                                      db_path=path)
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return EXIT_USAGE
-    if args.out:
-        from minder_op import benchmark_cli
-        benchmark_cli.write_json_file(args.out, report)
-    if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
-    else:
-        fmt.kv([(key, report["metrics"][key]) for key in
-                ("comparable_runs", "verified_completion_rate",
-                 "unsafe_executions", "harmful_frontier_acceptances",
-                 "external_prohibited_egress")])
-        detail = report["routing_detail"]
-        fmt.kv([("provider", detail["provider"]),
-                ("correct", detail["correct"]),
-                ("false_switches", detail["false_switches"]),
-                ("missed_switches", detail["missed_switches"]),
-                ("abstentions", detail["abstentions"]),
-                ("unnecessary_calls", detail["unnecessary_calls"]),
-                ("label_status", detail["label_status"])])
-        if args.out:
-            print(f"report written: {args.out}")
-        print("replay is offline and observe-only; reports pin via "
-              "benchmark baseline create --yes")
-    return EXIT_OK
-
-
-def _cmd_difficulty_replay(args, path):
-    from minder_decision import difficulty_eval
-    provider = None
-    if args.provider == "laya":
-        from minder_decision.providers.laya import try_laya_client
-        provider = try_laya_client()
-        if provider is None:
-            print("error: laya provider unavailable (package missing or "
-                  "no recognised surface; MINDER_LAYA_DEVICE/MINDER_LAYA_"
-                  "MODEL/MINDER_LAYA_SPECIALIZATION configure it)",
-                  file=sys.stderr)
-            return EXIT_USAGE
-    try:
-        report = difficulty_eval.replay_cases(args.cases, provider=provider,
-                                              db_path=path)
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return EXIT_USAGE
-    if args.out:
-        from minder_op import benchmark_cli
-        benchmark_cli.write_json_file(args.out, report)
-    if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
-    else:
-        fmt.kv([(key, report["metrics"][key]) for key in
-                ("comparable_runs", "verified_completion_rate",
-                 "unsafe_executions", "harmful_frontier_acceptances",
-                 "external_prohibited_egress")])
-        detail = report["difficulty_detail"]
-        cal = report["calibration_detail"]
-        fmt.kv([("provider", detail["provider"]),
-                ("correct", detail["correct"]),
-                ("abstentions", detail["abstentions"]),
-                ("acted", detail["acted"]),
-                ("coverage", detail["coverage"]),
-                ("selective_accuracy", detail["selective_accuracy"]),
-                ("mean_band_distance", detail["mean_band_distance"]),
-                ("brier", cal["brier"]),
-                ("ece", cal["ece"]),
-                ("label_status", detail["label_status"])])
-        if args.out:
-            print(f"report written: {args.out}")
-        print("replay is offline; reports pin via "
-              "benchmark baseline create --yes")
-    return EXIT_OK
-
-
 def _cmd_routes_ambiguity(args, path):
     from minder_decision import routing
     report = routing.ambiguity_report(days=args.days, db_path=path)
@@ -1700,7 +1597,8 @@ def main(argv=None):
     # would refuse the one case it exists for.
     needs_db = args.command not in ("flags", "export-stats", "benchmark",
                                     "quality", "doctor", "capture",
-                                    "scorecard", "trace", "engine")
+                                    "scorecard", "trace", "engine",
+                                    "calibrate")
     if needs_db:
         code = _guard_db(path)
         if code != EXIT_OK:

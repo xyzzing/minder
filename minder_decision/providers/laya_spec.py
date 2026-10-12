@@ -33,12 +33,20 @@ DIFFICULTY_CONTRACT_ID = "task-difficulty"
 SPEC_MARGIN_SCALE = 20.0
 
 
+def spec_margin_scale():
+    """The margin scale the bundle maps with: the promoted value when the
+    environment carries one, otherwise the measured constant above."""
+    from .laya import margin_scale
+    return margin_scale(SPEC_MARGIN_SCALE)
+
+
 def specialized_confidence(choice_probs):
-    """clip01(SPEC_MARGIN_SCALE x margin) over the specialized choice
-    distribution. Pure function; never raises."""
+    """clip01(scale x margin) over the specialized choice distribution.
+    The scale is the fitted one when a promotion pinned one (issue #36),
+    otherwise the measured constant above. Pure function; never raises."""
     try:
         margin = top_two_margin(choice_probs or {})
-        return max(0.0, min(1.0, margin * SPEC_MARGIN_SCALE))
+        return max(0.0, min(1.0, margin * spec_margin_scale()))
     except Exception:
         return 0.0
 
@@ -82,6 +90,11 @@ class SpecializedLayaClient:
     """The seam's client: difficulty from the bundle, everything else
     from the base head. Exposes the same system_one surface as
     LayaSystemOneClient (worker and in-process paths both call it)."""
+
+    # The difficulty contract - the one this client specializes - is
+    # answered at the bundle's scale, so that is the answer for the
+    # calibration loop too (issue #36).
+    margin_scale_default = SPEC_MARGIN_SCALE
 
     def __init__(self, base_client, specialized):
         self._base = base_client

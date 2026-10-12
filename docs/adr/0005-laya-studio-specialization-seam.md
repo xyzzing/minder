@@ -62,6 +62,26 @@ behind explicit operator switches with fail-open fallbacks.
    until the owner accepts the draft eval labels; live shadow is the
    arbiter after that.
 
+   Amended (issue #36): the constant is a default, not the answer.
+   `minder-op calibrate fit` sweeps candidate scales on the fitting
+   split, `gate` replays the 200 eval cases at the winner and compares
+   against the suite's pinned baseline, and `promote --yes` pins the
+   record. `MINDER_LAYA_MARGIN_SCALE` overrides both shipped constants
+   at runtime, which is what the rollout drop-in writes. On the current
+   bundle and labels the fitted 18.0 beat the hand-picked 20.0 -
+   selective accuracy 0.7797 at 29.5% coverage against 0.7385 at 32.5%,
+   ECE 0.257 against 0.281 - so the hand-picked number was already
+   slightly too permissive. The 34-row fitting split on its own is
+   nearly blind (coverage 0.0588 at 18.0), which is why the gate, not
+   the fit, is the decision, and why the pinned baseline is a required
+   input rather than a convenience. That baseline is itself gated: it has
+   to name the scale it was replayed at, because every confidence in a
+   difficulty report is that scale applied to a margin, and the base head
+   and this bundle measure differently (2.0 and 20.0). Each client
+   declares its default as `margin_scale_default` and the loop asks the
+   provider rather than assuming a constant; a baseline at any other
+   scale, or at none, is refused.
+
 5. **Fail open, named.** A missing laya_studio, missing bundle, or
    bundle error falls open to the base head. Both failure sites print
    one named stderr line (the bare_except_pass ratchet correctly
@@ -73,7 +93,11 @@ behind explicit operator switches with fail-open fallbacks.
 - Flipping the live proxy is an operator action: set
   `MINDER_LAYA_SPECIALIZATION` in the proxy's environment (the worker
   child inherits it) and restart; `minder-op difficulty replay` is the
-  evidence to check first.
+  evidence to check first. The margin scale is now an operator action
+  too, but a gated one: `minder-op calibrate apply --yes` writes it as
+  a drop-in and verifies the unit loaded it, and `calibrate rollback`
+  takes it off. `doctor` reports the pinned record and warns when the
+  running unit disagrees with it or when the record has drifted.
 - The eval set's `label_status` is `draft_pending_owner_review`; every
   number in this ADR is provisional against those labels. Owner
   acceptance flips the status and re-pins the numbers.

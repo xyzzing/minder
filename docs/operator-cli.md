@@ -33,6 +33,19 @@ python3 -m minder_op difficulty replay --cases PATH [--provider laya|null] [--ou
 # is the never-acts baseline. The report carries accuracy, coverage and
 # selective accuracy under the confidence floor, mean band distance,
 # and Brier/ECE (ADR-0005).
+python3 -m minder_op calibrate fit [--cases P] [--fitting P] [--provider laya|null] [--bundle P] [--floor F]
+python3 -m minder_op calibrate gate [...same]
+python3 -m minder_op calibrate promote [...same] --yes
+python3 -m minder_op calibrate status [--unit U]
+python3 -m minder_op calibrate apply [--unit U] --yes
+python3 -m minder_op calibrate rollback [--unit U]
+# the confidence-scale loop (issue #36). `fit` scores the fitting split
+# with the provider, sweeps candidate margin scales and reports the
+# best; `gate` replays the eval set at that scale and compares it with
+# the pinned baseline; `promote --yes` pins the record. `fitting` and
+# `cases` must be disjoint - an overlapping split is refused, not
+# scored (prd-v0.10 6.9.3). `apply` installs the pinned scale as a
+# systemd drop-in, `rollback` takes it back off.
 python3 -m minder_op resume assert --claim C [--variant P ...] [--actor U]
 python3 -m minder_op resume approve --assertion ID --phrase P [--scope any|JD] --actor U
 python3 -m minder_op resume uncertain --assertion ID
@@ -586,6 +599,10 @@ prototype bundle acts at 0.754 selective accuracy where the head reads
    systemctl --user restart minder-proxy.service
    ```
 
+   The margin scale that comes after this - what the bundle's answers
+   are worth - has its own gated command instead: see "Calibrating the
+   confidence scale" below.
+
    The bundle path must exist on the share the proxy imports; a path
    that does not load prints one `MINDER_LAYA_SPECIALIZATION ... did
    not load` line to stderr (the worker's `laya-worker.log`) and the
@@ -597,6 +614,112 @@ prototype bundle acts at 0.754 selective accuracy where the head reads
    changes: no migration, no ledger state. A bundle that fails
    mid-request falls open to the base head with one
    `specialization bundle failed` line in the same log.
+
+## Calibrating the confidence scale (issue #36)
+
+The bundle answers; the margin scale decides whether those answers are
+trusted. Confidence is `clip01(margin x scale)` over the top two
+choice probabilities - never the model's self-report, which measures
+0.11-0.28 on a closed menu and carries no routing signal. The scale is
+therefore a policy dial: too low and the router acts on coin flips, too
+high and it never acts. `SPEC_MARGIN_SCALE` (20.0) and
+`CALIBRATION_MARGIN_SCALE` (2.0) are the shipped defaults; a fitted
+value overrides them through `MINDER_LAYA_MARGIN_SCALE`.
+
+Fit it on the fitting split, never on the eval set (prd-v0.10 6.9.3):
+
+```bash
+python3 -m minder_op calibrate fit
+# fitting_rows 34, margin_scale 18.0, fit_acted 2, fit_coverage 0.0588
+```
+
+The fitting split is 34 rows, so its own numbers are nearly worthless -
+the fit proposes, the eval set decides:
+
+```bash
+python3 -m minder_op calibrate gate
+# margin_scale 18.0 | eval_acted 59 coverage 0.295
+# selective_accuracy 0.7797 ece 0.25699
+# verdict: PASS
+```
+
+`gate` compares against the suite's **pinned** baseline, not a report
+made up in the same run. Pin one first if none exists:
+`difficulty replay --out /tmp/r.json` then
+`benchmark baseline create /tmp/r.json --yes`.
+
+That baseline has to be a replay at the scale the provider answers at
+today. Every number in a difficulty report is a function of that scale -
+it is what maps a margin to the confidence the floor gates on - so a
+baseline that does not name it is a number without units. `difficulty
+replay` records `margin_scale` and `confidence_floor` in
+`difficulty_detail`, and `gate` refuses a baseline whose scale is not the
+provider's, or which names none at all, rather than assuming the shipped
+constant. The flattering direction is the one that would otherwise slip
+through: a fitted 18.0 beating a baseline that never declared its units.
+The provider's own default is not hardcoded into the gate either - the
+base head measures 2.0 and the specialization bundle 20.0 - so each
+client declares it as `margin_scale_default` and the loop asks.
+
+The thresholds are the comparator's plus two calibration ones: a
+`selective_accuracy` drop or an ECE rise over 5pp is a FAIL, and a candidate that acts on nothing is
+a FAIL whatever its accuracy, because a router that never acts is not a
+calibrated one. On the real bundle, scale 18.0 beat the shipped 20.0 by
+4.1pp of selective accuracy (0.7797 at 29.5% coverage against 0.7385 at
+32.5%) and 2.4pp of ECE.
+
+```bash
+python3 -m minder_op calibrate promote --yes
+```
+
+Writes `benchmarks/promotions/difficulty-core-v1.json`: the scale, the
+confidence source, the floor, the label digest, the bundle revision,
+the suite fingerprint, the verdict with its reasons, and the baseline it
+was gated against - its location inside the benchmarks root, its
+fingerprint, and the scale it was replayed at. The location is relative
+because `MINDER_BENCHMARKS_DIR` is per-invocation: an absolute path makes
+the drift check report a moved baseline every time the root moves. A
+refused gate pins nothing. The record is what makes the next drift check
+possible.
+
+Then, and only then, the live unit:
+
+```bash
+python3 -m minder_op calibrate apply        # plan only, nothing written
+python3 -m minder_op calibrate apply --yes  # drop-in + reload + restart + verify
+# reports previous_scale and effective_scale: both ends of the change
+python3 -m minder_op calibrate rollback     # remove the drop-in, reload, restart
+```
+
+`apply` writes
+`~/.config/systemd/user/minder-proxy.service.d/minder-calibration.conf`
+and never edits the base unit - a drop-in is additive, and the base
+unit is where the port and the upstream live (issue #33). It reads the
+unit's effective `Environment` before writing and again after the
+restart, and if the scale did not take it removes the drop-in it just
+wrote and restores the backup. The worker child inherits the proxy's
+environment, so one drop-in covers both processes.
+
+`calibrate status` and the `calibration` row in `doctor` answer the
+same question from both sides: what is pinned, what the unit actually
+loads, and whether the record still describes the world. Relabelling
+the eval set, changing the suite, re-exporting the bundle, or re-pinning
+the baseline the verdict was computed against each break a field of the
+record; re-pinning it at a different scale breaks `baseline_scale` while
+leaving the fingerprint intact, because the fingerprint says the
+denominator is the same suite and only the scale says it is the same
+comparison. Both commands name the drifted fields and say to re-run
+`promote --yes`.
+
+Pinning a scale is not installing one, and both commands say so: they
+print the scale this process would map with, which is the environment's
+if it carries one and otherwise the provider's shipped constant. On a
+box where systemd cannot be reached, that line is the only live reading
+available, and it is labelled as the process view rather than the unit's. A pinned scale the unit does not load is a `warn`, not
+an `ok` - the record and the running proxy disagree, and that is the
+state worth seeing. Where systemd cannot be reached at all the row is an
+`info` naming the pinned scale as unverified: doctor does not call a
+number live because a file says so.
 
 ## Deferred (+ — deliberately not built here)
 
