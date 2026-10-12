@@ -40,14 +40,17 @@ while IFS='|' read -r name cmd; do
         "$BASELINE" > "$BASELINE.new" && mv "$BASELINE.new" "$BASELINE"
     fi
   fi
-  # A baseline sitting far above the real count is a raised number
-  # nobody lowered back (M2). Slack: 10%, minimum 2. Check mode only:
-  # --update exists precisely to reconcile the baseline down.
+  # A baseline sitting above the real count is a raised number nobody
+  # lowered back (M2). Zero tolerance for a gap: the cheapest way to
+  # make a violation legal is to raise its floor, and the only
+  # sanctioned way to lower it (--update, check mode) is right there.
+  # The old 10%/min-2 slack let a 0 -> 1 raise pass silently at small
+  # counts, which is exactly where a new violation lands (found in
+  # roomwise, same script: runtime_deps 0 -> 1 stayed green).
   if [ "$mode" = check ]; then
-    slack=$((base / 10)); [ "$slack" -lt 2 ] && slack=2
     gap=$((base - real))
-    [ "$gap" -gt "$slack" ] && {
-      echo "ratchet: $name baseline $base sits $gap above real $real; run --update" >&2
+    [ "$gap" -gt 0 ] && {
+      echo "ratchet: $name baseline $base sits $gap above real $real; run scripts/ratchet.sh --update (a raised floor needs a reason in the commit message, C7)" >&2
       fail=1; }
   fi
 done < "$COUNTERS"

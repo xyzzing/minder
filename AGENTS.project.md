@@ -97,7 +97,9 @@ Per commit, run what the change touches; the full set before push. CI
 also runs proven red (P2) on PRs and `pr-acceptance`. Ratchet baselines
 lower with `scripts/ratchet.sh --update`, which refuses to write a rise;
 raising one is a hand edit to `.ratchet-baseline` with a reason in the
-commit message (C7). State completed checks in handoff.
+commit message (C7). A baseline left above the real count fails the
+check, so a raised floor cannot sit there quietly. State completed
+checks in handoff.
 
 ## Playbooks
 
