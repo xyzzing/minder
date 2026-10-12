@@ -49,5 +49,39 @@
     "verification": [
       "environment_checks"
     ]
+  },
+  {
+    "name": "minder-store-access",
+    "description": "Read or write minder's sqlite store from inside the harness file sandbox: the state dir sits outside the writable root and the schema moves under the reader.",
+    "triggers": [
+      "unable to open database file",
+      "no such column",
+      "no column named",
+      "no such table",
+      "read-only file system",
+      "sqlite3.operationalerror"
+    ],
+    "risk_level": "low",
+    "body": "skills/bodies/minder-store-access.md",
+    "preconditions": [],
+    "verification": [
+      "environment_checks"
+    ]
+  },
+  {
+    "name": "minder-gap-triage",
+    "description": "Decide what a recorded skill gap is evidence of before acting on it; most rows are capture artefacts, not failures.",
+    "triggers": [
+      "skill_gaps",
+      "close_gap",
+      "gap_id",
+      "list_gaps"
+    ],
+    "risk_level": "low",
+    "body": "skills/bodies/minder-gap-triage.md",
+    "preconditions": [],
+    "verification": [
+      "direct_tests"
+    ]
   }
 ]
