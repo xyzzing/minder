@@ -5,3 +5,4 @@ files_over_400 15
 bare_except_pass 42
 runtime_deps 0
 mocked_internal_modules 0
+undeclared_imports 5

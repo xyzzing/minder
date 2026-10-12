@@ -57,7 +57,12 @@ Gate: `tests/test_instruction_gate.py` (greps `0.8.` outside `minder.py`).
   names the failure via `minder.log` first. Gate: the ratchet holds
   `bare_except_pass` (may fall, never grow).
 - No runtime dependencies; optional extras only (`[web]`). Gate: the
-  ratchet holds `runtime_deps` at 0.
+  ratchet holds `runtime_deps` at 0 and `undeclared_imports` at 5 (the
+  guarded laya, laya_studio and zstandard sites that no manifest names;
+  the count may fall, never grow). `runtime_deps` counts what the
+  manifests declare, `undeclared_imports` what the code imports: the gap
+  between them is an import that works only because a package happens to
+  be installed.
 - Console copy: plain hyphens, never an em-dash, in anything a browser
   renders; `n/a` means the source is empty or unavailable, never zero.
   Gate: `tests/test_instruction_gate.py` (templates + string literals).
