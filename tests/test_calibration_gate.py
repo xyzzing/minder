@@ -375,6 +375,8 @@ def test_the_record_finds_its_baseline_after_the_root_moves(tmp_path,
             pinned = record["baseline_path"]
         else:
             assert record["baseline_path"] == pinned
-            loaded = calibrate._pinned_baseline_report(record["baseline_path"])
+            from minder_decision import calibration_promotion
+            loaded = calibration_promotion._pinned_baseline_report(
+                record["baseline_path"])
             assert loaded is not None, "the record lost its own baseline"
             assert loaded["difficulty_detail"]["margin_scale"] == 20.0
