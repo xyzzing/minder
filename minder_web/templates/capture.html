@@ -18,11 +18,12 @@
 
 <h2>{{ S.capture.coverage }} <small>{{ S.capture.coverage_gloss.format(hours=window_hours) }}</small></h2>
 <table class="kv">
-  <tr><th>{{ S.capture.invocations }}</th><td>{{ coverage.invocations }}
+  <caption>{{ S.common.kv_caption.format(section=S.capture.coverage) }}</caption>
+  <tr><th scope="row">{{ S.capture.invocations }}</th><td>{{ coverage.invocations }}
     ({{ S.capture.logs_scanned.format(scanned=coverage.scanned) }}{% if coverage.truncated %}, {{ S.capture.truncated }}{% endif %})</td></tr>
-  <tr><th>{{ S.capture.persisted }}</th><td>{{ coverage.persisted }}
+  <tr><th scope="row">{{ S.capture.persisted }}</th><td>{{ coverage.persisted }}
     ({{ S.capture.ledger }} {{ coverage.persisted_ledger }}, {{ S.capture.db }} {{ coverage.persisted_db if coverage.persisted_db is not none else S.common.na }})</td></tr>
-  <tr><th>{{ S.capture.ratio }}</th><td>
+  <tr><th scope="row">{{ S.capture.ratio }}</th><td>
     {% if coverage.ratio is none %}{{ S.scorecard.not_measurable }}{% else %}
       <span class="badge {% if coverage.ratio >= coverage.min_ratio %}badge-ok{% else %}badge-bad{% endif %}">
         {{ '%.0f%%' % (coverage.ratio * 100) }}</span>
@@ -42,7 +43,8 @@
   {% endfor %}
   </tbody>
 </table>
-{{ raw_tier(['session_id', 'invocations', 'hook_p50_ms'], coverage.sessions) }}
+{{ raw_tier(['session_id', 'invocations', 'hook_p50_ms'], coverage.sessions,
+            unit=S.capture.session_unit) }}
 {% endif %}
 
 <h2>{{ S.capture.stores }}</h2>
@@ -58,21 +60,23 @@
   {% endfor %}
   </tbody>
 </table>
-{{ raw_tier(['name', 'file', 'age_s', 'status'], stores) }}
+{{ raw_tier(['name', 'file', 'age_s', 'status'], stores,
+            unit=S.capture.store_unit) }}
 
 <h2>{{ S.capture.sink }} <small>{{ S.capture.sink_gloss }}</small></h2>
 <table class="kv">
-  <tr><th>{{ S.capture.configured }}</th><td>{{ S.common.yes if sink.configured else S.capture.not_configured }}</td></tr>
-  <tr><th>{{ S.capture.url }}</th><td>{{ sink.url or '-' }}</td></tr>
-  <tr><th>{{ S.capture.reachable }}</th><td>{{ S.common.yes if sink.reachable else S.common.no }}</td></tr>
+  <caption>{{ S.common.kv_caption.format(section=S.capture.sink) }}</caption>
+  <tr><th scope="row">{{ S.capture.configured }}</th><td>{{ S.common.yes if sink.configured else S.capture.not_configured }}</td></tr>
+  <tr><th scope="row">{{ S.capture.url }}</th><td>{{ sink.url or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.capture.reachable }}</th><td>{{ S.common.yes if sink.reachable else S.common.no }}</td></tr>
   {% if sink.stats %}
-  <tr><th>{{ S.capture.ops }}</th><td>
+  <tr><th scope="row">{{ S.capture.ops }}</th><td>
     {% for op, counts in sink.stats.ops | dictsort %}
       <span class="badge">{{ op }}: {{ counts.ok }} {{ S.capture.ok }}{% if counts.failed %} / {{ counts.failed }} {{ S.capture.failed }}{% endif %}</span>
     {% endfor %}
   </td></tr>
-  <tr><th>{{ S.capture.warm_providers }}</th><td><code>{{ sink.stats.warm }}</code></td></tr>
-  <tr><th>{{ S.capture.last_persist }}</th><td>{{ sink.stats.last_persist_ts or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.capture.warm_providers }}</th><td><code>{{ sink.stats.warm }}</code></td></tr>
+  <tr><th scope="row">{{ S.capture.last_persist }}</th><td>{{ sink.stats.last_persist_ts or '-' }}</td></tr>
   {% endif %}
 </table>
 
@@ -82,15 +86,16 @@
   <thead><tr><th scope="col">{{ S.capture.col_mode }}</th><th scope="col">{{ S.capture.col_sessions }}</th></tr></thead>
   <tbody>
   {% for mode, n in sandbox | dictsort %}
-    <tr><td data-label="{{ S.capture.col_mode }}">
+    <tr><th scope="row" data-label="{{ S.capture.col_mode }}">
         {% if mode == 'danger-full-access' %}<span class="badge badge-bad">{{ mode }}</span>
-        {% else %}<span class="badge badge-ok">{{ mode }}</span>{% endif %}</td>
+        {% else %}<span class="badge badge-ok">{{ mode }}</span>{% endif %}</th>
         <td data-label="{{ S.capture.col_sessions }}" class="num">{{ n }}</td></tr>
   {% else %}
     <tr><td colspan="2" class="na">{{ S.capture.sandbox_empty }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
-{{ raw_tier(['mode', 'sessions'], sandbox_rows) }}
+{{ raw_tier(['mode', 'sessions'], sandbox_rows,
+            unit=S.capture.sandbox_unit) }}
 <p class="note">{{ S.capture.state_note.format(dir=state_dir, now=now | int) }}</p>
 {% endblock %}

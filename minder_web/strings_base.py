@@ -21,6 +21,7 @@ S = {
         "unknown": UNKNOWN, "yes": "yes", "no": "no", "none": "none",
         "status": "status", "day": WINDOW_DAY, "week": WINDOW_WEEK,
         "caption": "one row per {unit}, newest first",
+        "kv_caption": "one row per {section} measurement",
         "raw_fields": "raw fields",
         "raw_note": "the same rows, with the storage field names and the"
                     " values exactly as stored - nothing rounded,"
@@ -124,6 +125,9 @@ S = {
         "title": "episode", "timeline": "timeline", "col_seq": "seq",
         "col_ts": "ts", "col_type": "type", "col_tool": "tool",
         "col_failure_key": "failure_key", "col_excerpt": "excerpt",
+        "col_opened_at": "opened_at", "col_closed_at": "closed_at",
+        "col_repo": "repo", "col_task_id": "task_id",
+        "event_unit": "timeline event",
         "empty": "no events.",
     },
     "lessons": {
@@ -300,6 +304,7 @@ S = {
     },
     "engine_confirm": {
         "title": "switch the engine?",
+        "target": "the engine you are about to switch to",
         "lead": "this stops one running unit and starts another",
         "body": "<code>{name}</code> will take the unit now held by the"
                 " active engine. The unit is {unit} and its state is"

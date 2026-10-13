@@ -32,6 +32,6 @@
   </tbody>
 </table>
 {{ raw_tier(['name', 'active', 'upstream', 'unit', 'unit_state',
-             'healthy'], rows) }}
+             'healthy'], rows, unit=S.engine.unit) }}
 <p class="note">{{ S.engine.note }}</p>
 {% endblock %}

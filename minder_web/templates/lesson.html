@@ -2,16 +2,17 @@
 {% block content %}
 <h1>{{ S.lesson.title }} {{ lesson.lesson_id }}</h1>
 <table class="kv">
-  <tr><th>{{ S.lesson.col_status }}</th><td><span class="badge badge-{{ lesson.status }}">{{ lesson.status }}</span></td></tr>
-  <tr><th>{{ S.lesson.col_repo }}</th><td>{{ lesson.repo }}</td></tr>
-  <tr><th>{{ S.lesson.col_failure_key }}</th><td>{{ lesson.failure_key }}</td></tr>
-  <tr><th>{{ S.lesson.col_instruction }}</th><td>{{ lesson.instruction }}</td></tr>
-  <tr><th>{{ S.lesson.col_anti_pattern }}</th><td>{{ lesson.anti_pattern or '-' }}</td></tr>
-  <tr><th>{{ S.lesson.col_verification }}</th><td>{{ lesson.verification_json or '-' }}</td></tr>
-  <tr><th>{{ S.lesson.col_source_episode }}</th><td>{{ lesson.source_episode or '-' }}</td></tr>
-  <tr><th>{{ S.lesson.col_valid_from }}</th><td>{{ lesson.valid_from or '-' }}</td></tr>
-  <tr><th>{{ S.lesson.col_valid_to }}</th><td>{{ lesson.valid_to or '-' }}</td></tr>
-  <tr><th>{{ S.lesson.col_diagnosis }}</th><td>{{ lesson.invalidated_diagnosis or S.common.na }}</td></tr>
+  <caption>{{ S.common.kv_caption.format(section=S.lesson.title) }}</caption>
+  <tr><th scope="row">{{ S.lesson.col_status }}</th><td><span class="badge badge-{{ lesson.status }}">{{ lesson.status }}</span></td></tr>
+  <tr><th scope="row">{{ S.lesson.col_repo }}</th><td>{{ lesson.repo }}</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_failure_key }}</th><td>{{ lesson.failure_key }}</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_instruction }}</th><td>{{ lesson.instruction }}</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_anti_pattern }}</th><td>{{ lesson.anti_pattern or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_verification }}</th><td>{{ lesson.verification_json or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_source_episode }}</th><td>{{ lesson.source_episode or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_valid_from }}</th><td>{{ lesson.valid_from or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_valid_to }}</th><td>{{ lesson.valid_to or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_diagnosis }}</th><td>{{ lesson.invalidated_diagnosis or S.common.na }}</td></tr>
 </table>
 <h2>{{ S.lesson_decisions.title }}</h2>
 {% if not decisions_available %}

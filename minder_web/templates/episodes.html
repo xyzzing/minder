@@ -22,5 +22,5 @@
 </table>
 <p class="note">{{ S.episodes.showing.format(limit=limit) }}</p>
 {{ raw_tier(['episode_id', 'opened_at', 'closed_at', 'repo', 'task_id',
-             'status'], rows) }}
+             'status'], rows, unit=S.episodes.unit) }}
 {% endblock %}

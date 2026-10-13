@@ -32,5 +32,5 @@
 </table>
 <p class="note">{{ S.lessons.showing.format(limit=limit) }}</p>
 {{ raw_tier(['lesson_id', 'status', 'invalidated_diagnosis',
-             'valid_from', 'failure_key', 'instruction'], rows) }}
+             'valid_from', 'failure_key', 'instruction'], rows, unit=S.lessons.unit) }}
 {% endblock %}

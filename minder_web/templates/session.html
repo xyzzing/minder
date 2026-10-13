@@ -16,29 +16,31 @@
 
 <h2>{{ S.session.work }}</h2>
 <table class="kv">
-  <tr><th>{{ S.session.goal }}</th><td>{{ goal or '-' }}</td></tr>
-  <tr><th>{{ S.session.last_activity }}</th><td>{{ age }}</td></tr>
-  <tr><th>{{ S.session.sandbox }}</th><td>{{ sandbox_mode or S.common.unknown }}
+  <caption>{{ S.common.kv_caption.format(section=S.session.work) }}</caption>
+  <tr><th scope="row">{{ S.session.goal }}</th><td>{{ goal or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.session.last_activity }}</th><td>{{ age }}</td></tr>
+  <tr><th scope="row">{{ S.session.sandbox }}</th><td>{{ sandbox_mode or S.common.unknown }}
     ({{ S.session.sandbox_gloss.format(preset=permissions.preset or '?', approval=permissions.approval or '?') }})</td></tr>
-  <tr><th>{{ S.session.turns_steps }}</th><td>{{ turns if turns is not none else '-' }} /
+  <tr><th scope="row">{{ S.session.turns_steps }}</th><td>{{ turns if turns is not none else '-' }} /
     {{ steps if steps is not none else '-' }}</td></tr>
-  <tr><th>{{ S.session.tool_calls }}</th><td>{{ stats.tool_calls }}</td></tr>
-  <tr><th>{{ S.session.tool_failures }}</th><td>{{ stats.tool_failures }}</td></tr>
-  <tr><th>{{ S.session.llm_tool_time }}</th><td>{{ llm_ms or '-' }} ms /
+  <tr><th scope="row">{{ S.session.tool_calls }}</th><td>{{ stats.tool_calls }}</td></tr>
+  <tr><th scope="row">{{ S.session.tool_failures }}</th><td>{{ stats.tool_failures }}</td></tr>
+  <tr><th scope="row">{{ S.session.llm_tool_time }}</th><td>{{ llm_ms or '-' }} ms /
     {{ tool_ms or '-' }} ms</td></tr>
-  <tr><th>{{ S.session.context_pressure }} <small>{{ S.session.context_pressure_gloss }}</small></th><td>{% if context_pressure_pct is not none %}{{ context_pressure_pct }}%{% else %}-{% endif %}</td></tr>
-  <tr><th>{{ S.session.tokens_total }} <small>{{ S.session.tokens_total_gloss }}</small></th><td title="{{ '{:,}'.format(tokens_total) if tokens_total else '' }}">{{ tokens_total | human_tokens if tokens_total else '-' }}</td></tr>
+  <tr><th scope="row">{{ S.session.context_pressure }} <small>{{ S.session.context_pressure_gloss }}</small></th><td>{% if context_pressure_pct is not none %}{{ context_pressure_pct }}%{% else %}-{% endif %}</td></tr>
+  <tr><th scope="row">{{ S.session.tokens_total }} <small>{{ S.session.tokens_total_gloss }}</small></th><td title="{{ '{:,}'.format(tokens_total) if tokens_total else '' }}">{{ tokens_total | human_tokens if tokens_total else '-' }}</td></tr>
 </table>
 
 <h2>{{ S.session.hook_cost }} <small>{{ S.session.hook_cost_gloss }}</small></h2>
 <table class="kv">
-  <tr><th>{{ S.session.invocations_results }}</th><td>{{ stats.hook_invocations }} /
+  <caption>{{ S.common.kv_caption.format(section=S.session.hook_cost) }}</caption>
+  <tr><th scope="row">{{ S.session.invocations_results }}</th><td>{{ stats.hook_invocations }} /
     {{ stats.hook_results }}</td></tr>
-  <tr><th>{{ S.session.non_zero_exits }}</th><td>{{ stats.hook_failures }}</td></tr>
-  <tr><th>{{ S.session.duration }}</th>
+  <tr><th scope="row">{{ S.session.non_zero_exits }}</th><td>{{ stats.hook_failures }}</td></tr>
+  <tr><th scope="row">{{ S.session.duration }}</th>
       <td>{{ hook.p50_ms or '-' }} / {{ hook.p90_ms or '-' }} / {{ hook.max_ms or '-' }} ms
       (n={{ hook.n }})</td></tr>
-  <tr><th>{{ S.session.points }}</th><td>
+  <tr><th scope="row">{{ S.session.points }}</th><td>
     {% for point, n in hook_points %}<span class="badge">{{ point }}: {{ n }}</span> {% endfor %}
     {% if not hook_points %}-{% endif %}</td></tr>
 </table>
@@ -48,10 +50,12 @@
 
 <h2>{{ S.session.tools_used }}</h2>
 <table>
-  <thead><tr><th>{{ S.session.col_tool }}</th><th>{{ S.session.col_calls }}</th></tr></thead>
+  <caption>{{ S.common.caption.format(unit=S.session.tool_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.session.col_tool }}</th><th scope="col">{{ S.session.col_calls }}</th></tr></thead>
   <tbody>
   {% for name, n in tools %}
-    <tr><td>{{ name }}</td><td>{{ n }}</td></tr>
+    <tr><td data-label="{{ S.session.col_tool }}">{{ name }}</td>
+        <td data-label="{{ S.session.col_calls }}" class="num">{{ n }}</td></tr>
   {% else %}
     <tr><td colspan="2" class="na">{{ S.session.tools_empty }}</td></tr>
   {% endfor %}
@@ -60,11 +64,14 @@
 
 <h2>{{ S.session.episodes }} <small>{{ S.session.episodes_gloss }}</small></h2>
 <table>
-  <thead><tr><th>{{ S.session.col_episode }}</th><th>{{ S.session.col_status }}</th><th>{{ S.session.col_opened }}</th><th>{{ S.session.col_repo }}</th></tr></thead>
+  <caption>{{ S.common.caption.format(unit=S.session.episode_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.session.col_episode }}</th><th scope="col">{{ S.session.col_status }}</th><th scope="col">{{ S.session.col_opened }}</th><th scope="col">{{ S.session.col_repo }}</th></tr></thead>
   <tbody>
   {% for e in episodes %}
-    <tr><td><a href="/episodes/{{ e.episode_id }}">{{ e.episode_id }}</a></td>
-        <td>{{ e.status }}</td><td>{{ e.opened_at }}</td><td>{{ e.repo }}</td></tr>
+    <tr><td data-label="{{ S.session.col_episode }}"><a href="/episodes/{{ e.episode_id }}">{{ e.episode_id }}</a></td>
+        <td data-label="{{ S.session.col_status }}">{{ e.status }}</td>
+        <td data-label="{{ S.session.col_opened }}">{{ e.opened_at }}</td>
+        <td data-label="{{ S.session.col_repo }}">{{ e.repo }}</td></tr>
   {% else %}
     <tr><td colspan="4" class="na">{{ S.session.episodes_empty }}</td></tr>
   {% endfor %}
@@ -73,11 +80,14 @@
 
 <h2>{{ S.session.observed }}</h2>
 <table>
-  <thead><tr><th>{{ S.session.col_ts }}</th><th>{{ S.session.col_type }}</th><th>{{ S.session.col_tool_name }}</th><th>{{ S.session.col_failure_key }}</th></tr></thead>
+  <caption>{{ S.common.caption.format(unit=S.session.event_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.session.col_ts }}</th><th scope="col">{{ S.session.col_type }}</th><th scope="col">{{ S.session.col_tool_name }}</th><th scope="col">{{ S.session.col_failure_key }}</th></tr></thead>
   <tbody>
   {% for e in events %}
-    <tr><td>{{ e.ts }}</td><td>{{ e.event_type }}</td><td>{{ e.tool }}</td>
-        <td class="excerpt">{{ e.failure_key }}</td></tr>
+    <tr><td data-label="{{ S.session.col_ts }}">{{ e.ts }}</td>
+        <td data-label="{{ S.session.col_type }}">{{ e.event_type }}</td>
+        <td data-label="{{ S.session.col_tool_name }}">{{ e.tool }}</td>
+        <td data-label="{{ S.session.col_failure_key }}" class="excerpt">{{ e.failure_key }}</td></tr>
   {% else %}
     <tr><td colspan="4" class="na">{{ S.session.observed_empty }}</td></tr>
   {% endfor %}

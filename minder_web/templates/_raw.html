@@ -3,11 +3,12 @@
    the model's own values, unrounded and unhumanized, so a console screen
    can be compared line by line against a CLI row. The tier reads the page
    model, never a DB row: redaction stays a service-layer contract. #}
-{% macro raw_tier(fields, rows) %}
+{% macro raw_tier(fields, rows, unit) %}
 <details class="raw">
   <summary>{{ S.common.raw_fields }}: {{ fields | join(', ') }}</summary>
   <p class="note">{{ S.common.raw_note }}</p>
   <table>
+    <caption>{{ S.common.caption.format(unit=unit) }}</caption>
     <thead><tr>
       {% for f in fields %}<th scope="col">{{ f }}</th>{% endfor %}
     </tr></thead>

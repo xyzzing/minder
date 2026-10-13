@@ -24,6 +24,7 @@ SCORECARD = {
     "repeat_keys": "repeat failure keys",
     "episodes_open": "episodes open / opened",
     "failure_key": "failure key", "count": "failures",
+    "failure_key_unit": "failure key",
     "learning": "learning", "skill_gaps_open": "skill gaps open",
     "lessons": "lessons verified / candidate",
     "decision_traces": "decision traces / shadow rows",

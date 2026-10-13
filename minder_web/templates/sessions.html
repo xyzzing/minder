@@ -74,5 +74,5 @@
 </p>
 {{ raw_tier(['session_id', 'project_path', 'sandbox_mode', 'turns',
              'steps', 'tokens_total', 'event_count', 'episode_count',
-             'archived'], rows) }}
+             'archived'], rows, unit=S.sessions.unit) }}
 {% endblock %}

@@ -49,30 +49,31 @@
 <h2>{{ S.overview.weekly }}
   <small>{{ S.overview.week_gloss.format(since=summary.window.since | human_date, until=summary.window.until | human_date) }}</small></h2>
 <table class="kv">
-  <tr><th>{{ S.overview.episodes_opened }}</th><td>{{ summary.episodes.opened_in_window }}</td></tr>
-  <tr><th>{{ S.overview.episodes_open_now }}</th><td>{{ summary.episodes.open_now }}</td></tr>
-  <tr><th>{{ S.overview.verified_resolution }} <small>{{ S.overview.verified_resolution_gloss }}</small></th><td>
+  <caption>{{ S.common.kv_caption.format(section=S.overview.weekly) }}</caption>
+  <tr><th scope="row">{{ S.overview.episodes_opened }}</th><td>{{ summary.episodes.opened_in_window }}</td></tr>
+  <tr><th scope="row">{{ S.overview.episodes_open_now }}</th><td>{{ summary.episodes.open_now }}</td></tr>
+  <tr><th scope="row">{{ S.overview.verified_resolution }} <small>{{ S.overview.verified_resolution_gloss }}</small></th><td>
     {%- set rate = summary.episodes.verified_resolution_rate -%}
     {%- if rate is none %}{{ S.common.na }}{% else %}{{ "%.1f%%" % (rate * 100) }}{% endif -%}
   </td></tr>
-  <tr><th>{{ S.overview.tool_failures }}</th><td>{{ summary.failures.tool_failures_in_window }}</td></tr>
-  <tr><th>{{ S.overview.repeat_keys }} <small>{{ S.overview.repeat_keys_gloss }}</small></th><td>{{ summary.failures.repeat_failure_keys }}</td></tr>
-  <tr><th>{{ S.overview.lessons_created }}</th>
+  <tr><th scope="row">{{ S.overview.tool_failures }}</th><td>{{ summary.failures.tool_failures_in_window }}</td></tr>
+  <tr><th scope="row">{{ S.overview.repeat_keys }} <small>{{ S.overview.repeat_keys_gloss }}</small></th><td>{{ summary.failures.repeat_failure_keys }}</td></tr>
+  <tr><th scope="row">{{ S.overview.lessons_created }}</th>
       <td>{{ summary.lessons.created_in_window.get('verified', 0) }} /
           {{ summary.lessons.created_in_window.get('candidate', 0) }}</td></tr>
-  <tr><th>{{ S.overview.open_gaps }}</th><td>{{ summary.gaps.open_now }}</td></tr>
-  <tr><th>{{ S.overview.injected }} <small>{{ S.overview.injected_gloss }}</small></th>
+  <tr><th scope="row">{{ S.overview.open_gaps }}</th><td>{{ summary.gaps.open_now }}</td></tr>
+  <tr><th scope="row">{{ S.overview.injected }} <small>{{ S.overview.injected_gloss }}</small></th>
       <td>{% if not summary.injections.available %}{{ S.common.na }}{% else %}{{ summary.injections.injected_in_window }} / {{ summary.injections.missed_total }}{% endif %}</td></tr>
-  <tr><th>{{ S.overview.hit_rate }} <small>{{ S.overview.hit_rate_gloss }}</small></th>
+  <tr><th scope="row">{{ S.overview.hit_rate }} <small>{{ S.overview.hit_rate_gloss }}</small></th>
       <td>{% if not summary.injections.available %}{{ S.common.na }}{% else %}{{ S.overview.hit_rate_value.format(hits=summary.injections.injected_total, asked=summary.injections.asked_total, rate=("%.1f%%" % (summary.injections.hit_rate * 100)) if summary.injections.hit_rate is not none else S.common.na) }} · {{ S.overview.hit_rate_misses.format(missed=summary.injections.missed_total) }}{% endif %}</td></tr>
-  <tr><th>{{ S.overview.unused_lessons }}</th>
+  <tr><th scope="row">{{ S.overview.unused_lessons }}</th>
       <td>{% if not summary.injections.available %}{{ S.common.na }}{% else %}{{ summary.injections.unused_verified }}{% endif %}</td></tr>
-  <tr><th>{{ S.overview.frontier_help }} <small>{{ S.overview.frontier_help_gloss }}</small></th>
+  <tr><th scope="row">{{ S.overview.frontier_help }} <small>{{ S.overview.frontier_help_gloss }}</small></th>
       <td>{% for label, n in summary.consults.by_helpfulness | dictsort %}{{ label }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
-  <tr><th>{{ S.overview.decisions }} <small>{{ S.overview.decisions_gloss }}</small></th>
+  <tr><th scope="row">{{ S.overview.decisions }} <small>{{ S.overview.decisions_gloss }}</small></th>
       <td>{{ summary.decisions.traces_in_window }} /
           {{ summary.decisions.overrides }}</td></tr>
-  <tr><th>{{ S.overview.benchmarks }}</th><td>{{ summary.benchmarks.status }}</td></tr>
+  <tr><th scope="row">{{ S.overview.benchmarks }}</th><td>{{ summary.benchmarks.status }}</td></tr>
 </table>
 
 <h2>{{ S.overview.operator_focus }}</h2>
@@ -102,14 +103,16 @@
 
 <h2>{{ S.overview.health }}</h2>
 <table class="kv">
-  <tr><th>{{ S.common.status }}</th><td>{{ health.status }}</td></tr>
-  <tr><th>{{ S.overview.schema_version }}</th><td>{{ health.schema_version if health.schema_version is not none else S.common.not_available }}</td></tr>
+  <caption>{{ S.common.kv_caption.format(section=S.overview.health) }}</caption>
+  <tr><th scope="row">{{ S.common.status }}</th><td>{{ health.status }}</td></tr>
+  <tr><th scope="row">{{ S.overview.schema_version }}</th><td>{{ health.schema_version if health.schema_version is not none else S.common.not_available }}</td></tr>
 </table>
 
 <h2>{{ S.overview.engine }} <small>{{ S.overview.engine_gloss }}</small></h2>
 <table class="kv">
-  <tr><th>{{ S.overview.active_engine }}</th><td>{{ engine.name if engine and engine.name else S.common.na }}</td></tr>
-  <tr><th>{{ S.overview.reuse }} <small>{{ S.overview.reuse_gloss.format(window=window_text) }}</small></th>
+  <caption>{{ S.common.kv_caption.format(section=S.overview.engine) }}</caption>
+  <tr><th scope="row">{{ S.overview.active_engine }}</th><td>{{ engine.name if engine and engine.name else S.common.na }}</td></tr>
+  <tr><th scope="row">{{ S.overview.reuse }} <small>{{ S.overview.reuse_gloss.format(window=window_text) }}</small></th>
       <td>{% if engine and engine.reuse_pct is not none %}{{ engine.reuse_pct }}%{% else %}{{ S.common.na }}{% endif %}</td></tr>
 </table>
 {% endblock %}

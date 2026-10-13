@@ -17,37 +17,42 @@
 
 <h2>{{ S.scorecard.capture }} <small>{{ S.scorecard.capture_gloss }}</small></h2>
 <table class="kv">
-  <tr><th>{{ S.scorecard.coverage }}</th><td>
+  <caption>{{ S.common.kv_caption.format(section=S.scorecard.capture) }}</caption>
+  <tr><th scope="row">{{ S.scorecard.coverage }}</th><td>
     {% if scores.capture.coverage_ratio is none %}{{ S.scorecard.not_measurable }}{% else %}
       <span class="badge {% if scores.capture.coverage_ratio >= scores.capture.min_ratio %}badge-ok{% else %}badge-bad{% endif %}">
         {{ '%.0f%%' % (scores.capture.coverage_ratio * 100) }}</span>
       ({{ scores.capture.persisted }} / {{ scores.capture.invocations }} {{ S.scorecard.hooks }})
     {% endif %}</td></tr>
-  <tr><th>{{ S.scorecard.sink }}</th><td>{{ S.scorecard.configured }} {{ scores.capture.sink_configured }},
+  <tr><th scope="row">{{ S.scorecard.sink }}</th><td>{{ S.scorecard.configured }} {{ scores.capture.sink_configured }},
     {{ S.scorecard.reachable }} {{ scores.capture.sink_reachable }}</td></tr>
-  <tr><th>{{ S.scorecard.stale_stores }}</th><td>{{ scores.capture.stale_stores | join(', ') or S.common.none }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.stale_stores }}</th><td>{{ scores.capture.stale_stores | join(', ') or S.common.none }}</td></tr>
 </table>
 
 <h2>{{ S.scorecard.cost }} <small>{{ S.scorecard.cost_gloss }}</small></h2>
 <table class="kv">
-  <tr><th>{{ S.scorecard.hook_p50 }}</th><td>{{ scores.cost.hook_p50_ms or S.common.na }} {{ S.scorecard.ms }}
+  <caption>{{ S.common.kv_caption.format(section=S.scorecard.cost) }}</caption>
+  <tr><th scope="row">{{ S.scorecard.hook_p50 }}</th><td>{{ scores.cost.hook_p50_ms or S.common.na }} {{ S.scorecard.ms }}
     ({{ S.scorecard.worst_session }} {{ scores.cost.hook_p50_ms_max or S.common.na }} {{ S.scorecard.ms }},
     {{ scores.cost.sessions_measured }} {{ S.scorecard.measured }})</td></tr>
 </table>
 
 <h2>{{ S.scorecard.failures }}</h2>
 <table class="kv">
-  <tr><th>{{ S.scorecard.tool_failures }}</th><td>{{ scores.failures.tool_failures if scores.failures.tool_failures is not none else S.common.na }}</td></tr>
-  <tr><th>{{ S.scorecard.repeat_keys }}</th><td>{{ scores.failures.repeat_failure_keys if scores.failures.repeat_failure_keys is not none else S.common.na }}</td></tr>
-  <tr><th>{{ S.scorecard.episodes_open }}</th><td>{{ scores.failures.episodes_open if scores.failures.episodes_open is not none else S.common.na }}
+  <caption>{{ S.common.kv_caption.format(section=S.scorecard.failures) }}</caption>
+  <tr><th scope="row">{{ S.scorecard.tool_failures }}</th><td>{{ scores.failures.tool_failures if scores.failures.tool_failures is not none else S.common.na }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.repeat_keys }}</th><td>{{ scores.failures.repeat_failure_keys if scores.failures.repeat_failure_keys is not none else S.common.na }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.episodes_open }}</th><td>{{ scores.failures.episodes_open if scores.failures.episodes_open is not none else S.common.na }}
     / {{ scores.failures.episodes_opened_in_window if scores.failures.episodes_opened_in_window is not none else S.common.na }}</td></tr>
 </table>
 {% if scores.failures.top_failure_keys %}
 <table>
-  <thead><tr><th>{{ S.scorecard.failure_key }}</th><th>{{ S.scorecard.count }}</th></tr></thead>
+  <caption>{{ S.common.caption.format(unit=S.scorecard.failure_key_unit) }}</caption>
+  <thead><tr><th scope="col">{{ S.scorecard.failure_key }}</th><th scope="col">{{ S.scorecard.count }}</th></tr></thead>
   <tbody>
   {% for key, n in scores.failures.top_failure_keys %}
-    <tr><td class="excerpt">{{ key }}</td><td>{{ n }}</td></tr>
+    <tr><td data-label="{{ S.scorecard.failure_key }}" class="excerpt">{{ key }}</td>
+        <td data-label="{{ S.scorecard.count }}" class="num">{{ n }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
@@ -55,28 +60,31 @@
 
 <h2>{{ S.scorecard.learning }}</h2>
 <table class="kv">
-  <tr><th>{{ S.scorecard.skill_gaps_open }}</th><td>{{ scores.learning.skill_gaps_open if scores.learning.skill_gaps_open is not none else S.common.na }}</td></tr>
-  <tr><th>{{ S.scorecard.lessons }}</th><td>{{ scores.learning.lessons_verified if scores.learning.lessons_verified is not none else S.common.na }}
+  <caption>{{ S.common.kv_caption.format(section=S.scorecard.learning) }}</caption>
+  <tr><th scope="row">{{ S.scorecard.skill_gaps_open }}</th><td>{{ scores.learning.skill_gaps_open if scores.learning.skill_gaps_open is not none else S.common.na }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.lessons }}</th><td>{{ scores.learning.lessons_verified if scores.learning.lessons_verified is not none else S.common.na }}
     / {{ scores.learning.lessons_candidate if scores.learning.lessons_candidate is not none else S.common.na }}</td></tr>
-  <tr><th>{{ S.scorecard.decision_traces }}</th><td>{{ scores.learning.decision_traces if scores.learning.decision_traces is not none else S.common.na }}
+  <tr><th scope="row">{{ S.scorecard.decision_traces }}</th><td>{{ scores.learning.decision_traces if scores.learning.decision_traces is not none else S.common.na }}
     / {{ scores.learning.classifier_shadow if scores.learning.classifier_shadow is not none else S.common.na }}</td></tr>
 </table>
 
 <h2>{{ S.scorecard.context }}</h2>
 <table class="kv">
-  <tr><th>{{ S.scorecard.sessions_measured }}</th><td>{{ scores.context.sessions }}
+  <caption>{{ S.common.kv_caption.format(section=S.scorecard.context) }}</caption>
+  <tr><th scope="row">{{ S.scorecard.sessions_measured }}</th><td>{{ scores.context.sessions }}
     ({{ S.scorecard.over_80 }} {{ scores.context.sessions_over_80pct }},
     {{ S.scorecard.max }} {{ scores.context.max_pressure_pct }}%)</td></tr>
-  <tr><th>{{ S.scorecard.llm_retries }}</th><td>{{ scores.context.sessions_with_llm_retries }}</td></tr>
-  <tr><th>{{ S.scorecard.tokens }}</th><td>{{ '{:,}'.format(scores.context.tokens_total) if scores.context.tokens_total else S.common.na }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.llm_retries }}</th><td>{{ scores.context.sessions_with_llm_retries }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.tokens }}</th><td>{{ '{:,}'.format(scores.context.tokens_total) if scores.context.tokens_total else S.common.na }}</td></tr>
 </table>
 
 <h2>{{ S.scorecard.hygiene }}</h2>
 <table class="kv">
-  <tr><th>{{ S.scorecard.sessions }}</th><td>{{ scores.hygiene.sessions }}</td></tr>
-  <tr><th>{{ S.scorecard.without_projection }}</th><td>{{ scores.hygiene.without_projection }}</td></tr>
-  <tr><th>{{ S.scorecard.without_log }}</th><td>{{ scores.hygiene.without_log }}</td></tr>
-  <tr><th>{{ S.scorecard.archived }}</th><td>{{ scores.hygiene.archived }}</td></tr>
-  <tr><th>{{ S.scorecard.no_capture_link }}</th><td>{{ scores.hygiene.no_capture_link }}</td></tr>
+  <caption>{{ S.common.kv_caption.format(section=S.scorecard.hygiene) }}</caption>
+  <tr><th scope="row">{{ S.scorecard.sessions }}</th><td>{{ scores.hygiene.sessions }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.without_projection }}</th><td>{{ scores.hygiene.without_projection }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.without_log }}</th><td>{{ scores.hygiene.without_log }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.archived }}</th><td>{{ scores.hygiene.archived }}</td></tr>
+  <tr><th scope="row">{{ S.scorecard.no_capture_link }}</th><td>{{ scores.hygiene.no_capture_link }}</td></tr>
 </table>
 {% endblock %}

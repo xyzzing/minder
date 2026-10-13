@@ -57,5 +57,5 @@
   </tbody>
 </table>
 {{ raw_tier(['ts', 'event_type', 'tool', 'failure_key', 'session_id',
-             'redaction_status'], rows) }}
+             'redaction_status'], rows, unit=S.events.unit) }}
 {% endblock %}

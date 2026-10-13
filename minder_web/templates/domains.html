@@ -9,12 +9,13 @@
 <p class="warn">{{ profile.error }}</p>
 {% endif %}
 <table class="kv">
-  <tr><th>{{ S.domains.profile_active }}</th>
+  <caption>{{ S.common.kv_caption.format(section=S.domains.profile) }}</caption>
+  <tr><th scope="row">{{ S.domains.profile_active }}</th>
       <td>{{ profile.name or S.domains.profile_none }}</td></tr>
-  <tr><th>{{ S.domains.profile_available }}</th>
+  <tr><th scope="row">{{ S.domains.profile_available }}</th>
       <td>{% if profile.available %}{{ profile.available | join(', ') }}{% else %}{{ S.common.na }}{% endif %}</td></tr>
   {% for row in profile.rows %}
-  <tr><th>{{ S.domains[row.label_key] }}</th>
+  <tr><th scope="row">{{ S.domains[row.label_key] }}</th>
       <td>{{ row.value if row.value is not none else S.common.na }}</td></tr>
   {% endfor %}
 </table>
@@ -51,7 +52,8 @@
   {% endfor %}
   </tbody>
 </table>
-{{ raw_tier(['domain', 'suite_id', 'tasks', 'status'], suites.rows) }}
+{{ raw_tier(['domain', 'suite_id', 'tasks', 'status'], suites.rows,
+            unit=S.domains.suite_unit) }}
 {% else %}
 <p class="na">{{ S.domains.suites_empty }}</p>
 {% endif %}
@@ -79,14 +81,15 @@
   </tbody>
 </table>
 {{ raw_tier(['rule', 'verification', 'verified_on', 'caveat'],
-            provenance.rows) }}
+            provenance.rows, unit=S.domains.knowledge_unit) }}
 {% else %}
 <p class="na">{{ S.domains.knowledge_empty }}</p>
 {% endif %}
 
 <h2>{{ S.domains.routing }} <small>{{ S.domains.routing_gloss }}</small></h2>
 <table class="kv">
-  <tr><th>{{ S.domains.router }}</th>
+  <caption>{{ S.common.kv_caption.format(section=S.domains.routing) }}</caption>
+  <tr><th scope="row">{{ S.domains.router }}</th>
       <td>{% if routing.text_key %}{{ S.domains[routing.text_key] }}{% else %}{{ routing.mode or S.common.na }}{% endif %}</td></tr>
 </table>
 

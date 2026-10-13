@@ -50,15 +50,16 @@
 
 <h2>{{ S.trace.summary }}</h2>
 <table class="kv">
+  <caption>{{ S.common.kv_caption.format(section=S.trace.summary) }}</caption>
   <tbody>
-    <tr><th>{{ S.trace.sum_findings }}</th><td class="num">{{ summary.findings }}</td></tr>
-    <tr><th>{{ S.trace.sum_highest }}</th><td>{{ summary.highest_severity or S.common.na }}</td></tr>
-    <tr><th>{{ S.trace.sum_by_severity }}</th><td class="excerpt">{{ summary.by_severity }}</td></tr>
-    <tr><th>{{ S.trace.sum_by_evaluator }}</th><td class="excerpt">{{ summary.by_evaluator }}</td></tr>
-    <tr><th>{{ S.trace.sum_tool_calls }}</th><td class="num">{{ summary.tool_calls }}</td></tr>
-    <tr><th>{{ S.trace.sum_failures }}</th><td class="num">{{ summary.failures }}</td></tr>
-    <tr><th>{{ S.trace.sum_turns }}</th><td class="num">{{ summary.turns }}</td></tr>
-    <tr><th>{{ S.trace.sum_cited }}</th><td class="num">{{ summary.evidence_links }}</td></tr>
+    <tr><th scope="row">{{ S.trace.sum_findings }}</th><td class="num">{{ summary.findings }}</td></tr>
+    <tr><th scope="row">{{ S.trace.sum_highest }}</th><td>{{ summary.highest_severity or S.common.na }}</td></tr>
+    <tr><th scope="row">{{ S.trace.sum_by_severity }}</th><td class="excerpt">{{ summary.by_severity }}</td></tr>
+    <tr><th scope="row">{{ S.trace.sum_by_evaluator }}</th><td class="excerpt">{{ summary.by_evaluator }}</td></tr>
+    <tr><th scope="row">{{ S.trace.sum_tool_calls }}</th><td class="num">{{ summary.tool_calls }}</td></tr>
+    <tr><th scope="row">{{ S.trace.sum_failures }}</th><td class="num">{{ summary.failures }}</td></tr>
+    <tr><th scope="row">{{ S.trace.sum_turns }}</th><td class="num">{{ summary.turns }}</td></tr>
+    <tr><th scope="row">{{ S.trace.sum_cited }}</th><td class="num">{{ summary.evidence_links }}</td></tr>
   </tbody>
 </table>
 

@@ -6,12 +6,15 @@ what a table's rows are. Element existence is not the point - the point
 is that the name or word is present where the user would read it."""
 import re
 
+from test_web_reader_tiers import _console_pages, _fully_seeded_client
 from webseed import (add_consult, add_decision, add_episode, add_event,
                      add_gap, add_lesson, client_for, new_db)
 
-CAPTIONED_PAGES = ("/episodes", "/lessons", "/gaps", "/consults",
-                   "/decisions", "/events", "/sessions", "/traces")
 FILTERED_PAGES = ("/events", "/sessions")
+
+# A `<td>` that spans the whole row is an empty-state message, not a data
+# cell, so it has no row header to name.
+_CELL_SPAN = re.compile(r"<td[^>]*\bcolspan=[\"']?([0-9]+)")
 
 
 def _client(tmp_path, monkeypatch):
@@ -26,6 +29,67 @@ def _client(tmp_path, monkeypatch):
     add_consult(dbp)
     add_decision(dbp)
     return client_for(dbp, monkeypatch)
+
+
+def _tables(client, pages):
+    """Every rendered `<table>`, with its caption and its cells. Built
+    from the app's own GET routes, so a new page is checked the day it
+    lands instead of waiting for a hand-kept list to be updated (M2)."""
+    from html.parser import HTMLParser
+
+    class _Tables(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.tables = []
+            self.stack = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "table":
+                self.stack.append({"caption": None, "rows": [],
+                                   "row": None})
+            elif not self.stack:
+                return
+            top = self.stack[-1]
+            if tag == "caption":
+                top["_in_caption"] = True
+            elif tag == "tr":
+                top["row"] = []
+            elif tag in ("td", "th"):
+                if top.get("_in_caption"):
+                    return
+                if top["row"] is None:
+                    top["row"] = []
+                top["row"].append({"tag": tag,
+                                   "scope": dict(attrs).get("scope")})
+
+        def handle_endtag(self, tag):
+            if tag == "caption":
+                if self.stack:
+                    self.stack[-1].pop("_in_caption", None)
+            elif tag == "tr":
+                if self.stack and self.stack[-1]["row"]:
+                    self.stack[-1]["rows"].append(self.stack[-1]["row"])
+                    self.stack[-1]["row"] = None
+            elif tag == "table" and self.stack:
+                top = self.stack.pop()
+                if top["caption"] is None and top.get("_caption_text"):
+                    top["caption"] = top["_caption_text"]
+                self.tables.append(top)
+
+        def handle_data(self, data):
+            if self.stack and self.stack[-1].get("_in_caption"):
+                text = (data or "").strip()
+                if text:
+                    self.stack[-1]["_caption_text"] = text
+
+    found = []
+    for path in pages:
+        parser = _Tables()
+        parser.feed(client.get(path).text)
+        for table in parser.tables:
+            table["page"] = path
+            found.append(table)
+    return found
 
 
 def test_first_focusable_thing_skips_the_navigation(tmp_path, monkeypatch):
@@ -96,12 +160,53 @@ def test_sandbox_risk_is_not_marked_as_a_good_state(tmp_path, monkeypatch):
         "danger-full-access must not carry the ok badge"
 
 
-def test_tables_name_their_row_unit(tmp_path, monkeypatch):
-    client = _client(tmp_path, monkeypatch)
-    for path in CAPTIONED_PAGES:
-        text = client.get(path).text
-        assert "<caption>" in text, f"{path} table has no caption"
-        assert 'scope="col"' in text, f"{path} headers lack scope"
+def test_every_table_names_its_row_unit(tmp_path, monkeypatch):
+    """Issue #12: `<caption>` on every table and `scope` on every header
+    cell. A screen reader announces a cell as "row 3, column 5" unless the
+    table names its row unit and its header cells declare which axis they
+    head, so a caption on one table of a seven-table page is not enough.
+    Checked per table, over every page the app serves, not over a
+    hand-picked page list: the old version of this test looped eight list
+    routes and asked only whether the page contained a `<caption>`
+    somewhere, so 42 of the 63 tables could have none and the test still
+    passed.
+
+    `scope` is checked on `<th>` only, and a `<td>` carrying it is a
+    failure of its own. HTML defines `scope` on the `th` element (the `td`
+    element's attributes are colspan, rowspan and headers), so putting it
+    on data cells is not an accessibility fix - it is invalid markup that
+    validators reject, and the association it appears to add comes from the
+    header cell's own scope."""
+    import minder_web.app as app_module
+
+    _dbp, client, review_id = _fully_seeded_client(tmp_path, monkeypatch)
+    pages = _console_pages(app_module, review_id)
+    assert len(pages) >= 20, (
+        f"the route walk found only {len(pages)} GET pages (M2)")
+    tables = _tables(client, pages)
+    assert len(tables) >= 49, (
+        f"the parse found only {len(tables)} tables across the console; "
+        "the seed no longer renders the pages it claims to (M2)")
+    headers = 0
+    for index, table in enumerate(tables):
+        where = f"{table['page']} (table #{index + 1} on that page)"
+        assert table["caption"], f"{where} has no <caption>"
+        for row in table["rows"]:
+            for cell in row:
+                if cell["tag"] == "th":
+                    headers += 1
+                    assert cell["scope"] in ("col", "row"), (
+                        f"{where}: a <th> declares no scope")
+                else:
+                    assert cell["scope"] is None, (
+                        f"{where}: a <td> carries scope={cell['scope']}")
+    assert headers >= 200, (
+        f"only {headers} header cells parsed across {len(tables)} tables; "
+        "the seed is not rendering the console's headers (M2)")
+    cells = sum(len(row) for t in tables for row in t["rows"])
+    assert cells >= 300, (
+        f"only {cells} cells parsed; the seed is not rendering the "
+        "console's rows (M2)")
 
 
 def test_status_words_are_not_color_only(tmp_path, monkeypatch):

@@ -22,5 +22,5 @@
   {% endfor %}
   </tbody>
 </table>
-{{ raw_tier(['trace_id', 'ts', 'helpfulness', 'verification_status', 'failure_key', 'local_attempts', 'provider_fingerprint'], rows) }}
+{{ raw_tier(['trace_id', 'ts', 'helpfulness', 'verification_status', 'failure_key', 'local_attempts', 'provider_fingerprint'], rows, unit=S.consults.unit) }}
 {% endblock %}

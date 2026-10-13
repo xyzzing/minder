@@ -52,5 +52,5 @@
 </p>
 {{ raw_tier(['review_id', 'session_id', 'run_id', 'ts_full', 'status',
              'highest_severity', 'findings', 'tool_calls', 'failures',
-             'tokens_total', 'rubric_id', 'evaluator_version'], rows) }}
+             'tokens_total', 'rubric_id', 'evaluator_version'], rows, unit=S.traces.unit) }}
 {% endblock %}

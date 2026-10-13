@@ -9,14 +9,15 @@
                                  upstream=target.upstream) }}
 </p>
 <table class="kv">
-  <tr><th>{{ S.engine.col_engine }}</th><td>{{ target.name }}</td></tr>
-  <tr><th>{{ S.engine.col_unit }}</th>
+  <caption>{{ S.common.kv_caption.format(section=S.engine_confirm.target) }}</caption>
+  <tr><th scope="row">{{ S.engine.col_engine }}</th><td>{{ target.name }}</td></tr>
+  <tr><th scope="row">{{ S.engine.col_unit }}</th>
       <td><code>{{ target.unit or S.common.unknown }}</code></td></tr>
-  <tr><th>{{ S.engine.col_unit_state }}</th>
+  <tr><th scope="row">{{ S.engine.col_unit_state }}</th>
       <td>{{ target.unit_state or S.common.na }}</td></tr>
-  <tr><th>{{ S.engine.col_upstream }}</th>
+  <tr><th scope="row">{{ S.engine.col_upstream }}</th>
       <td><code>{{ target.upstream }}</code></td></tr>
-  <tr><th>{{ S.engine.col_health }}</th>
+  <tr><th scope="row">{{ S.engine.col_health }}</th>
       <td>{{ S.engine.healthy if target.healthy else S.engine.unhealthy }}</td></tr>
 </table>
 <form method="post" action="/engine/switch?engine={{ target.name }}">

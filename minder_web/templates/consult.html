@@ -2,19 +2,20 @@
 {% block content %}
 <h1>{{ S.consult.title }} {{ consult.trace_id }}</h1>
 <table class="kv">
-  <tr><th>{{ S.consult.col_ts }}</th><td>{{ consult.ts }}</td></tr>
-  <tr><th>{{ S.consult.col_episode_id }}</th><td>{{ consult.episode_id or '-' }}</td></tr>
-  <tr><th>{{ S.consult.col_failure_key }}</th><td>{{ consult.failure_key }}</td></tr>
-  <tr><th>{{ S.consult.col_local_attempts }}</th><td>{{ consult.local_attempts }}</td></tr>
-  <tr><th>{{ S.consult.col_redaction_profile }}</th><td>{{ consult.redaction_profile }}</td></tr>
-  <tr><th>{{ S.consult.col_providers }}</th><td>{{ consult.provider_fingerprint }}</td></tr>
-  <tr><th>{{ S.consult.col_request_hash }}</th><td>{{ consult.request_hash }}</td></tr>
-  <tr><th>{{ S.consult.col_response_hash }}</th><td>{{ consult.response_hash }}</td></tr>
-  <tr><th>{{ S.consult.col_helpfulness }}</th><td>{{ consult.helpfulness or S.consult.unclassified }}</td></tr>
-  <tr><th>{{ S.consult.col_verification_status }}</th><td>{{ consult.verification_status or '-' }}</td></tr>
-  <tr><th>{{ S.consult.col_accepted }}</th><td>{{ consult.accepted_actions_json or '-' }}</td></tr>
-  <tr><th>{{ S.consult.col_rejected }}</th><td>{{ consult.rejected_actions_json or '-' }}</td></tr>
-  <tr><th>{{ S.consult.col_distilled }}</th><td>{{ consult.distilled_json or '-' }}</td></tr>
+  <caption>{{ S.common.kv_caption.format(section=S.consult.title) }}</caption>
+  <tr><th scope="row">{{ S.consult.col_ts }}</th><td>{{ consult.ts }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_episode_id }}</th><td>{{ consult.episode_id or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_failure_key }}</th><td>{{ consult.failure_key }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_local_attempts }}</th><td>{{ consult.local_attempts }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_redaction_profile }}</th><td>{{ consult.redaction_profile }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_providers }}</th><td>{{ consult.provider_fingerprint }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_request_hash }}</th><td>{{ consult.request_hash }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_response_hash }}</th><td>{{ consult.response_hash }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_helpfulness }}</th><td>{{ consult.helpfulness or S.consult.unclassified }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_verification_status }}</th><td>{{ consult.verification_status or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_accepted }}</th><td>{{ consult.accepted_actions_json or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_rejected }}</th><td>{{ consult.rejected_actions_json or '-' }}</td></tr>
+  <tr><th scope="row">{{ S.consult.col_distilled }}</th><td>{{ consult.distilled_json or '-' }}</td></tr>
 </table>
 <p class="note">{{ S.consult.note }}</p>
 {% endblock %}

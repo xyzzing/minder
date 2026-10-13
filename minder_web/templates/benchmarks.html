@@ -25,7 +25,7 @@
   </tbody>
 </table>
 {{ raw_tier(['suite_id', 'manifest_version', 'tasks', 'fingerprint',
-             'status'], suites) }}
+             'status'], suites, unit=S.benchmarks.unit) }}
 {% endif %}
 
 <h2>{{ S.benchmarks.baselines }}</h2>
@@ -47,7 +47,7 @@
   </tbody>
 </table>
 {{ raw_tier(['suite_id', 'fingerprint', 'generated_at', 'comparable_runs',
-             'rate', 'status'], baselines) }}
+             'rate', 'status'], baselines, unit=S.benchmarks.baseline_unit) }}
 {% else %}
 <p class="na">{{ S.benchmarks.baselines_empty }}</p>
 {% endif %}
