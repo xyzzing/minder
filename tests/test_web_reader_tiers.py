@@ -8,6 +8,8 @@ from webseed import (add_consult, add_decision, add_episode, add_event,
 
 import re
 
+
+
 # One raw field name per list page. The tier is only honest if the
 # column's own name is printed next to its value, so a console screenshot
 # can be compared against a CLI row.
@@ -116,6 +118,215 @@ def test_capture_raw_tier_reads_the_page_model(tmp_path, monkeypatch):
     text = client.get("/capture").text
     assert "raw fields" in text
     assert "workspace-write" in text
+
+def _fully_seeded_client(tmp_path, monkeypatch):
+    """A client whose every console page renders real content, not an
+    empty state. Each store a page reads is seeded here: the memory DB, a
+    dsh home, the proxy ledger, a pinned benchmark baseline and an engine
+    registry. An unseeded page still returns 200 with no rows, and a tier
+    with no rows proves nothing about the tier's markup (M2)."""
+    import json
+
+    import dshseed
+    import minder
+    import minder_op.benchmark as bench_mod
+    import minder_web.services as services
+    from minder_memory import trace_reviews
+
+    dbp = new_db(tmp_path)
+    add_episode(dbp)
+    add_event(dbp)
+    add_lesson(dbp)
+    add_gap(dbp)
+    add_consult(dbp)
+    add_decision(dbp)
+    review_id, status = trace_reviews.store_review(
+        {"run_id": "mndr_run_x", "source": {"session_id": "session-x"}},
+        [{"finding_id": "trf_abc123", "session_id": "session-x",
+          "evaluator": "success_loop", "rule_id": "success-loop",
+          "severity": "medium", "message": "repeated call"}],
+        {"findings": 1, "highest_severity": "medium", "tool_calls": 12},
+        report={"status": "ok"}, db_path=dbp)
+    assert status == "ok", status
+
+    root, wrote = dshseed.make_home(tmp_path)
+    assert wrote, "the fixture session log was not written"
+    monkeypatch.setenv("MINDER_DSH_HOME", str(root))
+
+    state = tmp_path / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "events.jsonl").write_text(json.dumps({
+        "ts": 1_790_000_000, "task": "proxy",
+        "event": "difficulty_routed",
+        "label": "medium", "score": 0.4, "confidence": 0.8,
+        "band": "medium", "effort": "medium", "max_tokens": 4096,
+        "guardrail": 200000, "shadow": False}) + "\n")
+    monkeypatch.setenv("MINDER_STATE_DIR", str(state))
+    monkeypatch.setenv("MINDER_HOOKS_JSON", str(tmp_path / "no-hooks.json"))
+    monkeypatch.delenv("MINDER_SINK_URL", raising=False)
+
+    bench = tmp_path / "benchmarks"
+    (bench / "baselines").mkdir(parents=True)
+    manifest = {"manifest_version": 1, "suite_id": "suite-x", "title": "t",
+                "tiers": [0], "tasks": [
+                    {"task_id": "t0", "tier": 0, "family": "contract",
+                     "title": "t", "fixtures": [],
+                     "expected": "tests_pass",
+                     "forbidden": sorted(bench_mod.FORBIDDEN_VOCABULARY)}]}
+    (bench / "suite-x").mkdir()
+    (bench / "suite-x" / "manifest.json").write_text(json.dumps(manifest))
+    (bench / "baselines" / "suite-x.json").write_text(json.dumps({
+        "report_version": 1, "suite_id": "suite-x",
+        "suite_fingerprint": bench_mod.manifest_fingerprint(manifest),
+        "generated_at": "2026-09-23T10:00:00+00:00", "kind": "candidate",
+        "runs": [], "metrics": {
+            "comparable_runs": 25, "verified_completion_rate": 0.9,
+            "unsafe_executions": 0, "harmful_frontier_acceptances": 0,
+            "external_prohibited_egress": 0}}))
+    monkeypatch.setenv("MINDER_BENCHMARKS_DIR", str(bench))
+
+    cfg = tmp_path / "minder.json"
+    monkeypatch.setattr(minder, "CFG_PATH", cfg)
+    cfg.write_text(json.dumps({
+        "engines": {
+            "llama": {"upstream": "http://127.0.0.1:8080",
+                      "unit": "u-llama"},
+            "strata": {"upstream": "http://127.0.0.1:8081",
+                       "unit": "u-strata"},
+        },
+        "active_engine": "strata"}))
+    monkeypatch.setattr(services, "_engine_rows", lambda: [
+        {"name": "llama", "active": False, "upstream": "http://127.0.0.1:8080",
+         "unit": "u-llama", "unit_state": "inactive", "healthy": True},
+        {"name": "strata", "active": True, "upstream": "http://127.0.0.1:8081",
+         "unit": "u-strata", "unit_state": "active", "healthy": True},
+    ])
+    return dbp, client_for(dbp, monkeypatch), review_id
+
+
+# path parameter name -> a seeded id that exists in the client above
+_PAGE_IDS = {"episode_id": "ep1", "lesson_id": "les1", "trace_id": "tr1",
+             "session_id": "session-aaaa-bbbb"}
+
+
+def _console_pages(app_module, review_id):
+    """Every GET page route the app declares, with a seeded id
+    substituted for each path parameter. Derived from the app, so a new
+    page is visited by this gate the day it lands instead of waiting for
+    a hand-kept list to be updated (M2)."""
+    pages = []
+    for route in app_module.app.routes:
+        path = getattr(route, "path", None)
+        methods = set(getattr(route, "methods", None) or ())
+        if path is None or "GET" not in methods:
+            continue
+        if path in ("/healthz", "/static"):
+            continue
+        url = path
+        for name, value in _PAGE_IDS.items():
+            url = url.replace("{" + name + "}", value)
+        if "{" in url:
+            url = url.replace("{" + url.split("{")[1].split("}")[0] + "}",
+                              review_id)
+        if route.name == "engine_switch_confirm":
+            url += "?engine=strata"
+        pages.append(url)
+    return pages
+
+
+def test_no_page_nests_a_block_element_inside_a_table(tmp_path, monkeypatch):
+    """The raw-evidence tier is a `<details>` that summarizes a table, so
+    it must follow the `</table>`: emitted between `</tbody>` and
+    `</table>` it is invalid HTML and the browser lifts it out of the
+    table it belongs to, so the tier no longer reads as that table's
+    evidence. Nothing else in the suite sees this - the tier tests match
+    the rendered block with a regex, which is happy either way - and the
+    ratchet counts no `.html`, so a template can be malformed and
+    uncounted. Parsed, not matched: a regex over the source cannot tell a
+    nested block from a following one."""
+    from html.parser import HTMLParser
+
+    import minder_web.app as app_module
+
+    class _Nesting(HTMLParser):
+        """Checks the table content model (WHATWG 4.9.1, 4.9.8): a
+        `<table>` element may directly contain only `caption`, `colgroup`,
+        `thead`, `tbody`, `tfoot`, `tr` and script-supporting elements,
+        and a `<tr>` may directly contain only `td`/`th`. Anything else
+        opened while a table (or a row) is open - the `<details>` of a raw
+        -evidence tier emitted between `</tbody>` and `</table>` - makes a
+        browser close the table early and lift the block out of it. Flow
+        content inside a cell (`<div>`, `<p>`) is legal, so the parser
+        tracks whether it is inside a cell and does not flag those."""
+
+        TABLE_CHILDREN = ("caption", "colgroup", "thead", "tbody", "tfoot",
+                          "tr", "script", "template")
+        ROW_CHILDREN = ("td", "th")
+        # void / self-closing, never pushed
+        VOID = ("col", "br", "hr", "img", "input", "meta", "link")
+
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.table_depth = 0   # >0 while inside a <table>
+            self.in_row = False    # inside a <tr>, not yet in a cell
+            self.in_cell = False   # inside a <td>/<th>
+            self.bad = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "table":
+                if self.table_depth:
+                    self.bad.append("table")
+                self.table_depth += 1
+                self.in_row = False
+                self.in_cell = False
+                return
+            if not self.table_depth or tag in self.VOID:
+                return
+            if self.in_cell:
+                return  # any flow content is legal inside a cell
+            if self.in_row:
+                if tag not in self.ROW_CHILDREN:
+                    self.bad.append(tag)
+                if tag in self.ROW_CHILDREN:
+                    self.in_cell = True
+                return
+            # directly inside the table, not in a row or cell
+            if tag not in self.TABLE_CHILDREN:
+                self.bad.append(tag)
+            if tag == "tr":
+                self.in_row = True
+
+        def handle_startendtag(self, tag, attrs):
+            pass
+
+        def handle_endtag(self, tag):
+            if tag == "table" and self.table_depth:
+                self.table_depth -= 1
+                self.in_row = False
+                self.in_cell = False
+            elif tag == "tr":
+                self.in_row = False
+                self.in_cell = False
+            elif tag in ("td", "th"):
+                self.in_cell = False
+
+    _dbp, client, review_id = _fully_seeded_client(tmp_path, monkeypatch)
+    pages = _console_pages(app_module, review_id)
+    assert len(pages) >= 20, (
+        f"the route walk found only {len(pages)} GET pages (M2)")
+    checked = 0
+    for path in pages:
+        resp = client.get(path)
+        assert resp.status_code == 200, (path, resp.status_code)
+        parser = _Nesting()
+        parser.feed(resp.text)
+        assert not parser.bad, (
+            f"{path}: element(s) {sorted(set(parser.bad))} opened inside "
+            "a <table>; the raw-evidence tier must come after </table>")
+        checked += 1
+    assert checked == len(pages), (
+        f"only {checked} of {len(pages)} pages parsed (M2)")
+
 
 def test_every_raw_tier_renders_its_values(tmp_path, monkeypatch):
     """A tier whose rows are not dicts renders its header and no body

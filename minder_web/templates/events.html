@@ -55,7 +55,7 @@
     <tr><td colspan="6" class="na">{{ S.events.empty }}{% if not stale_days %} {{ S.events.empty_suffix }}{% endif %}.</td></tr>
   {% endfor %}
   </tbody>
+</table>
 {{ raw_tier(['ts', 'event_type', 'tool', 'failure_key', 'session_id',
              'redaction_status'], rows) }}
-</table>
 {% endblock %}
