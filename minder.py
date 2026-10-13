@@ -20,6 +20,10 @@ CFG_PATH = pathlib.Path(os.environ.get(
     "MINDER_CONFIG", os.path.expanduser("~/.config/minder/minder.json")))
 CAPS_PATH = pathlib.Path(os.environ.get(
     "MINDER_CAPS", os.path.expanduser("~/.config/minder/model_caps.json")))
+# The systemd user unit install.sh writes for the proxy. It is also the
+# unit whose Environment decides the upstream the proxy dials, which is
+# what doctor compares against the engine registry (issue #33).
+PROXY_UNIT = "minder-proxy.service"
 
 DEFAULTS = {
     "fail_threshold": 2,       # consecutive failures of one key before L1
@@ -41,7 +45,7 @@ DEFAULTS = {
     "l1_budget": 2048,
     "l2_budget": 10240,
     # laya fast decision layer (task difficulty prior; never a solver)
-    "difficulty_router": "off",   # off | shadow | active
+    "difficulty_router": "off",   # off | shadow | active | lower | laya
     "laya_min_confidence": 0.7,   # below this the router has no opinion
     "laya_timeout_ms": 1500,      # wall-clock cap on one classify pass
     "spend_guardrail_tokens": 50000,  # session thinking-token cap (0 = off)
@@ -70,6 +74,25 @@ FAIL_SIGNS = (
     "error:", "failed:", "command not found", "compilation failed",
 )
 _EDIT_TOOLS = ("edit", "write", "multiedit", "apply_patch", "fs_write", "str_replace")
+
+# Issue #27: a tool result saying a human declined the action. The harness
+# prefixes a plan-review dismissal with `Error: `, so it matches the
+# `error:` fail sign above and a deliberate operator decision was counted
+# as a repeated command failure — twice in one session, each time
+# injecting "retry with a regenerated anchor" into a decision to stop. A
+# decline is a third outcome, neither a failure nor a success: it does not
+# count toward the ladder, and it does not refund a loop that is still
+# there. Structural markers only, named here (C4).
+DECLINE_SIGNS = (
+    "the user dismissed", "user dismissed the", "the user cancelled",
+    "user cancelled the", "the user rejected", "user rejected the",
+    "the user declined", "user declined the", "cancelled by the user",
+    "aborted by the user",
+)
+
+OUTCOME_FAILED = "failed"
+OUTCOME_SUCCESS = "success"
+OUTCOME_DECLINED = "declined"
 
 DIGEST_MARKERS = {1: "[minder] ESCALATION L1", 2: "[minder] ESCALATION L2",
                   3: "[minder] ESCALATION L3"}
@@ -221,9 +244,28 @@ def tool_key(tool, args):
 
 
 def is_failure(text, extra=None):
+    """Not a clean success. A decline matches too, because the harness
+    writes `Error: ` on it — use `classify_outcome` when the difference
+    between an operator decision and a broken command matters."""
     t = str(text).lower()
     signs = FAIL_SIGNS + tuple(extra or ())
     return any(s in t for s in signs)
+
+
+def classify_outcome(text, extra=None):
+    """failed | declined | success (issue #27).
+
+    The decline test runs first because a decline carries the harness's
+    `Error: ` prefix and would otherwise be counted as a failure by every
+    consumer that shares `is_failure`. The extra signs are the profile's
+    `fail_signs_extra`: they describe failures, never declines, so they
+    cannot turn a decline into a failure by being checked second."""
+    t = str(text).lower()
+    if any(s in t for s in DECLINE_SIGNS):
+        return OUTCOME_DECLINED
+    if is_failure(text, extra):
+        return OUTCOME_FAILED
+    return OUTCOME_SUCCESS
 
 
 def session_key(ev):
@@ -443,7 +485,19 @@ def _process(ev, c, out):
     text = resp if isinstance(resp, str) else json.dumps(resp, default=str)
     key = tool_key(tool, args)
 
-    if not is_failure(text, c.get("fail_signs_extra")):
+    outcome = classify_outcome(text, c.get("fail_signs_extra"))
+    if outcome == OUTCOME_DECLINED:
+        # Issue #27. Neither branch below is right for a decline: counting
+        # it escalates an operator's decision into a "retry with a
+        # regenerated anchor" directive, and treating it as a success
+        # refunds the budget and clears the record of a loop that is still
+        # there. Ledger it so the count stays auditable, change nothing
+        # else, and answer no directive.
+        log(task, "declined", key=key)
+        save_state(task, st)
+        return out
+
+    if outcome == OUTCOME_SUCCESS:
         if key in st["failures"]:
             rec = st["failures"].pop(key)
             # Budget refund (2026-09-20 field-run fix): a key that RESOLVED

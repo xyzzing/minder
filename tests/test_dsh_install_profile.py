@@ -6,6 +6,7 @@ while `hooks.json` quietly lost the runtime flags and the sink URL — and
 nothing verified any of it end to end.
 """
 import json
+import sys
 
 import pytest
 
@@ -156,10 +157,39 @@ def test_live_repo_hooks_template_is_usable(mod):
     text = mod.repo_hooks_template().read_text()
     assert "__MINDER_SHARE__" in text
     assert "__MINDER_SINK_URL__" in text
-    assert "__MINDER_SUCCESS_GUARD__" in text
     assert json.loads(text.replace("__MINDER_SHARE__", "/s")
-                          .replace("__MINDER_SINK_URL__", "http://x")
-                          .replace("__MINDER_SUCCESS_GUARD__", "advisory"))
+                          .replace("__MINDER_SINK_URL__", "http://x"))
+
+
+def test_template_pins_a_legal_guard_mode(mod):
+    """install.sh renders the template without an operator-supplied mode,
+    so the fallback has to come from the template itself. A placeholder
+    there means the installed hook gets `MINDER_SUCCESS_GUARD=__MINDER_
+    SUCCESS_GUARD__`, which `guard_mode()` reads as off: a loop stop that
+    looks wired and does nothing."""
+    assert mod.template_success_guard() in mod.GUARD_VALUES
+
+
+def test_guard_default_cli_precedence(tmp_path, mod, monkeypatch, capsys):
+    """`guard-default` is how install.sh resolves the mode: an explicit
+    operator value wins, then the live file, then the template."""
+    live = tmp_path / "hooks.json"
+    live.write_text("MINDER_SUCCESS_GUARD=block\n")
+    monkeypatch.setattr(sys, "argv", ["dsh_install", "guard-default",
+                                      "--guard-env", "", "--live-hooks",
+                                      str(live)])
+    assert mod.main() == 0
+    assert capsys.readouterr().out.strip() == "block"
+    monkeypatch.setattr(sys, "argv", ["dsh_install", "guard-default",
+                                      "--guard-env", "advisory",
+                                      "--live-hooks", str(live)])
+    assert mod.main() == 0
+    assert capsys.readouterr().out.strip() == "advisory"
+    monkeypatch.setattr(sys, "argv", ["dsh_install", "guard-default",
+                                      "--guard-env", "", "--live-hooks",
+                                      str(tmp_path / "absent.json")])
+    assert mod.main() == 0
+    assert capsys.readouterr().out.strip() in mod.GUARD_VALUES
 
 
 def test_reinstall_preserves_the_live_guard_mode(tmp_path, mod):

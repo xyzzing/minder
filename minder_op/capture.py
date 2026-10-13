@@ -16,16 +16,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from minder_op import dsh_sessions
+# The log-scan bounds live in the module that applies them; this report
+# imports the session limit so its warning can name the limit it hit.
+from minder_op import capture_ground, dsh_sessions
+from minder_op.capture_ground import SCAN_LIMIT, SCAN_MAX_BYTES
 
 FRESH_SECS = 3600          # a store touched within the hour is live
 WARN_SECS = 24 * 3600      # older than a day: the operator should look
 # Coverage below this over a live window means capture is broken.
 MIN_COVERAGE = 0.95
-# Bound the log scan: only recent sessions can be "live", and the scan
-# decompresses real session logs.
-SCAN_LIMIT = 8
-SCAN_MAX_BYTES = 8 * 1024 * 1024
 
 
 def _state_dir():
@@ -112,13 +111,19 @@ def _newest_file_mtime(directory, pattern):
     return newest
 
 
-def _count_jsonl_since(path, event, since, field="event", known=None):
+def _count_jsonl_since(path, event, since, known=None, where=None):
     """Split ledger records of one event type newer than `since` into
     (attributable to a known dsh session, everything else).
 
     The split is what keeps coverage honest: a record written for a
     session the store does not know (a synthetic probe, a deleted
-    session, another harness) must not inflate "capture works"."""
+    session, another harness) must not inflate "capture works".
+
+    `where(record)` narrows the count further. Coverage needs it because
+    a `hook_timing` record is written for every hook point - PreToolUse
+    included - while the denominator counts PostToolUse invocations
+    only. Counting all of them made the ratio 2.0 on the live host and
+    the floor could never fail (issue #30)."""
     known_n = other_n = 0
     try:
         with open(path) as fh:
@@ -130,7 +135,9 @@ def _count_jsonl_since(path, event, since, field="event", known=None):
                     record = json.loads(line)
                 except ValueError:
                     continue
-                if record.get(field) != event:
+                if record.get("event") != event:
+                    continue
+                if where is not None and not where(record):
                     continue
                 value = record.get("ts")
                 if isinstance(value, (int, float)) and value < since:
@@ -144,14 +151,31 @@ def _count_jsonl_since(path, event, since, field="event", known=None):
     return known_n, other_n
 
 
-def _db_event_count(db_path, since_iso):
+def _is_post_tool_use(record):
+    """True for a ledger record written by the PostToolUse hook."""
+    return record.get("hook_event") == "PostToolUse"
+
+
+def _db_event_count(db_path, since_iso, event_type=None):
+    """Rows of one event type written at or after `since_iso`, or None
+    when that side could not be measured.
+
+    None is reserved for "not measured" - a missing, corrupt or unreadable
+    store, or a query that failed. It is never 0, because 0 is the value
+    that fails the coverage floor and sends the operator to fix hooks that
+    are fine (issue #31). `db_measured` in the report carries the same
+    fact as a boolean so a consumer cannot confuse the two.
+
+    The window filter is in SQL, which is the part that was broken: the
+    previous version fetched rows through the CLI's listing query and
+    filtered them in Python, capped by a limit constant that does not
+    exist in this package, so the whole call raised and became None.
+    Counting the rows in SQL also means the number is not capped by a
+    fetch limit: a window's worth of rows is counted, not listed."""
     try:
         from minder_op import queries
-        rows = queries.events(db_path, limit=queries.MAX_LIMIT)
-    except Exception:
-        return None
-    try:
-        return sum(1 for r in rows if str(r.get("ts") or "") >= since_iso)
+        return queries.count_events_since(db_path, since_iso,
+                                          event_type=event_type)
     except Exception:
         return None
 
@@ -159,32 +183,12 @@ def _db_event_count(db_path, since_iso):
 def _live_hook_invocations(dsh_root, since, scan_limit=SCAN_LIMIT,
                            now=None):
     """PostToolUse hook invocations recorded in dsh's own session logs
-    within the window. This is the ground truth the watchdog must keep up
-    with - and the number that was invisible while capture was broken."""
-    now = now if now is not None else _now()
-    candidates = []
-    for entry in dsh_sessions.session_dirs(dsh_root):
-        if not entry.get("log_path") or not entry.get("mtime"):
-            continue
-        if entry["mtime"] < since:
-            continue
-        candidates.append(entry)
-    candidates.sort(key=lambda e: e["mtime"], reverse=True)
-    sessions, total = [], 0
-    for entry in candidates[:scan_limit]:
-        stats = dsh_sessions.log_stats(entry["log_path"],
-                                       max_bytes=SCAN_MAX_BYTES)
-        point = stats["hook_points"].get("PostToolUse", 0)
-        total += point
-        sessions.append({"session_id": entry["session_id"],
-                         "invocations": point,
-                         "hook_p50_ms": dsh_sessions.hook_duration_stats(
-                             stats["hook_ms"])["p50_ms"]})
-    return {"total": total, "sessions": sessions,
-            "scanned": len(candidates[:scan_limit]),
-            "truncated": len(candidates) > scan_limit,
-            "window_s": int(now - since)}
-
+    within the window - the ground truth the watchdog must keep up with,
+    and the number that was invisible while capture was broken. The
+    counting itself is `minder_op.capture_ground`; the scan cap is passed
+    here so a test can lower it through this module."""
+    return capture_ground.window_invocations(dsh_root, since, scan_limit,
+                                             now, SCAN_MAX_BYTES)
 
 def build(db_path=None, dsh_root=None, now=None, window_hours=1):
     """One read-only capture-health report.
@@ -245,12 +249,14 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
     known_sessions = {entry["session_id"]
                       for entry in dsh_sessions.session_dirs(dsh_root)}
     ground = _live_hook_invocations(dsh_root, since, now=now)
+    # Both sides of the ratio must count the same unit of work: one
+    # PostToolUse hook. The ledger record carries which point it was.
     persisted_ledger, persisted_other = _count_jsonl_since(
-        events_ledger, "hook_timing", since, field="event",
-        known=known_sessions)
-    persisted_db = _db_event_count(db_path,
-                                   datetime.fromtimestamp(
-                                       since, timezone.utc).isoformat())
+        events_ledger, "hook_timing", since, known=known_sessions,
+        where=_is_post_tool_use)
+    persisted_db = _db_event_count(
+        db_path, datetime.fromtimestamp(since, timezone.utc).isoformat(),
+        event_type="hook_timing")
     persisted = max(persisted_ledger, persisted_db or 0)
     ratio = None
     if ground["total"] > 0:
@@ -260,12 +266,17 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
         "persisted_ledger": persisted_ledger,
         "persisted_unattributed": persisted_other,
         "persisted_db": persisted_db,
+        # Distinct from a `None` persisted_db only in kind: this side was
+        # not measured, so the ledger is the only view of the writes.
+        "db_measured": persisted_db is not None,
         "invocations": ground["total"],
         "ratio": ratio,
         "min_ratio": MIN_COVERAGE,
         "sessions": ground["sessions"],
         "scanned": ground["scanned"],
         "truncated": ground["truncated"],
+        # A partial view is not a measured one: say which one this is.
+        "complete": not ground["truncated"],
         "window_hours": window_hours,
     }
 
@@ -314,6 +325,13 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=1):
             "startup - restart it to load the hook command; if it has "
             "already restarted, check the MINDER_SINK_URL in hooks.json "
             "and `systemctl --user status minder-sink`.")
+    if cov["invocations"] > 0 and cov["truncated"]:
+        report["warnings"].append(
+            f"coverage for the last {window_hours}h was measured on a "
+            f"partial view: {cov['scanned']} session log(s) were cut by "
+            "the scan cap or there were more live sessions than the scan "
+            f"limit ({SCAN_LIMIT}), so the {cov['invocations']} "
+            "invocations counted are a floor, not the total.")
     for store in report["stores"]:
         if store["status"] == "stale":
             report["warnings"].append(

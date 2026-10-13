@@ -57,7 +57,12 @@ Gate: `tests/test_instruction_gate.py` (greps `0.8.` outside `minder.py`).
   names the failure via `minder.log` first. Gate: the ratchet holds
   `bare_except_pass` (may fall, never grow).
 - No runtime dependencies; optional extras only (`[web]`). Gate: the
-  ratchet holds `runtime_deps` at 0.
+  ratchet holds `runtime_deps` at 0 and `undeclared_imports` at 5 (the
+  guarded laya, laya_studio and zstandard sites that no manifest names;
+  the count may fall, never grow). `runtime_deps` counts what the
+  manifests declare, `undeclared_imports` what the code imports: the gap
+  between them is an import that works only because a package happens to
+  be installed.
 - Console copy: plain hyphens, never an em-dash, in anything a browser
   renders; `n/a` means the source is empty or unavailable, never zero.
   Gate: `tests/test_instruction_gate.py` (templates + string literals).
@@ -97,7 +102,9 @@ Per commit, run what the change touches; the full set before push. CI
 also runs proven red (P2) on PRs and `pr-acceptance`. Ratchet baselines
 lower with `scripts/ratchet.sh --update`, which refuses to write a rise;
 raising one is a hand edit to `.ratchet-baseline` with a reason in the
-commit message (C7). State completed checks in handoff.
+commit message (C7). A baseline left above the real count fails the
+check, so a raised floor cannot sit there quietly. State completed
+checks in handoff.
 
 ## Playbooks
 

@@ -5,6 +5,260 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **The difficulty confidence scale is fitted, gated, and rolled out as
+  one command (issue #36).** `MINDER_LAYA_MARGIN_SCALE` decides how much
+  of a top-two margin counts as trust, and it had never been fitted: the
+  specialization's 20.0 was hand-picked off 34 rows. `minder-op
+  calibrate fit` sweeps candidate scales on the fitting split, `gate`
+  replays the 200 eval cases at the winner and compares it with the
+  suite's pinned baseline, and `promote --yes` pins a record carrying
+  the scale, the confidence source, the floor, the label digest, the
+  bundle revision, the baseline report the verdict was computed against,
+  and the verdict. A fitting split that shares a case with the eval set
+  is refused rather than scored (prd-v0.10 6.9.3), and a candidate that
+  acts on nothing fails the gate whatever its accuracy. A baseline that
+  does not name the margin scale it was replayed at is refused too:
+  `difficulty replay` now records `margin_scale` and `confidence_floor`
+  in its report, since a comparison of a fitted scale against a replay
+  at an unknown one has no denominator. Each provider declares its own
+  default as `margin_scale_default` - 2.0 for the base head, 20.0 for the
+  bundle - rather than the gate assuming one.
+
+  On the current bundle the fitted 18.0 beat the shipped 20.0: selective
+  accuracy 0.7797 at 29.5% coverage against 0.7385 at 32.5%, ECE 0.257
+  against 0.281 (provisional labels, pending owner review). `calibrate
+  apply --yes` installs the pinned scale as a systemd drop-in - never an
+  edit of the base unit - verifies the unit loaded it, and removes it
+  again if the verification fails; `calibrate rollback` takes it back
+  off. `calibrate status` and a new `calibration` row in `doctor` report
+  the pinned scale against the effective one and warn when relabelling,
+  a suite change, a bundle re-export, or a replaced baseline report has
+  invalidated the record - a baseline re-pinned at another scale shows
+  up as `baseline_scale` drift even though its fingerprint is unchanged.
+  Both also print the scale the current process would map with, because
+  pinning a scale and installing one are different claims.
+  `minder_core.calibration.fit_margin_scale` is the fitter;
+  `minder_decision/calibrate.py` is the loop.
+
+- **The difficulty router can serve a laya-studio specialization
+  bundle (issue #34, ADR-0005).** The laya decision head acts at chance
+  on the difficulty rubric; a whitened-prototype classifier fitted over
+  the frozen encoder reads 0.754 selective accuracy at 33% coverage
+  where the head reads 0.625 at 24% (provisional eval labels, pending
+  owner review). `MINDER_LAYA_SPECIALIZATION` points at the shipped
+  bundle (`presets/laya-specializations/difficulty-v1`); the
+  task-difficulty contract is answered from the artifact, every other
+  contract keeps the base head (routing-core-v1 replays byte-
+  identically with the seam active), and any bundle failure falls open
+  with a named stderr line. The flat prototype distribution carries its
+  own measured confidence scale (`SPEC_MARGIN_SCALE`, floor 0.7 at a
+  0.035 margin); the head's 2.0x scale would have abstained forever.
+  Evidence surface: `minder-op difficulty replay` over the new
+  difficulty-core-v1 suite (200 agent-drafted cases plus a laya-studio
+  fitting corpus, hash-checked disjoint), reporting accuracy, coverage,
+  selective accuracy, mean band distance, and Brier/ECE via the new
+  `minder_core/calibration.py` (the prd-v0.10 T30 slice). laya itself
+  moved 0.3.7 -> 0.3.29 for laya-studio compatibility; the
+  routing-core-v1 replay re-baselined identically (35/40, 0 protected
+  violations) before anything else shipped.
+
+- **The `difficulty-router` warn names the abstention it is actually
+  looking at.** Flipping `difficulty_router` to `laya` applied no bands,
+  and the line still read "the router is outranked, not broken; a
+  client-declared effort wins in every mode but `laya`" - the diagnosis
+  from the store the message was written against, now pointing at the
+  wrong repair. `minder-op doctor` counts abstentions per recorded reason
+  and names the dominant one: `client_effort` is precedence,
+  `below_confidence` is the floor working and `laya_min_confidence` is the
+  dial, `malformed_response` is the worker. The cause comes from the
+  ledger, so the line stays true as the config changes.
+
+- **The proxy's effective upstream is reported, not assumed (issue
+  #33).** `minder-op doctor` has an `engine-upstream` line that reads
+  `systemctl --user show minder-proxy.service -p Environment`, systemd's
+  merge of the base unit and its drop-ins, and compares it with the active
+  engine's upstream in the config. A divergence warns and names both
+  values; a base unit a drop-in masks is called out as masked. `install.sh`
+  no longer rewrites the base unit's `MINDER_UPSTREAM` in silence: when a
+  drop-in declares a different one it prints both and says which the proxy
+  will dial, and it leaves the drop-in file untouched. Before this, an
+  unqualified `bash install.sh` pointed the base unit at the installer's
+  `:8080` default, ran CAP against it, and wrote `model_caps.json` for a
+  model the proxy never dialled, because the operator's
+  `minder-proxy.service.d/upstream.conf` had been outranking that line the
+  whole time.
+
+- **`doctor`'s `laya-worker` line stopped reading the log tail as evidence
+  of liveness (issue #32).** A healthy install warned: `spawn_failed: no
+  worker after spawn`, while a worker was alive on that socket and
+  answering a direct call. The check took the last non-empty line of
+  `laya-worker.log` as the worker's state, and that log is append-only and
+  rotates only at 1 MB, so a defect fixed days ago kept warning. Liveness
+  is now a dial of the socket; the log only names the last failure and says
+  how old it is. Client-side failure lines carry an ISO-8601 UTC stamp
+  (`minder_decision/log_stamp.py`), and a line written before stamps
+  existed reports the file's mtime with "at least" rather than a false
+  precision. A worker that is not up and has never failed is `info`, not a
+  finding: the worker is spawn-on-demand and exits when idle.
+
+- **The difficulty router has a mode that can beat the client's effort
+  (issue #7).** `difficulty_router` takes a fifth value, `laya`: the
+  worker's band replaces a client-declared `reasoning_effort`, but only
+  when the band schedules strictly more thinking than the client asked
+  for, so `laya` can add thinking and never removes it. The other modes
+  keep the approved precedence. That precedence had made the router inert
+  on the live install - 12,452 auto requests answered with thinking off,
+  872 `difficulty_skipped reason=client_effort`, zero applied bands -
+  because the dsh harness declares an effort on nearly every request.
+  `minder-op doctor` now has a `difficulty-router` line that names the
+  condition (enabled, abstentions, 0 applied) and separates it from a
+  store with no router-eligible traffic.
+
+- **The learning plane now states its own hit rate (issue #20).**
+  `minder-op status` prints `retrieval_asked`, `retrieval_hits`,
+  `retrieval_misses` and `retrieval_hit_rate`; `minder-op lessons
+  injections` lists the per-lesson counts with `misses: N` on its own line
+  instead of a row that reads as a lesson with an empty id; the weekly
+  summary, `minder-op scorecard`'s learning group and the console overview
+  carry the same number. Issue #13 put the `lesson_id IS NULL` rows in the
+  ledger so retrieval could be measured at all, but nothing read them, so
+  the one question the learning plane answers — of the decisions that asked
+  for a lesson, how many got one — had no number anywhere. A store
+  predating migration 015 says `not available`; an empty ledger says 0
+  asked and no rate. No retrieval behaviour changed.
+
+- **Coverage's store-side count is a number now (issue #31).**
+  `coverage.persisted_db` was `None` on every real install: `_db_event_count`
+  passed `limit=queries.MAX_LIMIT`, a name that exists only in
+  `minder_web.services`, and the resulting `AttributeError` was swallowed by a
+  catch-all that returns `None` - the same value a store with no matching rows
+  produces. The count now runs in SQL through `queries.count_events_since`, so
+  it is a window count rather than a capped fetch, and `coverage.db_measured`
+  says explicitly when that side could not be measured.
+
+- **Capture coverage measures one thing on both sides (issue #30).**
+  `minder-op doctor` failed its 95% hook-coverage floor on a host where capture
+  was working - 764 persisted against 811 invocations - and the two numbers were
+  measured over different spans. The denominator counted every `hook/invoked`
+  record in a session log with no time filter, so a session older than the window
+  was charged for its whole lifetime (6.2 hours and 1204 invocations for a 1 hour
+  window), and the scan cap kept the head of an append-only log, dropping exactly
+  the recent records. Fixing that exposed the worse half: the numerator counted
+  every `hook_timing` ledger row in the window while the hook writes one per
+  invocation at *both* hook points, so persisted was double the invocations and
+  `min(1.0, ...)` pinned the ratio at 1.0 - the floor could only fire when the
+  whole hook path was dead, never when half of it was. Both sides now count
+  PostToolUse only, a `hook/result` counts only when it answers an in-window
+  invocation (joined on `handlerId`), and `coverage.complete` says when the scan
+  hit its caps so a partial view is labelled instead of implied.
+
+- **The installed hooks file now always carries a real guard mode (issue #29).**
+  `install.sh` filled two of the three placeholders in `dsh/hooks.json`, so the
+  installed hook commands ran with `MINDER_SUCCESS_GUARD=__MINDER_SUCCESS_GUARD__`.
+  `guard_mode()` maps any unrecognised value to `off`, so the success-loop stop was
+  inert on the live install while `minder-op doctor` reported the flag as present.
+  The template pins `advisory`, `install.sh` delegates the render to
+  `dsh_install.py render-hooks` (one guard rule for both render paths: env value,
+  else the live file's mode, else the template), staging no longer overwrites the
+  installed hooks.json before that mode is read, and a render that would emit a
+  placeholder guard refuses to write the file.
+
+- **An operator's decline stops being counted as a broken command (issue #27).**
+  The harness writes a plan-review dismissal as `Error: The user dismissed the
+  plan review to speak instead`, and the shared `error:` fail sign read that as
+  a command failure — twice in one session, each time injecting `FAILED 2x:
+  exit_plan_mode — Prior attempts are VOID` with an instruction to retry with a
+  regenerated anchor. `minder.classify_outcome` now names three outcomes
+  (`failed`, `declined`, `success`) against a new `DECLINE_SIGNS` constant
+  checked before the fail signs, and the ladder treats a decline as neither a
+  failure nor a success: no escalation level, but also no cleared record or
+  refunded budget for a loop that is still there. Each decline is ledgered as
+  `declined`, so `minder-op events ls --type declined` counts them, and the
+  failure-oriented memory policy pass no longer spends ~1 s of inference on a
+  declined action.
+
+- **The console answers first and shows its evidence second (issue #12).**
+  Both readers were reading the same wall of tables: a person trying to
+  improve what the agents produce and the operator debugging capture got
+  no conclusion, no ordering, and no way to check a rendered number
+  against the stored one. Every page now leads with a plain-language
+  answer composed from the page model (`minder_web/answers.py`) - what
+  the page concludes, at what level, and the first action - followed by
+  the tables, then a collapsed **raw fields** tier carrying the same rows
+  with storage field names and unmodified values. The tier reads the page
+  model, not a DB row, so redaction stays a service-layer contract. Three
+  states that used to read alike are now named apart: capture broken (a
+  configured sink not answering), capture quiet (no activity in the
+  window), and no sink configured (nothing recorded yet); an empty store
+  is never a zero, and `n/a` never means zero. Palette fixes on the same
+  pass: `danger-full-access` and store staleness no longer wear the
+  "all clear" colour, and severity carries a word, not only a colour.
+  Accessibility: skip link, `aria-current` on the active nav item, a
+  `<caption>` naming each table's row unit, `scope="col"`, labelled
+  filters, tabular numerals. Motion is CSS-only (named easing tokens,
+  interruptible transitions, `@starting-style`, hover gated to pointing
+  devices, full reduced-motion fallback) - no JavaScript, no new
+  dependencies. The engine switch gains a confirm step (GET
+  `/engine/switch` names the unit it will stop, POST still the only
+  write): a misclick guard, not a security control. Copy split across
+  `strings_base`, `strings_pages`, `strings_copy` and `page_actions` to
+  hold the C2 line budget; `files_over_400` 15 -> 14 and
+  `bare_except_pass` 43 -> 42, both lowered rather than raised (C7): the
+  shadowed duplicate `scorecard`/`session` sections were deleted and one
+  swallowed `except: pass` around the overview ledger write now names its
+  failure on stderr.
+
+- **The operator plane names a schema gap instead of calling it
+  corruption, and can close it (issue #26).** `minder-op status` died with
+  `db corrupt or wrong schema: unable to open database file` on a machine
+  whose database was fine. Four different failures shared that one
+  message - an absent path, a file that is not sqlite, a missing table, a
+  genuinely wrong schema - and each needs a different repair, so the
+  message sent the operator to a backup when the answer was a permission.
+  `minder_op/queries.py` now separates them: `memory db not found`,
+  `memory db not readable as a sqlite database`, `db schema is missing an
+  object`, `db corrupt or wrong schema`. The real gap underneath was
+  currency: the store sat at `PRAGMA user_version` 14 while the runtime
+  shipped 015 and 016, so the tables the new code reads did not exist.
+  `minder_op/schema.py` answers the three questions the CLI could not, and
+  keeps the denominators apart on purpose - `schema_version` (the store),
+  `schema_latest` (the migrations the answering runtime ships),
+  `schema_installed` (what the installed share staged). `status` prints all
+  three plus `schema_behind`; `doctor`'s `schema` line carries one sentence
+  from `schema.describe`, which names the repair for whichever number
+  disagrees. `minder-op migrate` is new: it calls the runtime's own
+  `minder_memory.db.migrate`, never a hand-rolled copy, prints the versions
+  it landed, and is idempotent. It refuses a store above its own migration
+  ceiling rather than stamping it with migrations the deployed code has no
+  files for, and it says when a successful run leaves the staged files
+  stale. Migration files are bare `CREATE TABLE`, so a store whose recorded
+  version sits below the tables it holds cannot be migrated; that state is
+  named, `PRAGMA user_version = N` is quoted, and the message says not to
+  delete the store.
+
+- **Every difficulty-router abstention is recorded with its reason, and a
+  lower-only mode exists (issues #28, #7).** `difficulty_router: shadow`
+  produced no evidence at all: the router consulted laya, then returned
+  nothing for most requests through paths that logged nothing, so the
+  shadow period could not say whether the router was wrong or simply never
+  reached the decision. Each abstention now writes a
+  `difficulty_skipped` event naming its reason - `client_effort`,
+  `escalation_marker`, `no_client`, `below_confidence`,
+  `malformed_response` - and an exception writes `difficulty_error` with
+  the exception type instead of vanishing through a bare `except`. The
+  router moved from `proxy.py` to `minder_decision/router.py` (C2, C5),
+  which took the proxy from 1015 to 889 lines. On the worker side a
+  protocol-version mismatch made the server raise, so the client saw a
+  dropped connection and logged nothing: it now replies with an error
+  frame naming both versions, and the client writes one line per distinct
+  failure reason to `laya-worker.log` in the state dir, once per process,
+  never raising into the request path. `doctor` gained a `laya-worker`
+  check that surfaces the last recorded failure, which is how the live
+  install's stale protocol error became visible. `difficulty_router` takes
+  a third value, `lower`: consult, and apply the band only when it lowers
+  effort - never a raise - so an experiment can cut cost without the
+  router ever escalating. A client that set its own effort still wins in
+  every mode.
 - **Every lesson injection is recorded, including the decisions that had
   nothing to offer (issue #13).** Nothing answered "is this lesson still
   doing anything?". Retrieval ran, a digest or a duplicate-block directive
@@ -30,6 +284,35 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
   surface, never a zero that reads as "unused". Retrieved lesson payloads
   now carry `failure_key` so the ledger names its own tier without a
   second query.
+
+- **Lesson decisions carry a closed reason code and a diagnosis (issue
+  #14).** The operator queue recorded that a decision happened; why it
+  happened was free text, so nothing about the queue's history could be
+  counted or trended - "how many candidates did we reject as generic?" had
+  no answer, and an invalidated lesson carried a note but no claim about
+  what went wrong. `minder_memory/lesson_decisions.py` owns both closed
+  vocabularies (C4): the diagnoses `unknown | content_defect |
+  application_failure | external_failure | no_issue`, and the decision
+  codes behind every invalidate / reject / adopt. `EVIDENCE_RULES` states
+  the two constraints that decide when a code may *not* be chosen: an
+  unsuccessful run alone does not establish a content defect, and a lesson
+  that was not retrieved never shows the store lacks a rule. Migration
+  `016_lesson_decisions.sql` adds the append-only `lesson_decisions`
+  ledger and an `invalidated_diagnosis` column on `lessons`, so the list
+  page needs no join. `lessons.invalidate_lesson` takes the diagnosis,
+  `reject_candidate_lesson` is new (issue #10 made candidates reviewable
+  but only recorded adoption), and `adopt_candidate_lesson` records one
+  `adopt/grounded_useful` decision - not an adopt plus a spurious
+  invalidate, which would have made the accept/reject counts lie. An
+  out-of-taxonomy code is refused before anything is written, so a typo
+  cannot half-invalidate a lesson; `unknown` is reachable and is the
+  default. Read side: `minder-op lessons decisions` prints the counts per
+  (action, code), or one lesson's history with `--id`; `/lessons` shows
+  the diagnosis next to the status; `/lessons/{id}` renders the decision
+  ledger. A store predating 016 reports `not available`, never zeros.
+  `minder_op/summary.py` sits at the C2 line budget, so the counts live in
+  their own subcommand instead of the weekly summary.
+
 - **A frontier answer's next action is what reaches the lesson queue (issue
   #11).** The consult prompt asked for ranked root causes plus one labelled
   `Next action:`, and the reading ignored both instructions: it tested each

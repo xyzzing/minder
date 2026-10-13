@@ -6,6 +6,10 @@ writes only behind `--yes`.
 ```bash
 python3 -m minder_op doctor [--no-probe] [--json]
 python3 -m minder_op status
+python3 -m minder_op migrate
+# apply the migrations this runtime ships to the store it is pointed at,
+# printing the versions it landed. Additive and idempotent, so no --yes.
+# Refuses (exit 1) a store already past this runtime's migration set.
 python3 -m minder_op flags
 python3 -m minder_op task declare --domain D [--task T] [--subtask S] [--note N]
 python3 -m minder_op task status [--task T]
@@ -21,6 +25,27 @@ python3 -m minder_op routes eval [--declared-domain D] [--task T]
 python3 -m minder_op routes ls [--limit N]
 python3 -m minder_op routes replay --cases PATH [--out PATH] [--json]
 python3 -m minder_op routes ambiguity [--days 30]
+python3 -m minder_op difficulty replay --cases PATH [--provider laya|null] [--out PATH] [--json]
+# offline replay of the difficulty-core-v1 eval set through
+# resolve_difficulty. `--provider laya` serves the laya-studio
+# specialization bundle when MINDER_LAYA_SPECIALIZATION points at one
+# (model_version reads `laya-spec/<bundle>`), else the base head; null
+# is the never-acts baseline. The report carries accuracy, coverage and
+# selective accuracy under the confidence floor, mean band distance,
+# and Brier/ECE (ADR-0005).
+python3 -m minder_op calibrate fit [--cases P] [--fitting P] [--provider laya|null] [--bundle P] [--floor F]
+python3 -m minder_op calibrate gate [...same]
+python3 -m minder_op calibrate promote [...same] --yes
+python3 -m minder_op calibrate status [--unit U]
+python3 -m minder_op calibrate apply [--unit U] --yes
+python3 -m minder_op calibrate rollback [--unit U]
+# the confidence-scale loop (issue #36). `fit` scores the fitting split
+# with the provider, sweeps candidate margin scales and reports the
+# best; `gate` replays the eval set at that scale and compares it with
+# the pinned baseline; `promote --yes` pins the record. `fitting` and
+# `cases` must be disjoint - an overlapping split is refused, not
+# scored (prd-v0.10 6.9.3). `apply` installs the pinned scale as a
+# systemd drop-in, `rollback` takes it back off.
 python3 -m minder_op resume assert --claim C [--variant P ...] [--actor U]
 python3 -m minder_op resume approve --assertion ID --phrase P [--scope any|JD] --actor U
 python3 -m minder_op resume uncertain --assertion ID
@@ -37,7 +62,21 @@ python3 -m minder_op lessons show LESSON_ID
 # which retrieval tier matched, which assist path carried it, chars
 # injected, session (issue #13). A store predating migration 015 prints
 # `injection ledger: not available` instead of an empty table.
-python3 -m minder_op lessons invalidate LESSON_ID --reason "..." --yes
+python3 -m minder_op lessons invalidate LESSON_ID --reason "..." \
+[--diagnosis unknown|content_defect|application_failure|external_failure|no_issue] \
+--yes # the diagnosis names what went wrong; the reason stays the note
+python3 -m minder_op lessons reject LESSON_ID --code generic \
+[--note "..."] --yes # refuse a frontier candidate with a closed reason code
+python3 -m minder_op lessons injections [--limit N]
+# per-lesson injection counts, busiest first, plus `misses: N` on its own
+# line: the decisions the store had no lesson to offer. They are counted
+# separately because they are the denominator of the hit rate, not a
+# lesson with an empty id (issue #20). A store predating migration 015
+# prints `injection ledger: not available`, never zeros.
+python3 -m minder_op lessons decisions [--id LESSON_ID] [--limit N]
+# no --id: decisions per (action, code) straight off the ledger; with
+# --id: that lesson's decision history, newest first (issue #14). A store
+# predating migration 016 prints `decision ledger: not available`.
 python3 -m minder_op lessons promote EPISODE_ID --instruction "..." \
 [--tests-passed] --yes # same gates as promote_lesson
 python3 -m minder_op lessons promote LESSON_ID --from-candidate \
@@ -66,7 +105,42 @@ python3 -m minder_op trace regress SESSION --finding FINDING_ID \
 ```
 
 `--db PATH` points at another memory sqlite (tests, second installs).
-Exit codes: `0` ok, `1` usage / not found, `2` DB missing or corrupt.
+Exit codes: `0` ok, `1` usage / not found, `2` DB missing or unreadable.
+
+Schema currency:
+
+- `status` prints the learning plane's retrieval hit rate as four named
+numbers: `retrieval_asked`, `retrieval_hits`, `retrieval_misses` and
+`retrieval_hit_rate` (issue #20). The misses are printed rather than
+left to be subtracted, because the split is the whole point of the
+ledger: a rate alone cannot tell an operator whether learning is
+under-retrieving or under-populated. A store predating migration 015
+prints `not available` for all four; an empty ledger prints `0` asked
+and no rate at all, which are different facts.
+- `status` prints `schema_version` (what the store has applied),
+`schema_latest` (what the running code can apply) and
+`schema_installed` (what the installed share staged at install time).
+`schema_behind: yes` means the store predates the running code; the
+gap is closed with `minder-op migrate`.
+- The two denominators are different numbers on purpose. A store can
+be current for the code that runs and still be ahead of what the
+installed share staged — that means the staged files are stale and
+`install.sh` needs a re-run, not a migration.
+- Migration files use bare `CREATE TABLE`, so a store whose recorded
+`user_version` sits below the tables it already holds refuses to
+replay. The error says so and names `PRAGMA user_version`; the store
+is not damaged and must not be deleted.
+- `migrate` only ever applies the migration files sitting beside the
+copy of minder answering the call. A store above that ceiling is
+refused with exit `1` and a sentence naming which runtime can do the
+work; stamping a store with migrations the deployed code has no files
+for would turn the next read into a missing table reported as
+corruption. When a successful run pushes the store past what the
+installed share staged, the same run says the staged files are stale.
+- A DB error names its own kind: `memory db not found`, `memory db not
+readable as a sqlite database`, `db schema is missing an object`, or
+`db corrupt or wrong schema`. Each points at a different repair, so
+one message for all four sends the operator to the wrong one.
 
 Doctor facts (operator health check):
 
@@ -74,6 +148,101 @@ Doctor facts (operator health check):
 presence, schema currency, flag values (unknown `MINDER_*` values
 fail — typo detection), hook wiring (share + zcode config), event
 staleness, loopback proxy probe, benchmark suites, pinned baselines.
+- The `schema` line compares the store against the migrations this
+runtime ships, and names `minder-op migrate` when it is behind. When
+the store is ahead of the installed share it says the staged files are
+stale instead.
+- The `coverage` line compares two counts that must measure the same
+unit of work: PostToolUse hook invocations in dsh's session logs against
+PostToolUse `hook_timing` records in the store. A `hook_timing` row is
+written for every hook point, so the filter is what keeps the number
+honest — before it, a host running both hook points always read 100 %
+and the floor could not fire. The line says `partial view` when the log
+scan hit its caps (`coverage.complete` is false): the invocation count
+is then a floor, not a measurement, and 100 % does not mean nothing was
+lost. The store side is reported separately as
+`coverage.persisted_db`, with `coverage.db_measured` saying whether that
+number was measured at all.
+An unreadable store gives `db_measured: false` and no count, never a 0,
+because 0 is the value that fails the floor and sends you to fix hooks
+that are working.
+- The `laya-worker` line reports the isolated decision worker (issues
+#7, #32). `ok` means a dial of the socket connected, which is the only
+statement the check can make about liveness. `info` means nothing is up
+and nothing has failed: the worker spawns on the first router-eligible
+request and exits when idle, so an idle install is normal. `warn` means
+nothing is up and the log holds a failure, and the line names both the
+failure and its age (`last failure ... 2h ago`), because the log is
+append-only and rolls only at 1 MB. Lines older than 6h are additionally
+marked `stale evidence, a fixed defect keeps this line`. Client-side
+failures carry an ISO-8601 UTC stamp; a line written before stamps
+existed reports the log file's mtime and says `at least`, so the age is
+never more precise than the evidence. Move the log aside
+(`mv ~/.local/state/minder/laya-worker.log {,.old}`) to clear old
+evidence. The worker is spawned by the proxy, so it runs the staged share
+the proxy imported — after `install.sh`, restart the proxy service or an
+already-listening worker keeps the old code.
+- The router's own modes (`~/.config/minder/minder.json`,
+`difficulty_router`): `shadow` consults and records without acting,
+`active` may move effort in either direction, `lower` consults and
+applies the band only when it lowers effort - never a raise, `laya`
+applies the band over a client-declared effort but only when the band
+schedules strictly more thinking than the client asked for. In every
+mode except `laya` a client that set its own effort wins, and that
+precedence is why the router can be enabled and still change nothing:
+on a live store that had served 12,452 auto requests the ledger held
+872 `difficulty_skipped reason=client_effort` and zero applied bands.
+If `minder-op events ls --type difficulty_routed` is empty while
+`difficulty_skipped` is not, the router is outranked rather than
+broken, and `laya` is the mode that addresses it. Only presets
+marked `"class": "auto"` reach the router at all, and the router is
+`shadow` by default, so a store with no `difficulty_*` events means
+the router has never been consulted — check for `auto_effort` events
+first to see whether any request was eligible. When it has been,
+`minder-op events ls --type difficulty_skipped` says why it abstained
+(`client_effort`, `escalation_marker`, `no_client`,
+`below_confidence`, `malformed_response`) rather than leaving the
+operator to guess between "never ran" and "ran and did nothing".
+- `minder-op events ls --type declined` counts the actions the operator
+declined (issue #27). A decline is a third outcome, not a failure: the
+harness writes `Error: The user dismissed the plan review to speak
+instead`, the shared `error:` fail sign made that a command failure, and
+two dismissals of one tool produced an L1 directive telling the agent to
+retry with a regenerated anchor. `minder.classify_outcome` checks the
+named `DECLINE_SIGNS` first and returns `failed`, `declined` or `success`;
+the ladder records a decline and changes nothing else — it neither raises
+a level nor refunds the budget of a loop that is still there. `is_failure`
+still answers yes, deliberately: the memory store's event vocabulary is
+`tool_failure|tool_success|verification`, and a decline is closer to
+needing a lesson than to a verified success.
+- The `engine-upstream` line says which upstream the proxy unit will
+actually dial (issues #33). It reads
+`systemctl --user show minder-proxy.service -p Environment`, which is
+systemd's own merge of the base unit and every drop-in, and compares it
+with the upstream of the active engine in `~/.config/minder/minder.json`.
+`ok` means they agree. `warn` means the proxy is dialling something else,
+and when the base unit and a drop-in disagree the line names both and says
+which one masks the other. `info` means the key is not in the unit at all,
+so the proxy takes it from its own environment and the registry value is
+unverified. The query targets the proxy unit, not the engine's: an engine
+unit is a server listening on a port and declares no upstream.
+
+Which source decides the upstream depends on whether you have a registry.
+With an `engines` key in `minder.json`, the proxy re-resolves the upstream
+from `active_engine` while it runs - a switch needs no restart - and the
+unit's `MINDER_UPSTREAM` is used only when that key is absent. So the
+drop-in's real influence is over a fresh install, where it sets what CAP
+probes and therefore what `model_caps.json` describes, and over what
+`systemctl --user cat` claims about a running proxy.
+
+Related, from the same cause: `install.sh` always writes the base unit's
+`MINDER_UPSTREAM` from its own `--upstream`/env value or the
+`http://127.0.0.1:8080` default, and systemd applies a drop-in after that
+file, so the drop-in wins and the base-unit value becomes inert. The
+installer now prints both values when they differ and leaves the drop-in
+alone — it is the operator's mechanism for switching engines by hand. Run
+`minder-op engine switch NAME --yes` to change engines through the
+registry instead, which flips the config and the units together.
 - Verdict semantics: `fail` -> exit 1 (broken); `warn` -> exit 0 but
 look (missing wiring, silent-for-a-week hook); `info` -> context
 only (proxy not running, no baseline pinned).
@@ -285,11 +454,272 @@ legacy 003 integer. Benchmarks render "not available" when no suites exist. The
 "operator focus" block is a fixed-priority, max-three list of
 follow-up commands; `now=` injection keeps it deterministic in
 tests.
+- `lessons invalidate --diagnosis` and `lessons reject --code` write a
+closed code from `minder_memory/lesson_decisions.py` next to the free-text
+reason (issue #14), so the queue's history is countable rather than only
+readable. `lessons decisions` reads those counts back. An out-of-taxonomy
+code is a usage error and writes nothing; the default diagnosis is
+`unknown`, which names no mechanism. A store predating migration 016
+reports `not available`, never zeros.
 - The `lesson injections` section separates the two numbers that make
 each other meaningful (issue #13): decisions that carried a lesson, and
 decisions that had none to offer. A verified lesson with no injection
 rows is a live lesson doing nothing, so it becomes a focus item; a store
 without the ledger table reports `not available`, never zeros.
+- Issue #20 states the ratio those counts imply instead of leaving it to
+be computed at read time: `retrieval hit rate`, in the same words, on
+`minder-op status`, `minder-op lessons injections`, the weekly summary,
+`minder-op scorecard`'s learning group and the console overview. It is a
+plane-level number, so it belongs where the plane is read; the per-lesson
+impact split issue #16 added has no base rate to be read against without
+it. No retrieval behaviour changed: the same lesson that fired before
+this change fires now.
+
+## Flipping the difficulty router on (issue #7 rollout)
+
+The router ships `off`. Turning it on is a config edit against the
+proxy's own file plus a proxy restart, and the order below is the
+rollback path, so read it before the edit.
+
+1. **Install first, flip second.** The worker is spawned by the proxy and
+   the proxy imports the staged share, so the code that decides is
+   `$HOME/.local/share/minder`, not the checkout. Diff it against the
+   checkout before restarting anything:
+
+   ```bash
+   diff -ru minder_decision ~/.local/share/minder/minder_decision
+   diff -u proxy.py ~/.local/share/minder/proxy.py
+   ```
+
+   A missing `may_outrank_client` in the staged `router.py` means the
+   share is stale and `laya` will behave exactly like `active`. Re-run
+   `install.sh` (it re-stages `minder.py`, `adapter.py`, `proxy.py`,
+   `hook.py`, `minder_decision/`, `minder_op/`, `minder_memory/`) rather
+   than copying files in by hand.
+2. **Shadow period before any application.** Set
+   `difficulty_router: shadow` in `~/.config/minder/minder.json`, restart
+   the proxy, and read the ledger for a working day:
+
+   ```bash
+   systemctl --user restart minder-proxy.service
+   minder-op events ls --type difficulty_shadow --limit 20
+   minder-op doctor | grep difficulty-router
+   ```
+
+   `shadow` consults the worker and records without touching a request.
+   `difficulty-router: ok ... N band(s) applied` only ever appears once
+   the router is in an applying mode, so in shadow expect `info` with no
+   eligible traffic or `warn` naming the abstentions.
+3. **Flip.** `difficulty_router: laya`, restart the proxy. Only the one
+   config value changed, and `laya` can only add thinking, so the worst
+   case is a request that thinks more than the client asked.
+4. **Rollback is one edit and one restart.** Keep the previous value
+   before step 3 (`cp ~/.config/minder/minder.json{,.bak}`):
+
+   ```bash
+   python3 - <<'EOF'
+   import json, pathlib
+   p = pathlib.Path.home() / ".config/minder/minder.json"
+   cfg = json.loads(p.read_text()); cfg["difficulty_router"] = "off"
+   p.write_text(json.dumps(cfg, indent=2) + chr(10))
+   EOF
+   systemctl --user restart minder-proxy.service
+   ```
+
+   Nothing else has to be undone. The router writes no DB state and no
+   migration; its only output is ledger lines in `events.jsonl`, which
+   are append-only evidence and stay. A live worker keeps running the
+   code the proxy imported, so restart the proxy (not just the worker)
+   after any re-install; `rm ~/.local/state/minder/laya-worker.sock` is
+   enough to drop a wedged worker, and moving `laya-worker.log` aside
+   clears stale `warn` evidence.
+5. **Confirm the flip did something.** `laya` mode is only worth keeping
+   if bands are actually applied:
+
+   ```bash
+   minder-op events ls --type difficulty_routed --limit 5
+   minder-op doctor | grep difficulty-router
+   ```
+
+   `0 applied` with abstentions no longer means one thing. The
+   `difficulty-router` line breaks the abstentions down by the reason the
+   proxy recorded, and the repair depends on which one dominates:
+
+   - `N client_effort` - outranked, not broken. A client-declared effort
+     wins in every mode but `laya`, and in `laya` it still wins unless the
+     band adds thinking. Check that the client's effort is below the band
+     it is compared against (`off` and `low` lose to a `routine` band,
+     `xhigh` does not).
+   - `N below_confidence` - the floor declining every prior, which is the
+     floor working. `laya_min_confidence` is the dial, but lowering it
+     buys noise unless the prior separates the labels; measure the
+     confidence the worker actually returns before touching it.
+   - `N malformed_response` - the worker or the protocol, not a policy
+     decision. Read the `laya-worker` line.
+
+   A flipped mode with no applied bands is normal on a store where most
+   requests carry a client effort: the old line kept calling that
+   `outranked` after the flip, which is the wrong repair. The counts come
+   from the ledger, so the line stays true as the config changes.
+
+## Serving a specialized difficulty bundle (issue #34, ADR-0005)
+
+The difficulty answers come from the laya decision head by default. A
+laya-studio specialization bundle replaces them for the
+task-difficulty contract only - every other contract (routing, triage,
+skill-select) keeps the base head. The measured case is in ADR-0005:
+the head acts at chance on the difficulty rubric, the whitened-
+prototype bundle acts at 0.754 selective accuracy where the head reads
+0.625.
+
+1. **Evidence first, env second.**
+
+   ```bash
+   python3 -m minder_op difficulty replay \
+     --cases benchmarks/difficulty-core-v1/cases/difficulty_cases.json \
+     --provider laya --out /tmp/base.json
+   MINDER_LAYA_SPECIALIZATION=presets/laya-specializations/difficulty-v1 \
+     python3 -m minder_op difficulty replay \
+     --cases benchmarks/difficulty-core-v1/cases/difficulty_cases.json \
+     --provider laya --out /tmp/spec.json
+   ```
+
+   Compare `selective_accuracy` and `coverage`: the bundle is worth
+   serving when it beats the head where it acts. The eval labels are
+   owner-reviewable (`label_status` in the case file) - read ADR-0005
+   before quoting absolute numbers.
+
+2. **Set the env on the proxy, not the worker.** The worker child
+   inherits the proxy's environment, so one drop-in covers both:
+
+   ```bash
+   systemctl --user edit minder-proxy.service
+   # [Service]
+   # Environment=MINDER_LAYA_SPECIALIZATION=<share>/presets/laya-specializations/difficulty-v1
+   systemctl --user restart minder-proxy.service
+   ```
+
+   The margin scale that comes after this - what the bundle's answers
+   are worth - has its own gated command instead: see "Calibrating the
+   confidence scale" below.
+
+   The bundle path must exist on the share the proxy imports; a path
+   that does not load prints one `MINDER_LAYA_SPECIALIZATION ... did
+   not load` line to stderr (the worker's `laya-worker.log`) and the
+   base head serves - the flag is then inert, which the replay in step
+   1 would have shown as `provider: laya/...` instead of
+   `provider: laya-spec/...`.
+
+3. **Rollback is unsetting the env and restarting.** Nothing else
+   changes: no migration, no ledger state. A bundle that fails
+   mid-request falls open to the base head with one
+   `specialization bundle failed` line in the same log.
+
+## Calibrating the confidence scale (issue #36)
+
+The bundle answers; the margin scale decides whether those answers are
+trusted. Confidence is `clip01(margin x scale)` over the top two
+choice probabilities - never the model's self-report, which measures
+0.11-0.28 on a closed menu and carries no routing signal. The scale is
+therefore a policy dial: too low and the router acts on coin flips, too
+high and it never acts. `SPEC_MARGIN_SCALE` (20.0) and
+`CALIBRATION_MARGIN_SCALE` (2.0) are the shipped defaults; a fitted
+value overrides them through `MINDER_LAYA_MARGIN_SCALE`.
+
+Fit it on the fitting split, never on the eval set (prd-v0.10 6.9.3):
+
+```bash
+python3 -m minder_op calibrate fit
+# fitting_rows 34, margin_scale 18.0, fit_acted 2, fit_coverage 0.0588
+```
+
+The fitting split is 34 rows, so its own numbers are nearly worthless -
+the fit proposes, the eval set decides:
+
+```bash
+python3 -m minder_op calibrate gate
+# margin_scale 18.0 | eval_acted 59 coverage 0.295
+# selective_accuracy 0.7797 ece 0.25699
+# verdict: PASS
+```
+
+`gate` compares against the suite's **pinned** baseline, not a report
+made up in the same run. Pin one first if none exists:
+`difficulty replay --out /tmp/r.json` then
+`benchmark baseline create /tmp/r.json --yes`.
+
+That baseline has to be a replay at the scale the provider answers at
+today. Every number in a difficulty report is a function of that scale -
+it is what maps a margin to the confidence the floor gates on - so a
+baseline that does not name it is a number without units. `difficulty
+replay` records `margin_scale` and `confidence_floor` in
+`difficulty_detail`, and `gate` refuses a baseline whose scale is not the
+provider's, or which names none at all, rather than assuming the shipped
+constant. The flattering direction is the one that would otherwise slip
+through: a fitted 18.0 beating a baseline that never declared its units.
+The provider's own default is not hardcoded into the gate either - the
+base head measures 2.0 and the specialization bundle 20.0 - so each
+client declares it as `margin_scale_default` and the loop asks.
+
+The thresholds are the comparator's plus two calibration ones: a
+`selective_accuracy` drop or an ECE rise over 5pp is a FAIL, and a candidate that acts on nothing is
+a FAIL whatever its accuracy, because a router that never acts is not a
+calibrated one. On the real bundle, scale 18.0 beat the shipped 20.0 by
+4.1pp of selective accuracy (0.7797 at 29.5% coverage against 0.7385 at
+32.5%) and 2.4pp of ECE.
+
+```bash
+python3 -m minder_op calibrate promote --yes
+```
+
+Writes `benchmarks/promotions/difficulty-core-v1.json`: the scale, the
+confidence source, the floor, the label digest, the bundle revision,
+the suite fingerprint, the verdict with its reasons, and the baseline it
+was gated against - its location inside the benchmarks root, its
+fingerprint, and the scale it was replayed at. The location is relative
+because `MINDER_BENCHMARKS_DIR` is per-invocation: an absolute path makes
+the drift check report a moved baseline every time the root moves. A
+refused gate pins nothing. The record is what makes the next drift check
+possible.
+
+Then, and only then, the live unit:
+
+```bash
+python3 -m minder_op calibrate apply        # plan only, nothing written
+python3 -m minder_op calibrate apply --yes  # drop-in + reload + restart + verify
+# reports previous_scale and effective_scale: both ends of the change
+python3 -m minder_op calibrate rollback     # remove the drop-in, reload, restart
+```
+
+`apply` writes
+`~/.config/systemd/user/minder-proxy.service.d/minder-calibration.conf`
+and never edits the base unit - a drop-in is additive, and the base
+unit is where the port and the upstream live (issue #33). It reads the
+unit's effective `Environment` before writing and again after the
+restart, and if the scale did not take it removes the drop-in it just
+wrote and restores the backup. The worker child inherits the proxy's
+environment, so one drop-in covers both processes.
+
+`calibrate status` and the `calibration` row in `doctor` answer the
+same question from both sides: what is pinned, what the unit actually
+loads, and whether the record still describes the world. Relabelling
+the eval set, changing the suite, re-exporting the bundle, or re-pinning
+the baseline the verdict was computed against each break a field of the
+record; re-pinning it at a different scale breaks `baseline_scale` while
+leaving the fingerprint intact, because the fingerprint says the
+denominator is the same suite and only the scale says it is the same
+comparison. Both commands name the drifted fields and say to re-run
+`promote --yes`.
+
+Pinning a scale is not installing one, and both commands say so: they
+print the scale this process would map with, which is the environment's
+if it carries one and otherwise the provider's shipped constant. On a
+box where systemd cannot be reached, that line is the only live reading
+available, and it is labelled as the process view rather than the unit's. A pinned scale the unit does not load is a `warn`, not
+an `ok` - the record and the running proxy disagree, and that is the
+state worth seeing. Where systemd cannot be reached at all the row is an
+`info` naming the pinned scale as unverified: doctor does not call a
+number live because a file says so.
 
 ## Deferred (+ — deliberately not built here)
 

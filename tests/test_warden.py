@@ -284,6 +284,103 @@ def test_audit_chain_ledger(tmp_path, monkeypatch):
     assert r2["chain"] == expect
 
 
+# --- Issue #27: an operator decline is a decision, not a failure. ---
+
+DISMISSED = ("Error: The user dismissed the plan review to speak instead; "
+             "stay in plan mode, stop here, and wait for their message.")
+CANCELLED = "Error: The user cancelled the tool call."
+REJECTED = "The user rejected the proposed plan."
+
+
+def test_decline_is_classified_declined(tmp_path, monkeypatch):
+    """The harness prefixes a decline with `Error: `, so the shared
+    `error:` fail sign reads an operator decision as a command failure.
+    The classifier has to name the third outcome, not just exclude it."""
+    fresh_state(tmp_path, monkeypatch)
+    assert minder.is_failure(DISMISSED)  # the sign that causes the bug
+    assert minder.classify_outcome(DISMISSED) == "declined"
+    assert minder.classify_outcome(CANCELLED) == "declined"
+    assert minder.classify_outcome(REJECTED) == "declined"
+    assert minder.classify_outcome(
+        "Error: old_string not found in file") == "failed"
+    assert minder.classify_outcome("edited 3 lines ok") == "success"
+    # The decline markers are a named constant, not a literal in the check.
+    assert minder.DECLINE_SIGNS
+
+
+def test_decline_does_not_seed_or_raise_an_escalation(tmp_path, monkeypatch):
+    """Two declines in a row are what a plan review dismissal looks like.
+    They must not reach fail_threshold, so no L1 directive and no
+    escalation event - and no failure record seeded for the key."""
+    fresh_state(tmp_path, monkeypatch)
+    (tmp_path / "minder.json").write_text(json.dumps(CFG))
+    for _ in range(3):
+        out = minder.process(ev("exit_plan_mode", DISMISSED))
+        assert out["action"] is None
+        assert out["level"] == 0
+    st = minder.load_state("s1")
+    assert "exit_plan_mode:generic" not in st["failures"]
+    ledger = (tmp_path / "state" / "events.jsonl").read_text()
+    assert "escalate" not in ledger
+
+
+def test_decline_is_ledgered_as_its_own_event(tmp_path, monkeypatch):
+    """Excluding a decline from the count must not hide it: the count of
+    declines is auditable evidence about the operator's decisions."""
+    fresh_state(tmp_path, monkeypatch)
+    (tmp_path / "minder.json").write_text(json.dumps(CFG))
+    minder.process(ev("exit_plan_mode", DISMISSED))
+    minder.process(ev("ask_user_question", CANCELLED))
+    lines = [json.loads(ln) for ln in
+             (tmp_path / "state" / "events.jsonl").read_text().splitlines()]
+    kinds = [r for r in lines if r["event"] == "declined"]
+    assert len(kinds) == 2
+    assert {r["key"] for r in kinds} == {"exit_plan_mode:generic",
+                                         "ask_user_question:generic"}
+
+
+def test_decline_does_not_reset_a_failing_key(tmp_path, monkeypatch):
+    """A decline is not a success either. Treating it as one would refund
+    the escalation budget and clear a loop that is still there, which is
+    the opposite of what the operator meant by declining."""
+    fresh_state(tmp_path, monkeypatch)
+    (tmp_path / "minder.json").write_text(json.dumps(CFG))
+    minder.process(ev("bash", "boom\nexit code 1", args={"command": "make"}))
+    minder.process(ev("bash", "boom\nexit code 1", args={"command": "make"}))
+    st = minder.load_state("s1")
+    assert st["failures"]["cmd:make"]["n"] == 2
+    minder.process(ev("bash", DISMISSED, args={"command": "make"}))
+    st = minder.load_state("s1")
+    assert st["failures"]["cmd:make"]["n"] == 2
+    assert st["think_used"] == 1
+
+
+def test_decline_does_not_open_the_memory_policy_pass(tmp_path, monkeypatch):
+    """The policy pass is gated on the result being failure-shaped. A
+    decline is failure-shaped to `is_failure` only because of the
+    harness's `Error: ` prefix, so it bought ~1 s of inference per
+    dismissal and fed a decline into the duplicate-attempt counter."""
+    import hook
+    fresh_state(tmp_path, monkeypatch)
+    assert hook._policy_wanted(ev("exit_plan_mode", DISMISSED), {}) is False
+    assert hook._policy_wanted(ev("bash", "boom\nexit code 1"), {}) is True
+    assert hook._policy_wanted(ev("bash", "all good"), {}) is False
+
+
+def test_two_genuine_failures_still_escalate(tmp_path, monkeypatch):
+    """The exclusion must not blunt the ladder: the same tool failing
+    twice with a real error still fires L1."""
+    fresh_state(tmp_path, monkeypatch)
+    (tmp_path / "minder.json").write_text(json.dumps(CFG))
+    minder.process(ev("edit", "Error: old_string not found",
+                      args={"file_path": "a.py"}))
+    out = minder.process(ev("edit", "Error: old_string not found",
+                            args={"file_path": "a.py"}))
+    assert out["action"] == "think"
+    assert out["level"] == 1
+    assert "FAILED 2x: edit:a.py" in out["digest"]
+
+
 def test_compact_brief_is_capped(tmp_path, monkeypatch):
     """The brief rides additionalContext into the next model request; a
     session with hundreds of failure keys must not crowd out the context

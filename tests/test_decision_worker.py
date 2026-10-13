@@ -21,15 +21,34 @@ from minder_decision.contracts import task_difficulty_contract
 from minder_decision.difficulty import resolve_difficulty
 from minder_decision import worker as worker_mod
 
+# getattr, not a module-level import: the proven-red gate runs this file
+# against pre-change code, and a missing module there would error out the
+# whole file at import and hide which assertion catches the bug.
+log_stamp = getattr(__import__("minder_decision", fromlist=["log_stamp"]),
+                    "log_stamp", None)
+
 CFG = {"laya_min_confidence": 0.7}
 
 
 @pytest.fixture(autouse=True)
 def _reset_worker_cooldown():
-    """Each test starts with the client's spawn cooldown cleared."""
-    worker_mod._COOLDOWN["until"] = 0.0
+    """Each test starts with the client's spawn cooldown cleared, and with
+    the once-per-process client-log marks cleared so each reason can be
+    asserted as written.
+
+    getattr, not a direct call: the proven-red gate runs this file against
+    pre-change code, and a missing seam there would error out every test in
+    the file and hide which assertions actually catch the bug."""
+    reset = getattr(worker_mod, "_reset_client_log_marks", None)
+
+    def _clear():
+        worker_mod._COOLDOWN["until"] = 0.0
+        if reset is not None:
+            reset()
+
+    _clear()
     yield
-    worker_mod._COOLDOWN["until"] = 0.0
+    _clear()
 
 
 def _contract():
@@ -229,3 +248,135 @@ def test_no_worker_is_none_and_quick(tmp_path):
     assert client.system_one({"task": "x"}, _contract().questions,
                              contract=_contract()) is None
     assert time.monotonic() - t0 < 2.0
+
+
+# ---------------------------------------------------------------------------
+# issue #28: a protocol mismatch must be answerable, not a dropped socket.
+# The live laya-worker.log holds two bare "unsupported protocol version"
+# lines with no version and no client-side record of what happened.
+# ---------------------------------------------------------------------------
+
+def test_protocol_mismatch_gets_an_error_reply(tmp_path):
+    """A pre-v1 client gets ok:false naming the version it sent, so both
+    halves of the pair are diagnosable instead of one seeing a closed
+    connection."""
+    proc, sock = _spawn_worker(
+        tmp_path, {"difficulty": "routine", "difficulty_score": 1.0})
+    try:
+        conn = None
+        waited = 0.0
+        while conn is None and waited < 20.0:
+            conn = worker_mod._dial(sock, 0.5)
+            if conn is None:
+                time.sleep(0.1)
+                waited += 0.1
+        assert conn is not None, "worker never bound its socket"
+        try:
+            conn.sendall((json.dumps({"v": 0, "id": 7,
+                                      "state": {"task": "x"}}) + "\n")
+                         .encode())
+            conn.settimeout(5.0)
+            line = worker_mod._readline(conn)
+        finally:
+            conn.close()
+        assert line, "the worker dropped the connection with no reply"
+        reply = json.loads(line.decode("utf-8", "replace"))
+        assert reply.get("ok") is False
+        assert "unsupported protocol version" in str(reply.get("error"))
+        assert "0" in str(reply.get("error"))
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+
+
+def test_worker_error_reaches_the_client_log(tmp_path):
+    """Every client-side failure names itself in laya-worker.log; before this
+    change system_one returned None and the operator had no record at all.
+
+    The interesting case is a worker that is up but answers ok:false — the
+    live install's laya-worker.log holds two bare "unsupported protocol
+    version" lines and the client recorded nothing about any of them. The
+    client is pointed at a socket held by a server that answers ok:false, so
+    no real worker is needed and the answer is deterministic."""
+    sock = tmp_path / "laya-worker.sock"
+    log_path = sock.with_name("laya-worker.log")
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(str(sock))
+    srv.listen(4)
+
+    def _serve_once():
+        conn = None
+        try:
+            conn, _ = srv.accept()
+            conn.recv(65536)  # the request, whose content does not matter
+            conn.sendall((json.dumps(
+                {"ok": False,
+                 "error": "ValueError('unsupported protocol version')"})
+                + "\n").encode())
+        except OSError:
+            pass
+        finally:
+            if conn is not None:
+                conn.close()
+
+    serve = threading.Thread(target=_serve_once, daemon=True)
+    serve.start()
+    client = worker_mod.WorkerDifficultyClient(spawn=False, path=sock)
+    assert client.system_one({"task": "x"}, _contract().questions,
+                             contract=_contract()) is None
+    serve.join(timeout=10)
+    srv.close()
+    assert log_path.exists(), "a client that got nothing wrote no record"
+    log = log_path.read_text()
+    assert "worker_error" in log, (
+        "the worker's ok:false answer left no client-side record")
+    assert "unsupported protocol version" in log, (
+        "the worker's own error text never reached the client log")
+
+
+# ---------------------------------------------------------------------------
+# the worker log's own format (issue #32)
+# ---------------------------------------------------------------------------
+
+def test_client_failures_are_stamped_and_the_stamp_reads_back(tmp_path):
+    assert log_stamp is not None
+    """The log is the worker's only trace, and an undated trace is not
+    evidence: `doctor` cannot tell a failure happening now from one fixed
+    days ago. So every line the client writes carries a stamp, and the
+    stamp has to be readable back as a time."""
+    sock = tmp_path / "laya-worker.sock"
+    worker_mod._client_fail(sock, "spawn_failed", "no worker after spawn")
+    entry = log_stamp.latest_log_line(sock)
+    assert entry is not None
+    line, ts, stamped = entry
+    assert stamped is True
+    assert line.startswith(log_stamp.stamp().split(" ")[0])
+    assert "spawn_failed" in line
+    now = time.time()
+    assert ts <= now < ts + 60
+
+
+def test_an_unstamped_line_reports_the_file_mtime_as_a_floor(tmp_path):
+    assert log_stamp is not None
+    """Logs written before stamps existed still have to be reportable:
+    the age comes from the file's mtime and the caller is told it is not a
+    measurement, so it can say "at least" instead of a false precision."""
+    log = tmp_path / "laya-worker.log"
+    log.write_text("minder-decision-worker: request error: "
+                   "ValueError('unsupported protocol version')\n")
+    old = time.time() - 7200
+    os.utime(log, ns=(int(old * 1e9), int(old * 1e9)))
+    entry = log_stamp.latest_log_line(log.with_name("laya-worker.sock"))
+    assert entry is not None
+    line, ts, stamped = entry
+    assert stamped is False
+    assert ts == pytest.approx(old, abs=2)
+    assert "unsupported protocol version" in line
+    assert log_stamp.parse_stamp(line) is None
+
+
+def test_liveness_is_a_dial_and_never_raises(tmp_path):
+    assert log_stamp is not None
+    """The health check must not crash over a socket error, and absence is
+    an answer rather than an exception."""
+    assert log_stamp.worker_liveness(tmp_path / "absent.sock") is False

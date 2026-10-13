@@ -33,6 +33,98 @@ def _response(label, score, confidence=0.9):
 # score bucketing
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# issue #7 rollout: the router has to be able to outrank the client's
+# default effort, and only when the band would cut thinking
+# ---------------------------------------------------------------------------
+
+def _fake_client(label, score, confidence=0.9):
+    """The difficulty fixture keyed the way the router's state is shaped:
+    `difficulty_state()` gives {task, turn} and no failure_key, so the
+    FakeClient must be told which fixture to answer with."""
+    return FakeClient(
+        fixtures={"difficulty-test": {"difficulty": label,
+                                      "difficulty_score": score,
+                                      "confidence": confidence}},
+        key_fn=lambda _s: "difficulty-test")
+
+
+def _router_cfg(mode, **extra):
+    cfg = dict(CFG)
+    cfg["difficulty_router"] = mode
+    cfg.update(extra)
+    return cfg
+
+
+def test_router_modes_include_laya():
+    """`laya` is the rollout mode: the worker's band outranks a
+    client-declared effort, but only to lower it. Without it the router
+    can never fire on a client that always declares an effort, which is
+    what the live dsh profile does."""
+    from minder_decision.router import ROUTER_MODES
+    assert "laya" in ROUTER_MODES
+
+
+def test_laya_mode_ignores_a_client_effort_that_would_be_lowered():
+    """The live condition: the client sends `off`, laya says routine ->
+    `low`. In `active`/`lower` the router abstains and thinking stays
+    disabled; in `laya` mode it answers."""
+    from minder_decision import router as r
+    seen = []
+
+    def log(session_fp, event, **kw):
+        seen.append((event, kw))
+
+    import minder
+    client = _fake_client("routine", 1.0)
+    import minder_decision.client as decision_client
+    decision_client_get = decision_client.get_difficulty_client
+    decision_client.get_difficulty_client = lambda: client
+    minder_log = minder.log
+    minder.log = log
+    try:
+        req = {"messages": [{"role": "user", "content": "refactor x"}]}
+        assert r.opinion(req, "fp", _router_cfg("laya"), None, "off",
+                         None) is not None
+        assert r.opinion(req, "fp", _router_cfg("active"), None, "off",
+                         None) is None
+        assert r.opinion(req, "fp", _router_cfg("lower"), None, "off",
+                         None) is None
+        skipped = [kw.get("reason") for ev, kw in seen
+                   if ev == "difficulty_skipped"]
+        assert skipped == ["client_effort", "client_effort"]
+    finally:
+        decision_client.get_difficulty_client = decision_client_get
+        minder.log = minder_log
+
+
+def test_laya_mode_still_defers_to_a_client_effort_it_cannot_lower():
+    """The mode is named for the worker, not for an override: a client
+    that asked for more thinking than the band offers keeps it."""
+    from minder_decision import router as r
+    seen = []
+
+    def log(session_fp, event, **kw):
+        seen.append((event, kw))
+
+    import minder
+    client = _fake_client("routine", 1.0)
+    import minder_decision.client as decision_client
+    decision_client_get = decision_client.get_difficulty_client
+    decision_client.get_difficulty_client = lambda: client
+    minder_log = minder.log
+    minder.log = log
+    try:
+        req = {"messages": [{"role": "user", "content": "refactor x"}]}
+        assert r.opinion(req, "fp", _router_cfg("laya"), None, "xhigh",
+                         None) is None
+        assert [kw.get("reason") for ev, kw in seen
+                if ev == "difficulty_skipped"] == ["client_effort"]
+    finally:
+        decision_client.get_difficulty_client = decision_client_get
+        minder.log = minder_log
+
+
 def test_score_label_buckets():
     assert score_label(0.0) == "mechanical"
     assert score_label(0.4) == "mechanical"

@@ -1,0 +1,108 @@
+{
+  "atol": 1e-06,
+  "expected": [
+    {
+      "label": "mechanical",
+      "probabilities": {
+        "complex": 0.214372918009758,
+        "expert_or_ambiguous": 0.2687070369720459,
+        "mechanical": 0.2798943519592285,
+        "routine": 0.2370256930589676
+      }
+    },
+    {
+      "label": "mechanical",
+      "probabilities": {
+        "complex": 0.22284458577632904,
+        "expert_or_ambiguous": 0.24905788898468018,
+        "mechanical": 0.28581297397613525,
+        "routine": 0.2422845959663391
+      }
+    },
+    {
+      "label": "mechanical",
+      "probabilities": {
+        "complex": 0.24269622564315796,
+        "expert_or_ambiguous": 0.22957085072994232,
+        "mechanical": 0.27410730719566345,
+        "routine": 0.2536256015300751
+      }
+    },
+    {
+      "label": "mechanical",
+      "probabilities": {
+        "complex": 0.20949584245681763,
+        "expert_or_ambiguous": 0.25520625710487366,
+        "mechanical": 0.2820760905742645,
+        "routine": 0.2532217800617218
+      }
+    },
+    {
+      "label": "mechanical",
+      "probabilities": {
+        "complex": 0.24350711703300476,
+        "expert_or_ambiguous": 0.2354755699634552,
+        "mechanical": 0.2669796049594879,
+        "routine": 0.2540377378463745
+      }
+    },
+    {
+      "label": "expert_or_ambiguous",
+      "probabilities": {
+        "complex": 0.23821106553077698,
+        "expert_or_ambiguous": 0.2746550738811493,
+        "mechanical": 0.26154008507728577,
+        "routine": 0.22559377551078796
+      }
+    },
+    {
+      "label": "expert_or_ambiguous",
+      "probabilities": {
+        "complex": 0.24562954902648926,
+        "expert_or_ambiguous": 0.260263055562973,
+        "mechanical": 0.2585136890411377,
+        "routine": 0.2355937361717224
+      }
+    },
+    {
+      "label": "mechanical",
+      "probabilities": {
+        "complex": 0.23255598545074463,
+        "expert_or_ambiguous": 0.2539744973182678,
+        "mechanical": 0.2812453508377075,
+        "routine": 0.23222415149211884
+      }
+    },
+    {
+      "label": "mechanical",
+      "probabilities": {
+        "complex": 0.2146158218383789,
+        "expert_or_ambiguous": 0.26728999614715576,
+        "mechanical": 0.269185870885849,
+        "routine": 0.24890826642513275
+      }
+    },
+    {
+      "label": "routine",
+      "probabilities": {
+        "complex": 0.24103909730911255,
+        "expert_or_ambiguous": 0.23249408602714539,
+        "mechanical": 0.2522258162498474,
+        "routine": 0.27424103021621704
+      }
+    }
+  ],
+  "probes": [
+    "task=Fix the typo 'verison' in the settings help text.; turn=1",
+    "task=Bump the min python version in pyproject from 3.10 to 3.11.; turn=1",
+    "task=Remove the stray semicolon at the end of the import block in api.ts.; turn=1",
+    "task=Update the docs URL in the footer template.; turn=1",
+    "task=Add 'coverage html' to the make test target.; turn=1",
+    "task=The example config still says port 3000, ours is 4000 - fix it.; turn=1",
+    "task=Rename the MISSPELED constant and its references in one file.; turn=1",
+    "task=Fix the broken anchor link in the readme (#contribute -> #contributing).; turn=1",
+    "task=Delete the unused CSS import at the top of the page component.; turn=1",
+    "task=Add input validation to the form handler: reject empty titles, trim whitespace, cap length at 200.; turn=1"
+  ],
+  "rtol": 1e-05
+}

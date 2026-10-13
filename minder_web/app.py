@@ -19,16 +19,22 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from minder_web import answers
 from minder_web import domains
 from minder_web import services
-from minder_web import strings
-from minder_web.strings_domains import DOMAINS as _DOMAIN_STRINGS
+from minder_web import strings_base
+from minder_web.strings_pages import PAGES as _PAGES
+from minder_web.strings_scorecard import SCORECARD
+from minder_web.strings_session import SESSION
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_PACKAGE_DIR / "templates"))
 templates.env.filters["human_date"] = services._human_date
 templates.env.filters["human_tokens"] = services._human_tokens
-templates.env.globals["S"] = {**strings.S, "domains": _DOMAIN_STRINGS}
+templates.env.globals["S"] = {
+    **strings_base.S, **_PAGES,
+    "scorecard": SCORECARD, "session": SESSION,
+}
 
 app = FastAPI(title="minder operator console", docs_url=None,
               redoc_url=None, openapi_url=None)
@@ -76,6 +82,9 @@ def render(request, template, context):
     context["request"] = request
     context["health"] = services.health(_db_path())
     context["recording"] = services.recording(_db_path())
+    # the plain-language answer line every page leads with (issue #12);
+    # composed from the page model, so templates stay logic-free
+    context["answer"] = answers.answer_for(template, context)
     return templates.TemplateResponse(request, template + ".html",
                                       context)
 
@@ -221,6 +230,18 @@ def healthz():
 @app.get("/engine")
 def engine_page(request: Request):
     return render(request, "engine", services.engine_page())
+
+
+@app.get("/engine/switch")
+def engine_switch_confirm(request: Request, engine: str = ""):
+    """The confirm step for the console's one write path (issue #12). A
+    GET never switches: it shows what the switch would stop and start,
+    and the form below posts here again. It is a misclick guard, not a
+    security control - the loopback Host guard is the boundary."""
+    ctx = services.engine_page()
+    ctx["target"] = services.engine_target(engine)
+    ctx["engine"] = (engine or "").strip()
+    return render(request, "engine_confirm", ctx)
 
 
 @app.post("/engine/switch")

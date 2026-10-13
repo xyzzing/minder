@@ -82,11 +82,16 @@ def write_session(root, session_id, cwd="/home/dev/proj", *,
                             "data": {"turn": 1, "point": "PostToolUse",
                                      "dialect": "claude-code",
                                      "handlerId": f"h{seq}", "matcher": ""}})
+            # The harness stamps the same handlerId on the invocation and
+            # its result; minder joins the two to time one hook call.
+            handler = f"h{seq}"
             seq += 1
+            # The result lands after the hook ran, not a fixed offset.
+            hook_time = when + int(hook_ms)
             records.append({"type": "hook/result", "seq": seq,
-                            "time": when + int(hook_ms),
+                            "time": hook_time,
                             "data": {"turn": 1, "point": "PostToolUse",
-                                     "handlerId": f"h{seq}",
+                                     "handlerId": handler,
                                      "decision": "pass",
                                      "exitCode": hook_exit,
                                      "durationMs": hook_ms}})

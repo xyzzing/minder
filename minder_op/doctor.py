@@ -19,8 +19,12 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import minder
 from minder_op import benchmark as bench
-from minder_op import queries
+from minder_op.ages import age_text as _age_text
+from minder_op import queries, router
+from minder_op import rollout, unit_upstream
+from minder_op.worker import worker_check
 from minder_op.queries import DBError
 
 FLAG_VOCAB = {
@@ -41,22 +45,10 @@ DEFAULT_ZCODE_CONFIG = Path.home() / ".zcode" / "cli" / "config.json"
 
 
 def _latest_schema():
-    from minder_memory import db as _db
-    nums = []
-    for path in _db.MIGRATIONS_DIR.glob("*.sql"):
-        try:
-            nums.append(int(path.name.split("_", 1)[0]))
-        except ValueError:
-            continue
-    return max(nums) if nums else 0
-
-
-def _age_text(secs):
-    if secs < 90:
-        return f"{int(secs)}s"
-    if secs < 48 * 3600:
-        return f"{int(secs // 3600)}h"
-    return f"{int(secs // 86400)}d"
+    """The highest migration version this runtime's own migration set
+    ships."""
+    from minder_op import schema as schema_mod
+    return schema_mod.latest_version()
 
 
 def _parse_ts(text):
@@ -83,11 +75,18 @@ def _probe_proxy(port):
         return False, f"not running on :{port} ({exc})"
 
 
-def run_checks(db_path, probe=True, now=None):
+def run_checks(db_path, probe=True, now=None, proxy_config=None,
+               events_ledger=None, probe_worker=None):
     """Returns {"healthy": bool, "checks": [{id, status, detail}], ...}.
     Never raises on a missing/corrupt store - that's a `fail` finding,
     not a crash."""
     now = time.time() if now is None else now
+    proxy_config = (router.DEFAULT_PROXY_CONFIG if proxy_config is None
+                    else Path(proxy_config))
+    if events_ledger is None:
+        state_dir = os.environ.get("MINDER_STATE_DIR")
+        events_ledger = (Path(state_dir) if state_dir
+                         else router.DEFAULT_STATE_DIR) / router.LEDGER_NAME
     checks = []
 
     def add(cid, status, detail):
@@ -95,6 +94,7 @@ def run_checks(db_path, probe=True, now=None):
 
     db_ok = True
     version = None
+    from minder_op import schema as schema_mod
     try:
         version = queries.schema_version(db_path)
         add("db", "ok", f"memory db present ({db_path})")
@@ -106,13 +106,14 @@ def run_checks(db_path, probe=True, now=None):
         for cid in ("schema", "flags", "events"):
             add(cid, "info", f"skipped: {cid} needs a readable db")
     else:
-        latest = _latest_schema()
-        if version < latest:
-            add("schema", "warn",
-                f"schema v{version}, latest v{latest} - restart the "
-                "hook (or run any minder runtime command) to migrate")
-        else:
-            add("schema", "ok", f"schema v{version} (latest v{latest})")
+        # One sentence from `schema.describe`, so status and doctor can
+        # never disagree about which of the three numbers is wrong or
+        # what to do about it. The live store sat at v14 while the
+        # installed share shipped 015, and doctor called that `ok`
+        # because its denominator was the checkout, not the install (M2).
+        detail = schema_mod.describe(db_path)
+        add("schema", "ok" if detail.endswith(f"(latest v{version})")
+            else "warn", detail)
 
         parts = []
         bad = None
@@ -272,7 +273,10 @@ def run_checks(db_path, probe=True, now=None):
             add("coverage", "ok",
                 f"hook coverage {cov['ratio']:.0%} "
                 f"({cov['persisted']}/{cov['invocations']}) over the "
-                "last hour")
+                "last hour" + ("" if cov["complete"]
+                               else " - partial view: the log scan hit "
+                                    "its caps, so the invocation count "
+                                    "is a floor"))
         else:
             add("coverage", "info",
                 "no dsh hook invocations in the last hour")
@@ -322,6 +326,13 @@ def run_checks(db_path, probe=True, now=None):
                 add("engine", status,
                     f"active '{active['name']}' at {active['upstream']} "
                     f"({state}, {health})")
+                # The registry's upstream is a config claim; the unit's
+                # Environment is what the proxy actually dials, and a
+                # drop-in wins over the base unit. (issue #33)
+                add(*unit_upstream.check(
+                    minder.PROXY_UNIT, active["upstream"],
+                    active["unit_state"],
+                    run=engines_mod._default_run))
             running = [r["name"] for r in rows
                        if r.get("unit_state") == "active"]
             if len(running) > 1:
@@ -330,6 +341,27 @@ def run_checks(db_path, probe=True, now=None):
                     "- they compete for the same GPU; stop one")
     except Exception as exc:  # never let a health check crash doctor
         add("engine", "info", f"engine registry unavailable: {exc}")
+
+    # The isolated laya decision worker (issue #7), judged in
+    # minder_op/worker.py: the log tail alone is not evidence of whether a
+    # worker is up (issue #32), and without this line the router's silence
+    # looked like a config problem (issue #28 diagnosed exactly that).
+    try:
+        add(*worker_check(now, probe_worker))
+    except Exception as exc:  # never let a health check crash doctor
+        add("laya-worker", "info", f"worker state unavailable: {exc}")
+
+    add(*router.router_check(proxy_config, events_ledger))
+
+    # The calibration promotion (issue #36): which margin scale the
+    # router's confidence floor is fitted against, and whether the
+    # proxy unit actually loads it. The record and the unit are two
+    # different claims and the repo has been bitten twice by a config
+    # naming a thing the running process never loaded.
+    try:
+        add(*rollout.promotion_check())
+    except Exception as exc:  # never let a health check crash doctor
+        add("calibration", "info", f"promotion state unavailable: {exc}")
 
     return {
         "healthy": not any(c["status"] == "fail" for c in checks),
@@ -347,7 +379,7 @@ def share_path_referenced(config_path, share_str):
 
 def render(report):
     for check in report["checks"]:
-        print(f"{check['status']:<5} {check['id']:<10} {check['detail']}")
+        print(f"{check['status']:<5} {check['id']:<17} {check['detail']}")
     verdict = "healthy" if report["healthy"] else "NOT healthy"
     print()
     print(f"verdict: {verdict} "

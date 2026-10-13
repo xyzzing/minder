@@ -1,0 +1,36 @@
+{
+  "attribution": "Laya model weights by Convai Innovations and upstream contributors.",
+  "backend_compatibility": [
+    "pytorch"
+  ],
+  "base_model": "convaiinnovations/laya",
+  "base_revision": "7b928d828b7b0e022f929d9bd2e44165aa270148",
+  "created_at": "2026-10-10T01:29:41.186726+00:00",
+  "decision_schema": {
+    "class_descriptions": {
+      "complex": "Multi-file or system design, non-obvious debugging, migrations, concurrency, security, or performance.",
+      "expert_or_ambiguous": "Conflicting or missing requirements, domain expertise, high blast radius, novel architecture, or a human decision is needed.",
+      "mechanical": "Localized change, explicit intent, obvious path, simple validation.",
+      "routine": "Normal judgement across few known files, clear acceptance criteria."
+    },
+    "labels": [
+      "mechanical",
+      "routine",
+      "complex",
+      "expert_or_ambiguous"
+    ],
+    "question": "How much reasoning does this task require?",
+    "type": "choice"
+  },
+  "format": "laya-specialization",
+  "format_version": 1,
+  "license": "Apache-2.0",
+  "name": "difficulty-v1",
+  "package_version": "0.1.0",
+  "self_contained": false,
+  "specialization_config": {
+    "shrinkage": 0.1,
+    "temperature": 0.2
+  },
+  "strategy": "whitened_prototypes"
+}

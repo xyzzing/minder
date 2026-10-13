@@ -12,7 +12,7 @@ Never raises — returns (lesson_dict, status).
 import json
 
 from . import db as _db
-from . import store
+from . import lesson_decisions, store
 from .store import _now, _uid
 
 
@@ -77,23 +77,76 @@ def promote_lesson(episode_id, instruction, anti_pattern="", verification=None,
         return None, f"degraded:{type(e).__name__}"
 
 
-def invalidate_lesson(lesson_id, reason, db_path=None):
-    """Tombstone a lesson (valid_to set; status invalidated). Never raises."""
+def invalidate_lesson(lesson_id, reason, diagnosis=None, db_path=None):
+    """Tombstone a lesson (valid_to set; status invalidated). Never raises.
+
+    `diagnosis` is the closed `lesson_decisions.DIAGNOSES` code naming
+    what went wrong (issue #14); `reason` stays as the operator's note. An
+    out-of-taxonomy diagnosis is refused before anything is written, so a
+    typo cannot half-invalidate a lesson.
+    """
+    code, bad = lesson_decisions.validate_diagnosis(diagnosis)
+    if bad:
+        return None, bad
     try:
         conn = _db.connect(db_path)
         try:
             _db.write(conn, "UPDATE lessons SET valid_to = ?, status ="
-                      " 'invalidated' WHERE lesson_id = ?",
-                      (_now(), lesson_id))
+                      " 'invalidated', invalidated_diagnosis = ?"
+                      " WHERE lesson_id = ?",
+                      (_now(), code, lesson_id))
             row = conn.execute("SELECT * FROM lessons WHERE lesson_id = ?",
                                (lesson_id,)).fetchone()
             if not row:
                 return None, "rejected:no-such-lesson"
             out = dict(row)
             out["invalidated_reason"] = str(reason)
-            return out, "ok"
         finally:
             conn.close()
+        lesson_decisions.record_decision(
+            lesson_id, lesson_decisions.ACTION_INVALIDATE, code,
+            note=str(reason or ""), db_path=db_path)
+        return out, "ok"
+    except Exception as e:
+        return None, f"degraded:{type(e).__name__}"
+
+
+def reject_candidate_lesson(lesson_id, code, note="", actor="operator",
+                            db_path=None):
+    """Reject a frontier-distilled candidate with a closed reason code
+    (issue #14). This is the other half of the queue: issue #10 made
+    candidates reviewable but only adoption was recorded, so a rejected
+    distillation left no countable trace.
+
+    The candidate is tombstoned, not deleted - the unreviewed text stays
+    in the ledger next to the decision that refused it. Never raises -
+    returns (lesson_dict, status).
+    """
+    decision, bad = lesson_decisions.validate_code(code)
+    if bad:
+        return None, bad
+    try:
+        conn = _db.connect(db_path)
+        try:
+            row = conn.execute("SELECT * FROM lessons WHERE lesson_id = ?",
+                               (lesson_id,)).fetchone()
+            if not row:
+                return None, "rejected:no-such-lesson"
+            candidate = dict(row)
+            if candidate.get("status") != "candidate":
+                return None, ("rejected:lesson-status-"
+                              f"{candidate.get('status')}")
+            _db.write(conn, "UPDATE lessons SET valid_to = ?, status ="
+                      " 'invalidated' WHERE lesson_id = ?",
+                      (_now(), lesson_id))
+            candidate["valid_to"] = _now()
+            candidate["status"] = "invalidated"
+        finally:
+            conn.close()
+        lesson_decisions.record_decision(
+            lesson_id, lesson_decisions.ACTION_REJECT, decision,
+            note=str(note or ""), actor=actor, db_path=db_path)
+        return candidate, "ok"
     except Exception as e:
         return None, f"degraded:{type(e).__name__}"
 
@@ -146,12 +199,40 @@ def adopt_candidate_lesson(lesson_id, instruction=None, actor="operator",
             db_path=db_path)
         if not lesson:
             return None, status
-        invalidated, _ = invalidate_lesson(
-            lesson_id, "adopted by operator as "
-            f"{lesson['lesson_id']}", db_path=db_path)
-        if not invalidated:
+        # The candidate is tombstoned, not diagnosed: the adoption says the
+        # text was good, so no mechanism belongs in invalidated_diagnosis.
+        # invalidate_lesson is not reused here - it would write an
+        # invalidate/unknown decision row alongside the adopt one and make
+        # the queue's accept/reject counts lie.
+        tombstoned, status = _tombstone_candidate(lesson_id, db_path)
+        if not tombstoned:
             return lesson, "adopted-but-candidate-still-open"
+        # The accepting half of the queue's history: an adoption is a
+        # decision with a reason, so the accept/reject rate over
+        # candidates is countable from stored rows (issue #14).
+        lesson_decisions.record_decision(
+            lesson_id, lesson_decisions.ACTION_ADOPT, "grounded_useful",
+            note=f"adopted as {lesson['lesson_id']}", actor=actor,
+            db_path=db_path)
         return lesson, "ok"
+    except Exception as e:
+        return None, f"degraded:{type(e).__name__}"
+
+
+def _tombstone_candidate(lesson_id, db_path):
+    """Close a candidate's validity window without a diagnosis. The
+    unreviewed text stays in the ledger; only its life ends."""
+    try:
+        conn = _db.connect(db_path)
+        try:
+            _db.write(conn, "UPDATE lessons SET valid_to = ?, status ="
+                      " 'invalidated' WHERE lesson_id = ?",
+                      (_now(), lesson_id))
+            row = conn.execute("SELECT * FROM lessons WHERE lesson_id = ?",
+                               (lesson_id,)).fetchone()
+        finally:
+            conn.close()
+        return (dict(row), "ok") if row else (None, "rejected:no-such-lesson")
     except Exception as e:
         return None, f"degraded:{type(e).__name__}"
 

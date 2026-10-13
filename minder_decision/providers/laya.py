@@ -129,14 +129,46 @@ _ALL_INSTRUCTIONS = {
 # thresholds are untouched — the adapter translates, the gate decides.
 CALIBRATION_MARGIN_SCALE = 2.0  # a 50-point margin reads as full confidence
 
+# The env key a fitted scale travels in (issue #36). One constant shared
+# with minder_op.rollout, which writes the drop-in, and doctor, which
+# reads it back: a literal typed in three places is how writer and
+# reader stop agreeing.
+MARGIN_SCALE_ENV = "MINDER_LAYA_MARGIN_SCALE"
+
+
+def base_margin_scale():
+    """The margin scale the base head maps with: the promoted value when
+    the environment carries one, otherwise the constant above. Named so
+    a caller can ask which scale a provider answers at instead of
+    restating the constant or guessing from the env."""
+    return margin_scale(CALIBRATION_MARGIN_SCALE)
+
+
+def margin_scale(default=CALIBRATION_MARGIN_SCALE):
+    """The scale in force, or the one a promotion record pinned.
+
+    A promotion is only honest if the number the gate was fitted on is
+    the number the proxy loads, so the fitted value travels as an
+    environment value the rollout writes and doctor reads back. The
+    module constant stays the default and the documented measurement."""
+    raw = os.environ.get(MARGIN_SCALE_ENV)
+    if raw is None or not str(raw).strip():
+        return float(default)
+    try:
+        value = float(str(raw).strip())
+    except ValueError:
+        # a malformed pin must not change the confidence mapping
+        return float(default)
+    return value if value > 0.0 else float(default)
+
 
 def calibrated_confidence(choice_probs):
-    """clip01(2 x margin) over the primary choice distribution. A tie is
-    zero confidence; a 50-point lead over the runner-up is full. Pure
-    function; never raises."""
+    """clip01(scale x margin) over the primary choice distribution. A tie
+    is zero confidence; a 50-point lead over the runner-up is full at the
+    shipped scale. Pure function; never raises."""
     try:
         margin = top_two_margin(choice_probs or {})
-        return max(0.0, min(1.0, margin * CALIBRATION_MARGIN_SCALE))
+        return max(0.0, min(1.0, margin * base_margin_scale()))
     except Exception:
         return 0.0
 
@@ -152,6 +184,12 @@ class LayaSystemOneClient:
         self._agent = agent
         self._source = source
         self.model_version = f"laya/{source}"
+        # Which scale this client maps with when nothing is promoted.
+        # The calibration loop asks rather than guesses: the base head
+        # and the specialization bundle are different providers with
+        # different measured scales, and a gate that assumed one would
+        # compare a fitted number against a replay that never ran.
+        self.margin_scale_default = CALIBRATION_MARGIN_SCALE
 
     def system_one(self, state, questions, model=None, contract=None):
         from ..types import ScoreQuestion, top_two_margin
@@ -302,6 +340,11 @@ def _try_modern():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             agent = laya.Agent(path, device=device)
-        return LayaSystemOneClient(agent, source=repo)
+        client = LayaSystemOneClient(agent, source=repo)
+        # the laya-studio specialization seam (issue #34): difficulty
+        # from the bundle when MINDER_LAYA_SPECIALIZATION is set and it
+        # loads; base head otherwise or on any failure
+        from .laya_spec import try_specialized
+        return try_specialized(client, device)
     except Exception:
         return None

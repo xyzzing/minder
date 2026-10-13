@@ -68,6 +68,11 @@ S = {
         "injected_gloss": "(times a lesson reached an agent / decisions"
                           " with no lesson to offer)",
         "unused_lessons": "verified lessons never injected",
+        "hit_rate": "retrieval hit rate",
+        "hit_rate_gloss": "(of the decisions that asked for a lesson, how"
+                          " many got one)",
+        "hit_rate_value": "{hits} of {asked} asked ({rate})",
+        "hit_rate_misses": "{missed} missed",
         "open_gaps": "open gaps", "frontier_help": "frontier helpfulness",
         "frontier_help_gloss": "(did the outside model help?)",
         "decisions": "decision traces / overrides",
@@ -346,9 +351,16 @@ S = {
         "col_score": "score", "col_confidence": "confidence",
         "col_band": "band", "col_effort": "effort", "col_budget": "budget",
         "col_max_tokens": "max_tokens", "col_guardrail": "guardrail",
-        "shadow": "shadow", "routed": "routed",
+        "shadow": "shadow", "routed": "routed", "skipped": "skipped",
+        "col_reason": "reason",
         "empty": "no difficulty events yet - the router logs here once it runs"
                  " (shadow mode observes without changing the request).",
+        "skipped_note": "<code>skipped</code> rows are the router abstaining,"
+                        " with the reason: <code>client_effort</code> means a"
+                        " client-declared effort outranked it - the approved"
+                        " precedence, and in every mode except"
+                        " <code>laya</code> the reason the router changes"
+                        " nothing.",
         "note": "read-only view of the proxy's <code>events.jsonl</code> ledger."
                 " <code>shadow</code> rows are laya's difficulty opinion logged"
                 " without touching the request; <code>routed</code> rows show the"

@@ -40,6 +40,39 @@ DEFAULT_BANDS = {
 }
 
 
+# Effort ranks for the downgrade-only router mode. The names are the
+# semantic scale the proxy translates onto each upstream's measured
+# vocabulary; "unknown" ranks with nothing, so an unmeasured level is
+# never treated as a downgrade.
+EFFORT_RANKS = {
+    "off": 0,
+    "minimal": 1,
+    "low": 2,
+    "medium": 3,
+    "high": 4,
+    "xhigh": 5,
+}
+EFFORT_SAME = "same"
+EFFORT_DOWN = "down"
+EFFORT_UP = "up"
+
+
+def effort_rank(band_effort, baseline_effort):
+    """`down` | `up` | `same` — how a band's effort compares with the
+    baseline the deterministic scheduler would have chosen. Unknown names
+    on either side return `same`, which is the conservative answer: a
+    downgrade-only router declines to act on a comparison it cannot make."""
+    band = EFFORT_RANKS.get(str(band_effort or "").strip().lower())
+    base = EFFORT_RANKS.get(str(baseline_effort or "").strip().lower())
+    if band is None or base is None:
+        return EFFORT_SAME
+    if band < base:
+        return EFFORT_DOWN
+    if band > base:
+        return EFFORT_UP
+    return EFFORT_SAME
+
+
 def score_label(score):
     """Bucket an expected score (0..3) into a difficulty label."""
     try:
@@ -59,6 +92,17 @@ def _label_rank(label):
         return None
 
 
+def confidence_floor(cfg):
+    """The router's confidence floor, shared by resolve_difficulty and by
+    callers that must tell a low-confidence abstention from a malformed
+    response. An unparseable setting keeps the default rather than
+    disabling the floor."""
+    try:
+        return float(cfg.get("laya_min_confidence", 0.7))
+    except (TypeError, ValueError):
+        return 0.7
+
+
 def resolve_difficulty(response, contract, cfg):
     """Validate a DecisionResponse against the task-difficulty contract and
     return (label, band) or None.
@@ -73,12 +117,8 @@ def resolve_difficulty(response, contract, cfg):
         response.validate(contract)
     except (InvalidDistribution, Exception):
         return None
-    try:
-        min_conf = float(cfg.get("laya_min_confidence", 0.7))
-    except (TypeError, ValueError):
-        min_conf = 0.7
     confidence = float(response.confidence or 0.0)
-    if confidence < min_conf:
+    if confidence < confidence_floor(cfg):
         return None
     label = response.top_choice("difficulty")
     if label not in LABELS:

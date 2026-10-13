@@ -189,17 +189,22 @@ def test_route_surface_is_still_get_only():
     unsafe = {"PUT", "DELETE", "PATCH"}
     write_routes = {"/engine/switch"}
     seen_write = set()
+    other_write = [r.path for r in app.routes
+                   if getattr(r, "methods", None) and
+                   (set(getattr(r, "methods")) & (unsafe | {"POST"})) and
+                   r.path not in write_routes]
+    assert other_write == []
     for route in app.routes:
         methods = getattr(route, "methods", None)
         if not methods:
             continue
         if route.path in write_routes:
-            assert methods == {"POST"}, (route.path, methods)
-            seen_write.add(route.path)
+            assert methods in ({"POST"}, {"GET"}), (route.path, methods)
+            seen_write.add(frozenset(methods))
             continue
         assert not (methods & unsafe or "POST" in methods), \
             (route.path, methods)
-    assert seen_write == write_routes
+    assert seen_write == {frozenset({"POST"}), frozenset({"GET"})}
 
 
 def test_non_loopback_host_header_is_refused(monkeypatch):

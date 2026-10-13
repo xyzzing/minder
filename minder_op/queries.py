@@ -2,8 +2,10 @@
 
 Labels for consults come from `frontier_evals` (migration 007) — the
 frontier_traces INTEGER helpfulness column (003) is legacy and is never
-read as a classified label. Every function raises DBError on missing or
-corrupt storage; the CLI maps that to exit code 2.
+read as a classified label. Every function raises DBError on missing,
+unreadable, or corrupt storage; the CLI maps that to exit code 2. The
+three get different messages, because they send the operator to
+different repairs.
 """
 import json
 import sqlite3
@@ -12,11 +14,9 @@ from pathlib import Path
 
 from minder_memory import db as _db
 
+from minder_op.errors import DBError
+
 UNCLASSIFIED = "(unclassified)"
-
-
-class DBError(Exception):
-    """Missing or unreadable/corrupt DB."""
 
 
 def resolve_path(path_arg):
@@ -40,19 +40,47 @@ def _connect(path):
         raise DBError(f"cannot open {path}: {exc}") from exc
 
 
+def _unreadable(exc):
+    """The message for a store that is not a database, as opposed to one
+    that is.
+
+    The live incident: `minder-op status` printed "db corrupt or wrong
+    schema: unable to open database file" about a database that was
+    intact and merely behind on its migrations. Corruption sends an
+    operator to a backup; an unreadable file sends them to the path and
+    the permissions. One message for both sends them to neither."""
+    text = str(exc)
+    if "unable to open database file" in text \
+            or "file is not a database" in text:
+        return f"memory db not readable as a sqlite database: {text}"
+    return None
+
+
 def _rows(path, sql, params=()):
     conn = _connect(path)
     try:
         try:
             return [dict(r) for r in conn.execute(sql, params).fetchall()]
+        except sqlite3.OperationalError as exc:
+            # A missing table or column is a schema gap, not damage: it
+            # says "this store predates a migration", and the repair is
+            # `minder-op migrate`, not a restore.
+            raise DBError(f"db schema is missing an object: {exc}") from exc
         except sqlite3.DatabaseError as exc:
-            raise DBError(f"db corrupt or wrong schema: {exc}") from exc
+            raise DBError(_unreadable(exc)
+                          or f"db corrupt or wrong schema: {exc}") from exc
         finally:
             conn.close()
     except DBError:
         raise
     except sqlite3.Error as exc:
         raise DBError(str(exc)) from exc
+
+
+def _count(path, sql, params=()):
+    """A single COUNT(*) as an int, 0 when the query returns no row."""
+    rows = _rows(path, sql, params)
+    return rows[0]["n"] if rows else 0
 
 
 def _one(path, sql, params=()):
@@ -95,6 +123,7 @@ def status(path):
             "SELECT COUNT(*) AS n FROM classifier_shadow"),
         "decision_traces_rows": count(
             "SELECT COUNT(*) AS n FROM decision_traces"),
+        "retrieval": retrieval_hit_rate(path),
     }
 
 
@@ -151,14 +180,22 @@ def lesson(path, lesson_id):
                 (lesson_id,))
 
 
-def lesson_injections(path, lesson_id, limit=20):
-    """Injection ledger for one lesson (issue #13): the newest decisions
-    that put this lesson in front of an agent."""
+def lesson_decisions(path, lesson_id, limit=20):
+    """Decision ledger for one lesson (issue #14): the closed reason code
+    and note behind every invalidate / reject / adopt."""
     return _rows(path,
-                 "SELECT injection_id, ts, session_id, failure_key, repo,"
-                 " tier, digest_injected, chars_injected, assist_mode"
-                 " FROM learning_injections WHERE lesson_id = ?"
+                 "SELECT decision_id, ts, action, code, note, actor"
+                 " FROM lesson_decisions WHERE lesson_id = ?"
                  " ORDER BY ts DESC LIMIT ?", (lesson_id, int(limit)))
+
+
+def decision_counts(path):
+    """Decisions per (action, code), straight off the ledger (issue #14).
+    The whole point of the taxonomy: these counts come from stored rows,
+    never from parsing a free-text reason."""
+    return _rows(path,
+                 "SELECT action, code, COUNT(*) AS n FROM lesson_decisions"
+                 " GROUP BY action, code ORDER BY action, code")
 
 
 def gaps(path, status_filter="open", limit=100):
@@ -239,6 +276,22 @@ def events(path, failure_key=None, event_type=None, episode_id=None,
     sql += " ORDER BY e.ts DESC LIMIT ?"
     params.append(int(limit))
     return _rows(path, sql, params)
+
+
+def count_events_since(path, since_iso, event_type=None):
+    """Rows of one type at or after `since_iso` (an ISO-8601 string, the
+    format `events.ts` is stored in).
+
+    Counted in SQL rather than by pulling rows and filtering them: a
+    caller that caps the rows it fetch gets a truncated count and cannot
+    tell. `token_reuse` above uses the same `ts >= ?` comparison."""
+    sql = "SELECT COUNT(*) AS n FROM events WHERE ts >= ?"
+    params = [since_iso]
+    if event_type:
+        sql += " AND event_type = ?"
+        params.append(event_type)
+    row = _one(path, sql, params)
+    return int(row["n"]) if row else 0
 
 
 def event(path, event_id):
@@ -328,3 +381,12 @@ def event_filter_values(path):
                                      " ORDER BY failure_key LIMIT 100")],
     }
 
+
+# The injection-ledger reads live in minder_op/injections.py (issue #20:
+# that module is why this file is back inside the C2 line). Re-exported
+# here so the one sanctioned read surface stays the import every caller
+# already uses. Imported at the bottom because the ledger module reads
+# through _one/_rows defined above - importing it at the top would be a
+# cycle.
+from minder_op.injections import (  # noqa: E402, F401
+    lesson_injections, retrieval_hit_rate)

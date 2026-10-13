@@ -19,6 +19,9 @@ minder_memory/exports/
 # operator-local; manifests and task fixtures stay tracked
 benchmarks/baselines/
 benchmarks/reports/
+# laya-studio experiment state (sweep results, sqlite run store) is
+# operator-local; the exported bundle under presets/ is what is tracked
+/experiments/
 # wheel/sdist build output (verify with `pip wheel . --no-deps`)
 dist/
 build/

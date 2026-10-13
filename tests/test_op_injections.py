@@ -88,6 +88,65 @@ def test_uninjected_lesson_reaches_operator_focus(tmp_path):
     assert any("never injected" in f for f in report["focus"])
 
 
+def test_lessons_injections_labels_misses_as_misses(tmp_path, capsys):
+    """Issue #20 acceptance 2: the `lesson_id IS NULL` rows are the
+    denominator of every retrieval question, so the read side has to name
+    them as misses. Grouping them with the lessons would print a bucket
+    with an empty id and invite an operator to "fix" a lesson that does
+    not exist."""
+    dbp, conn = _mig(tmp_path)
+    try:
+        webseed.add_lesson(dbp, lesson_id="les1")
+        _inj(conn, "inj1", TS_IN, "les1")
+        _inj(conn, "inj2", TS_OLD, "les1", tier="family", chars=88)
+        _inj(conn, "inj3", TS_IN, None, tier="n/a", chars=0,
+             mode="retrieve")
+        _inj(conn, "inj4", TS_OLD, None, tier="n/a", chars=0,
+             mode="retrieve")
+    finally:
+        conn.close()
+    assert main(["--db", str(dbp), "lessons", "injections"]) == EXIT_OK
+    out = " ".join(capsys.readouterr().out.split())
+    assert "misses: 2" in out
+    assert "les1" in out
+    # the miss rows never appear as a lesson with a blank id
+    assert "n/a" not in out.split("misses:")[0]
+
+
+def test_lessons_injections_says_not_available_without_the_table(
+        tmp_path, capsys):
+    dbp = tmp_path / "m.sqlite"
+    conn = _db.connect(dbp)
+    conn.execute("DROP TABLE learning_injections")
+    conn.commit()
+    conn.close()
+    assert main(["--db", str(dbp), "lessons", "injections"]) == EXIT_OK
+    out = " ".join(capsys.readouterr().out.split())
+    assert "injection ledger: not available" in out
+    assert "misses: 0" not in out
+
+
+def test_weekly_summary_states_the_hit_rate(tmp_path, capsys):
+    """Acceptance 3's data half: the same object the web learning panel
+    renders carries the rate, so the panel cannot invent one."""
+    dbp, conn = _mig(tmp_path)
+    try:
+        webseed.add_lesson(dbp, lesson_id="les1")
+        for i in range(2):
+            _inj(conn, f"inj_h{i}", TS_IN, "les1")
+        for i in range(3):
+            _inj(conn, f"inj_m{i}", TS_IN, None, tier="n/a", chars=0,
+                 mode="retrieve")
+    finally:
+        conn.close()
+    inj = build_weekly_summary(dbp, days=7, now=NOW)["injections"]
+    assert inj["asked_total"] == 5
+    assert inj["hit_rate"] == 0.4
+
+    render_text(build_weekly_summary(dbp, days=7, now=NOW))
+    assert "retrieval hit rate" in capsys.readouterr().out
+
+
 def _mig(tmp_path):
     dbp = tmp_path / "m.sqlite"
     conn = _db.connect(dbp)

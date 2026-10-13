@@ -68,6 +68,11 @@ def _policy_wanted(ev, out):
         resp = ev.get("tool_response", "")
         text = resp if isinstance(resp, str) else json.dumps(resp,
                                                              default=str)
+        # Issue #27: a decline is not a failure but not a clean success
+        # either, and every guard downstream is failure-oriented — a
+        # declined action has nothing to consult a model about.
+        if minder.classify_outcome(text) == minder.OUTCOME_DECLINED:
+            return False
         if minder.is_failure(text):
             return True
         if (ev.get("hook_event_name") or "") != "PostToolUse":

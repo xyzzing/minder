@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import dshseed
+from minder_memory import db as _db
 from minder_op import scorecard
 
 REPO = Path(__file__).resolve().parent.parent
@@ -61,6 +62,40 @@ def test_scorecard_has_all_six_groups(tmp_path, monkeypatch):
     assert report["scores"]["cost"]["hook_p50_ms"] == 5400.0
 
 
+def test_scorecard_learning_line_carries_the_hit_rate(tmp_path, monkeypatch):
+    """Issue #20 acceptance 4: the hit rate belongs on the scorecard so
+    the trend is comparable across runs, not only visible in the live
+    store. A store without the ledger reports no rate, never 0."""
+    _home(tmp_path, monkeypatch)
+    monkeypatch.setenv("MINDER_STATE_DIR", str(tmp_path / "state"))
+    dbp = tmp_path / "m.sqlite"
+    conn = _db.connect(dbp)
+    for i, lesson in enumerate((None, "L1", "L2", None)):
+        _db.write(
+            conn,
+            "INSERT INTO learning_injections (injection_id, ts,"
+            " session_id, failure_key, lesson_id, tier, digest_injected,"
+            " chars_injected, assist_mode) VALUES (?, '2026-09-30T00:00:00"
+            "+00:00', 's1', 'k1', ?, ?, 1, ?, 'retrieve')",
+            (f"inj_{i}", lesson, "n/a" if lesson is None else "exact",
+             0 if lesson is None else 240))
+    conn.close()
+    learning = scorecard.build(dbp, now=NOW)["scores"]["learning"]
+    assert learning["retrieval_asked"] == 4
+    assert learning["retrieval_hits"] == 2
+    assert learning["retrieval_misses"] == 2
+    assert learning["retrieval_hit_rate"] == 0.5
+
+    absent = tmp_path / "gone.sqlite"
+    conn = _db.connect(absent)
+    conn.execute("DROP TABLE learning_injections")
+    conn.commit()
+    conn.close()
+    home2 = scorecard.build(absent, now=NOW)["scores"]["learning"]
+    assert home2["retrieval_asked"] is None
+    assert home2["retrieval_hit_rate"] is None
+
+
 def test_focus_names_the_actionable_items(tmp_path, monkeypatch):
     _home(tmp_path, monkeypatch)
     monkeypatch.setenv("MINDER_STATE_DIR", str(tmp_path / "state"))
@@ -81,7 +116,8 @@ def test_focus_quiet_when_capture_is_healthy(tmp_path, monkeypatch):
     with (state / "events.jsonl").open("w") as fh:
         for _ in range(2):
             fh.write(json.dumps({"ts": NOW - 60, "task": sid,
-                                 "event": "hook_timing"}) + "\n")
+                                 "event": "hook_timing",
+                                 "hook_event": "PostToolUse"}) + "\n")
     report = scorecard.build(tmp_path / "m.sqlite", now=NOW)
     focus = " | ".join(report["focus"])
     assert "coverage" not in focus

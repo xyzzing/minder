@@ -66,10 +66,12 @@ def warden():
     return {"action": "think", "level": 1, "digest": "[minder] warden"}
 
 
-def repeated_failure_events(dbp, n=3, session="s-13"):
+def repeated_failure_events(dbp, n=3, session="s-13", events=None):
     """The guard needs `memory_fail_threshold` recorded attempts before it
-    acts; record them the way the hook does."""
-    ev = hook_event(session)
+    acts; record them the way the hook does. `events` supplies a different
+    failure key so a test can hold both a hit and a miss."""
+    ev = (events or [hook_event(session)])[0]
+    ev = dict(ev, session_id=session)
     for _ in range(n):
         from_hook.record(ev, db_path=dbp)
     return ev
@@ -169,13 +171,58 @@ def test_ledger_read_side_names_the_firing_lesson(tmp_path):
         memory_policy.evaluate(ev, warden(), db_path=dbp, repo=REPO)
 
     counts = ledger.injection_counts(db_path=dbp)
-    assert len(counts) == 1
-    assert counts[0]["lesson_id"] == lesson["lesson_id"]
-    assert counts[0]["injections"] == 3
+    assert len(counts["lessons"]) == 1
+    assert counts["lessons"][0]["lesson_id"] == lesson["lesson_id"]
+    assert counts["lessons"][0]["injections"] == 3
 
     recent = ledger.injections_for_lesson(lesson["lesson_id"], db_path=dbp)
     assert len(recent) == 3
     assert all(r["tier"] == ledger.TIER_EXACT for r in recent)
+
+
+def test_injection_counts_separates_misses_from_lessons(tmp_path):
+    """Issue #20 acceptance 2: the `lesson_id IS NULL` rows are the
+    denominator, not a lesson with an empty id. Read them as misses or a
+    console renders a bucket no operator can act on.
+
+    Two repeated failure shapes on one store: one the store has a lesson
+    for, one it does not. The first is a hit row, the second a miss row -
+    the case migration 015 put in the table on purpose."""
+    dbp = tmp_path / "m.sqlite"
+    lesson, _fkey = seed_lesson(dbp)
+    # A different tool and a different error, so the failure key and the
+    # action fingerprint both differ from the lesson's key.
+    other = dict(hook_event("s-20x"), tool_name="Cargo",
+                 tool_input={"command": "cargo build"},
+                 tool_response="Error: could not compile (exit 101)")
+    hit_ev = repeated_failure_events(dbp, session="s-20hit")
+    miss_ev = repeated_failure_events(dbp, session="s-20miss",
+                                      events=[other])
+
+    hit = memory_policy.evaluate(hit_ev, warden(), db_path=dbp, repo=REPO)
+    miss = memory_policy.evaluate(miss_ev, warden(), db_path=dbp, repo=REPO)
+    assert "VERIFIED LESSON" in hit["digest"]
+    assert "VERIFIED LESSON" not in miss["digest"]
+
+    counts = ledger.injection_counts(db_path=dbp)
+    assert [c["lesson_id"] for c in counts["lessons"]] == [lesson["lesson_id"]]
+    assert counts["lessons"][0]["injections"] == 1
+    # the nothing case is a miss, counted as one, never a lesson row
+    assert counts["misses"] == 1
+
+
+def test_injection_reads_degrade_when_the_table_is_absent(tmp_path):
+    """A store predating migration 015: no rows, and no zero to mistake
+    for one."""
+    dbp = tmp_path / "m.sqlite"
+    conn = _db.connect(dbp)
+    conn.execute("DROP TABLE learning_injections")
+    conn.commit()
+    conn.close()
+    counts = ledger.injection_counts(db_path=dbp)
+    assert counts["lessons"] is None
+    assert counts["misses"] is None
+    assert ledger.injection_miss_count(db_path=dbp) is None
 
 
 def test_ledger_failure_cannot_change_a_directive(tmp_path):
