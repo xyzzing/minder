@@ -52,7 +52,9 @@
   {% endfor %}
   </tbody>
 </table>
-{{ raw_tier(['domain', 'suite_id', 'tasks', 'status'], suites.rows,
+{{ raw_tier(['domain', 'suite_id', 'tasks', 'status',
+             'baseline_generated_at', 'baseline_rate',
+             'baseline_comparable_runs'], suites.rows,
             unit=S.domains.suite_unit) }}
 {% else %}
 <p class="na">{{ S.domains.suites_empty }}</p>

@@ -22,6 +22,8 @@
   {% endfor %}
   </tbody>
 </table>
-{{ raw_tier(['id', 'ts', 'failure_key', 'model_recommendation', 'policy_decision', 'override', 'confidence'], rows, unit=S.decisions.unit) }}
+{{ raw_tier(['id', 'ts', 'contract_id', 'contract_version', 'failure_key',
+             'model_recommendation', 'policy_decision', 'override',
+             'confidence', 'provider'], rows, unit=S.decisions.unit) }}
 <p class="note">{{ S.decisions.note }}</p>
 {% endblock %}

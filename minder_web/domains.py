@@ -81,14 +81,20 @@ def _suites_model():
         return {"rows": [], "error": f"{type(e).__name__}: {e}"}
     rows = []
     for suite in suites:
-        base = baselines.get(suite.get("suite_id"))
+        base = baselines.get(suite.get("suite_id")) or {}
         rows.append({
             "suite_id": suite.get("suite_id"),
             "domain": SUITE_DOMAIN.get(suite.get("suite_id"),
                                        suite.get("suite_id")),
             "tasks": suite.get("tasks"),
             "status": suite.get("status"),
-            "baseline": base,
+            "baseline": base or None,
+            # the plain verdict column is built from these three; the
+            # raw tier names fields, so the nested dict is flattened
+            # here rather than in the template (issue #12)
+            "baseline_generated_at": base.get("generated_at"),
+            "baseline_rate": base.get("rate"),
+            "baseline_comparable_runs": base.get("comparable_runs"),
         })
     return {"rows": rows, "error": error}
 

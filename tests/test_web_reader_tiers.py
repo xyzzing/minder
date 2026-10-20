@@ -430,3 +430,177 @@ def test_every_raw_tier_renders_its_values(tmp_path, monkeypatch):
 
     assert checked > 60, f"only {checked} tier fields checked"
 
+
+
+# Each plain-table column label, mapped to the storage field the tier must
+# print for it. Declared here rather than derived from the template: the
+# point of the gate is that the tier carries the evidence behind a column
+# a human was shown, and only a human map says which field that is.
+PLAIN_TO_RAW = {
+    "/sessions": {
+        "project": "project_path",
+        "title / session": "title",
+        "last seen": "mtime",
+        "turns": "turns",
+        "steps": "steps",
+        "tokens": "tokens_total",
+        "context": "context_pressure_pct",
+        "sandbox": "sandbox_mode",
+        "capture": "event_count",
+        # the project cell also carries the archived badge and the
+        # title cell the no-projection badge, so those two fields are
+        # shown and must be named too
+        "archived": "archived",
+        "no projection": "has_projection",
+    },
+    "/decisions": {
+        "id": "id",
+        "ts": "ts",
+        "contract": "contract_id",
+        "failure_key": "failure_key",
+        "model": "model_recommendation",
+        "policy": "policy_decision",
+        "override": "override",
+        "confidence": "confidence",
+        "provider": "provider",
+    },
+    "/traces": {
+        "reviewed": "ts_full",
+        "session": "session_id",
+        "severity": "highest_severity",
+        "findings": "findings",
+        "tools": "tool_calls",
+        "failures": "failures",
+        "tokens": "tokens_total",
+        "rubric": "rubric_id",
+        "evaluator": "evaluator_version",
+    },
+    "/domains": {
+        "domain": "domain",
+        "suite": "suite_id",
+        "tasks": "tasks",
+        "status": "status",
+        # the verdict sentence is computed from three baseline fields;
+        # the tier names the fields, not the sentence built from them
+        "what this means": "baseline_generated_at",
+        "rule": "rule",
+        "grade": "verification",
+        "verified on": "verified_on",
+        "caveat": "caveat",
+    },
+}
+
+
+def test_every_plain_column_has_a_raw_field_behind_it(tmp_path, monkeypatch):
+    """Issue #12: the raw tier is the technical reader's way to check the
+    console against a CLI row, so it must cover every column of the plain
+    table it summarizes. A tier that lists nine fields under a table with
+    nine columns can still be missing the one that matters: /decisions
+    shows a contract column built from contract_id and contract_version
+    while its tier named neither, and /sessions shows context pressure,
+    the session title and the log format with no raw field for any of
+    them. Checked by parsing the rendered page: the plain table's header
+    labels in order, zipped against the tier's field names in order.
+
+    The map from label to field is declared above, not inferred from the
+    template, because which storage field stands behind a human label is
+    a human decision. A label missing from the map fails, so adding a
+    column to a covered page without naming its field fails too."""
+    from html.parser import HTMLParser
+
+    class _Cols(HTMLParser):
+        """The plain table's `<th scope="col">` texts, and the field names
+        the raw tier declares in its `<summary>`. The tier sits outside the
+        plain table (slice 1) and nests its own table, so anything inside a
+        `<details>` is skipped entirely: the tier's header cells are its
+        storage names, not the plain columns, and mixing them in would make
+        the gate pass on the tier's own headers."""
+
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.plain_cols = []
+            self.tier_fields = []
+            self.in_th = 0
+            self.in_details = 0
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "details":
+                self.in_details += 1
+            elif self.in_details:
+                return
+            elif tag == "th" and dict(attrs).get("scope") == "col":
+                self.in_th += 1
+
+        def handle_endtag(self, tag):
+            if tag == "details" and self.in_details:
+                self.in_details -= 1
+            elif tag == "th" and self.in_th and not self.in_details:
+                self.in_th -= 1
+
+        def handle_data(self, data):
+            if self.in_details:
+                return
+            text = (data or "").strip()
+            if text and self.in_th:
+                self.plain_cols.append(text)
+
+    class _Summary(HTMLParser):
+        """Every raw tier on the page, in order: the field names each one
+        declares in its `<summary>` line, `raw fields: a, b, c`. Read from
+        the rendered page, so the gate checks what the reader is told the
+        tier contains, not the template source. A page with two plain
+        tables has two tiers, so all of them are collected."""
+
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.tiers = []
+            self.in_raw = 0
+            self.in_summary = 0
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "details" and "raw" in (
+                    dict(attrs).get("class") or ""):
+                self.in_raw += 1
+                self.tiers.append([])
+            elif tag == "summary" and self.in_raw:
+                self.in_summary += 1
+
+        def handle_endtag(self, tag):
+            if tag == "details" and self.in_raw:
+                self.in_raw -= 1
+            elif tag == "summary" and self.in_summary:
+                self.in_summary -= 1
+
+        def handle_data(self, data):
+            if not self.in_summary or not self.tiers:
+                return
+            names = (data or "").split(":", 1)[-1]
+            for name in names.split(","):
+                name = name.strip()
+                if name:
+                    self.tiers[-1].append(name)
+
+    _dbp, client, review_id = _fully_seeded_client(tmp_path, monkeypatch)
+    for path, mapping in PLAIN_TO_RAW.items():
+        text = client.get(path).text
+        plain = _Cols()
+        plain.feed(text)
+        tier = _Summary()
+        tier.feed(text)
+        columns = plain.plain_cols
+        fields = set()
+        for tier_fields in tier.tiers:
+            fields.update(tier_fields)
+        assert columns, f"{path}: the plain table has no column headers"
+        assert fields, f"{path}: no raw tier summary rendered"
+        assert len(columns) >= 4, (
+            f"{path}: the plain table exposed only {columns} (M2)")
+        for column in columns:
+            assert column in mapping, (
+                f"{path}: column {column!r} is not in PLAIN_TO_RAW; name "
+                "the storage field behind it (M2)")
+            field = mapping[column]
+            assert field in fields, (
+                f"{path}: the plain table shows {column!r} but its raw "
+                f"tier has no {field} field; the tier covers "
+                f"{sorted(fields)}")

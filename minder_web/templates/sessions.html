@@ -72,7 +72,9 @@
 <p class="note">
   {{ S.sessions.note_none }}
 </p>
-{{ raw_tier(['session_id', 'project_path', 'sandbox_mode', 'turns',
-             'steps', 'tokens_total', 'event_count', 'episode_count',
+{{ raw_tier(['session_id', 'title', 'project_path', 'project_title',
+             'mtime', 'age_s', 'format', 'log_bytes', 'turns', 'steps',
+             'tokens_total', 'context_pressure_pct', 'sandbox_mode',
+             'has_projection', 'event_count', 'episode_count',
              'archived'], rows, unit=S.sessions.unit) }}
 {% endblock %}

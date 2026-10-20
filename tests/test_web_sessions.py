@@ -80,7 +80,15 @@ def test_sessions_page_lists_projection_and_log_metadata(tmp_path,
     _home(tmp_path, monkeypatch, steps=3)
     dbp = _db_with_session(tmp_path)
     text = _client(dbp, monkeypatch).get("/sessions").text
-    assert "93" not in text  # no cross-contamination from the real host
+    # no cross-contamination from the real host: assert the real host's
+    # session id is absent, not a bare digit substring. The raw tier
+    # prints the fixture's own mtime as a float (issue #12), and "93"
+    # is inside that float's digits - a guard that fails on the
+    # evidence it was asked to show
+    real = dsh_sessions.dsh_home() / "sessions"
+    if real.is_dir():
+        for name in (p.name for p in real.iterdir()):
+            assert name not in text, f"real host session {name} leaked"
     assert "v4" in text and "KiB" in text
 
 
