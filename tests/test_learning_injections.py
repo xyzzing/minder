@@ -9,9 +9,11 @@ The seam is policy.evaluate(): the same entry point hook.py calls, so the
 assertion is on persisted rows plus the digest text that reached the
 agent, not on an internal helper.
 """
+import json
+
 from minder_memory import (canonicalise as canon, db as _db, from_hook,
                     injections as ledger, lessons as memory_lessons,
-                    policy as memory_policy, store)
+                    policy as memory_policy, skill_load, store)
 
 REPO = "/repo"
 
@@ -126,10 +128,15 @@ def test_retrieve_assist_injection_is_ledgered(tmp_path, monkeypatch):
     assert logged[0]["tier"] == ledger.TIER_EXACT
 
 
-def test_no_lesson_is_ledgered_as_a_miss(tmp_path):
+def test_no_lesson_is_ledgered_as_a_miss(tmp_path, monkeypatch):
     """The denominator. Without the miss rows, "we inject lessons" is
     unmeasurable: every recorded row would be a success."""
     dbp = tmp_path / "m.sqlite"
+    # no skill index: this fixture failure ("pnpm install") trigger-matches
+    # the shipped diagnose-build-environment skill, and a skill section
+    # would add a second row; this test is about the lesson miss alone
+    monkeypatch.setattr(skill_load, "DEFAULT_INDEX",
+                        tmp_path / "absent-index.json")
     ev = repeated_failure_events(dbp, session="s-13c")
 
     out = memory_policy.evaluate(ev, warden(), db_path=dbp, repo=REPO)
@@ -246,4 +253,203 @@ def test_ledger_failure_cannot_change_a_directive(tmp_path):
 
     assert out["action"] == "block_duplicate"
     assert "VERIFIED LESSON" in out["digest"]
+    assert rows(dbp, "SELECT * FROM learning_injections") == []
+
+
+# --- skill assists (issue #13 acceptance 3) -------------------------------
+#
+# A skill section reaching the digest is an injection like a lesson is, so
+# the ledger must name the skill. The fixture is a synthetic skill index
+# (the test_skill_load.py pattern): these tests pin the mechanism, not the
+# shipped skill catalog.
+
+_SKILL_ENTRIES = [
+    {"name": "diagnose-env", "description": "Fix environment breakage.",
+     "triggers": ["FileNotFoundError"], "risk_level": "low",
+     "body": "body.md"},
+]
+
+_SKILL_BODY = ("STEP ONE: confirm the runtime and PATH.\n"
+               "STEP TWO: check permissions on the state dir.")
+
+# The compact section a skill injection contributes to the digest: the
+# header plus the excerpt, as _skill_section and the gateway build it.
+# The leading newline is the boundary the digest appends it with.
+_SKILL_SECTION = f"\nSKILL: diagnose-env\n{_SKILL_BODY}"
+
+
+def _skill_index(tmp_path):
+    """A temp index whose one entry matches FileNotFoundError, with an
+    absolute body path so _read_body resolves it."""
+    body = tmp_path / "body.md"
+    body.write_text(_SKILL_BODY)
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps(
+        [dict(e, body=str(body)) for e in _SKILL_ENTRIES]))
+    return index
+
+
+def _skill_failure(session="s-13g"):
+    """A failure whose family the synthetic skill triggers on. The
+    substring 'FileNotFoundError' in the excerpt is what match_skills
+    looks for."""
+    return {"session_id": session, "hook_event_name": "PostToolUse",
+            "tool_name": "Bash", "repo": REPO,
+            "tool_input": {"command": "python3 app.py"},
+            "tool_response": "FileNotFoundError: [Errno 2] config.toml"}
+
+
+def test_skill_section_injection_records_the_skill_name(tmp_path,
+                                                        monkeypatch):
+    """Acceptance 3: a skill-section injection records the skill name as
+    well. The guard attaches a SKILL section to this very digest; the
+    ledger must carry a row that names it, with no lesson_id, so an
+    operator can tell a skill assist from a lesson assist."""
+    dbp = tmp_path / "m.sqlite"
+    index = _skill_index(tmp_path)
+    monkeypatch.setattr(skill_load, "DEFAULT_INDEX", index)
+    ev = _skill_failure()
+    for _ in range(3):
+        from_hook.record(ev, db_path=dbp)
+
+    out = memory_policy.evaluate(ev, warden(), db_path=dbp, repo=REPO)
+
+    # the skill text reached the agent...
+    assert out["action"] == "block_duplicate"
+    assert "SKILL: diagnose-env" in out["digest"]
+    # ...exactly once: the guard attaches the matched skill, and the
+    # gateway attach must not stack a second copy of it on the digest
+    assert out["digest"].count("SKILL:") == 1
+    # ...and the ledger names the skill that got it there
+    logged = rows(dbp, "SELECT * FROM learning_injections"
+                       " WHERE assist_mode = ?", (ledger.MODE_SKILL,))
+    assert len(logged) == 1
+    row = logged[0]
+    assert row["skill_name"] == "diagnose-env"
+    assert row["lesson_id"] is None
+    assert row["digest_injected"] == 1
+    assert row["session_id"] == "s-13g"
+    # chars_injected counts the whole section the agent got: the
+    # "SKILL: name" header rides the injection, not just the body
+    assert row["chars_injected"] == len(_SKILL_SECTION)
+    # the lesson decision this guard pass also made is still its own row
+    lesson_rows = [r for r in rows(dbp, "SELECT * FROM learning_injections")
+                   if r["assist_mode"] == ledger.MODE_BLOCK_DUPLICATE]
+    assert len(lesson_rows) == 1
+    assert lesson_rows[0]["digest_injected"] == 0  # no lesson on this store
+
+
+def test_a_skill_assist_is_not_a_miss(tmp_path, monkeypatch):
+    """The miss count is the retrieval denominator (#20). A skill assist
+    has no lesson_id but did inject text, so counting it as a miss would
+    make the hit rate lie about retrieval."""
+    dbp = tmp_path / "m.sqlite"
+    index = _skill_index(tmp_path)
+    monkeypatch.setattr(skill_load, "DEFAULT_INDEX", index)
+    ev = _skill_failure("s-13h")
+    for _ in range(3):
+        from_hook.record(ev, db_path=dbp)
+
+    out = memory_policy.evaluate(ev, warden(), db_path=dbp, repo=REPO)
+    assert "SKILL: diagnose-env" in out["digest"]
+
+    # the skill row exists before its miss-ness is judged; its absence
+    # would be a missing feature, not a passing denominator check
+    skill_rows = rows(dbp, "SELECT * FROM learning_injections"
+                           " WHERE assist_mode = ?", (ledger.MODE_SKILL,))
+    assert len(skill_rows) == 1
+    assert skill_rows[0]["digest_injected"] == 1
+
+    assert ledger.injection_miss_count(db_path=dbp) == 1  # the lesson row
+    counts = ledger.injection_counts(db_path=dbp)
+    assert counts["misses"] == 1
+    assert counts["lessons"] == []  # a skill row is neither
+
+
+def test_skill_injection_read_side_names_the_skill(tmp_path, monkeypatch):
+    """The ledger read side for skills, mirroring injections_for_lesson:
+    newest first, and a name with no rows is an empty list, not a zero."""
+    dbp = tmp_path / "m.sqlite"
+    index = _skill_index(tmp_path)
+    monkeypatch.setattr(skill_load, "DEFAULT_INDEX", index)
+    for session in ("s-13i0", "s-13i1"):
+        ev = _skill_failure(session)
+        for _ in range(3):
+            from_hook.record(ev, db_path=dbp)
+        memory_policy.evaluate(ev, warden(), db_path=dbp, repo=REPO)
+
+    recent = ledger.injections_for_skill("diagnose-env", db_path=dbp)
+    assert len(recent) == 2
+    assert {r["session_id"] for r in recent} == {"s-13i0", "s-13i1"}
+    assert all(r["assist_mode"] == ledger.MODE_SKILL for r in recent)
+    assert ledger.injections_for_skill("no-such-skill", db_path=dbp) == []
+
+
+def test_decision_skill_assist_injection_is_ledgered(tmp_path, monkeypatch):
+    """The other skill path: the Phase 6.5 gateway attach also puts a
+    SKILL section in the digest, and that injection must be ledgered
+    with the same assist_mode."""
+    memory_policy._DECISION_DEBOUNCE.clear()
+    dbp = tmp_path / "m.sqlite"
+    index = _skill_index(tmp_path)
+    monkeypatch.setattr(skill_load, "DEFAULT_INDEX", index)
+    ev = _skill_failure("s-13j")
+    fkey = canon.failure_key(from_hook.to_event(ev), REPO)
+    for _ in range(2):
+        from_hook.record(ev, db_path=dbp)
+
+    from minder_decision.client import FakeClient
+    from minder_decision import client as dclient
+    from minder_decision import skill_select as dskill
+    spec = {"failure_kind": "environment", "needs_new_evidence": 0.1,
+            "next_step": "inspect", "confidence": 0.9,
+            "any_skill_applies": 0.9, "best_skill": "diagnose-env"}
+    monkeypatch.setattr(dclient, "get_decision_client",
+                        lambda: FakeClient({fkey: spec}), raising=False)
+    monkeypatch.setattr(dskill, "build_skill_shortlist",
+                        lambda event, index_path=None: ("diagnose-env",))
+    monkeypatch.setenv("MINDER_ASSIST", "decision_skill")
+    monkeypatch.delenv("MINDER_CLASSIFIER", raising=False)
+
+    out = memory_policy.evaluate(ev, warden(), db_path=dbp, repo=REPO)
+
+    assert out["assist"] == "decision_skill"
+    assert "SKILL: diagnose-env" in out["digest"]
+    # exactly one skill section on the digest: the gateway attach skips a
+    # skill the guard already attached (test_decision_assist.py's
+    # count-SKILL-1 invariant, now on a failure that matches both paths)
+    assert out["digest"].count("SKILL:") == 1
+    logged = rows(dbp, "SELECT * FROM learning_injections"
+                       " WHERE assist_mode = ?", (ledger.MODE_SKILL,))
+    assert len(logged) == 1
+    assert logged[0]["skill_name"] == "diagnose-env"
+    assert logged[0]["digest_injected"] == 1
+    assert logged[0]["chars_injected"] == len(_SKILL_SECTION)
+
+
+def test_ledger_failure_cannot_cost_the_agent_a_skill_section(tmp_path,
+                                                              monkeypatch):
+    """Constraint 10 on the skill path: a store that cannot take the
+    skill row must not cost the agent the SKILL section it would have
+    got."""
+    dbp = tmp_path / "m.sqlite"
+    index = _skill_index(tmp_path)
+    monkeypatch.setattr(skill_load, "DEFAULT_INDEX", index)
+    ev = _skill_failure("s-13k")
+    for _ in range(3):
+        from_hook.record(ev, db_path=dbp)
+
+    real = ledger.record_injection
+
+    def explode(**kwargs):
+        raise RuntimeError("ledger unavailable")
+
+    ledger.record_injection = explode
+    try:
+        out = memory_policy.evaluate(ev, warden(), db_path=dbp, repo=REPO)
+    finally:
+        ledger.record_injection = real
+
+    assert out["action"] == "block_duplicate"
+    assert "SKILL: diagnose-env" in out["digest"]
     assert rows(dbp, "SELECT * FROM learning_injections") == []

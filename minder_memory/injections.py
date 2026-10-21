@@ -29,6 +29,7 @@ TIER_NONE = "n/a"
 # assist_mode column: which code path made the decision.
 MODE_RETRIEVE = "retrieve"
 MODE_BLOCK_DUPLICATE = "block_duplicate"
+MODE_SKILL = "skill"
 
 # The assist_mode value for a row whose path named itself with nothing.
 # Never empty, so a console cell is never blank; it is not a zero.
@@ -46,24 +47,28 @@ def tier_of(lesson, failure_key):
 
 
 def record_injection(session_id=None, event_id=None, failure_key=None,
-                     repo=None, lesson_id=None, tier=TIER_NONE,
-                     chars_injected=0, assist_mode="", db_path=None):
+                     repo=None, lesson_id=None, skill_name=None,
+                     tier=TIER_NONE, chars_injected=0, assist_mode="",
+                     db_path=None):
     """Append one injection decision. Returns (injection_id, status);
     never raises. trigger_matched stays NULL until the trigger column of
-    issue #15 exists to fill it."""
+    issue #15 exists to fill it. A skill-section injection carries
+    skill_name and no lesson_id (issue #13 acceptance 3), so the ledger
+    distinguishes a lesson assist from a skill assist."""
     try:
         conn = _db.connect(db_path)
         try:
             iid = _uid("inj")
+            injected = 1 if (lesson_id or skill_name) else 0
             _db.write(
                 conn,
                 "INSERT INTO learning_injections (injection_id, ts,"
                 " session_id, event_id, failure_key, repo, lesson_id,"
-                " tier, trigger_matched, digest_injected, chars_injected,"
-                " assist_mode, redaction_status)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)",
+                " skill_name, tier, trigger_matched, digest_injected,"
+                " chars_injected, assist_mode, redaction_status)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)",
                 (iid, _now(), session_id, event_id, failure_key, repo,
-                 lesson_id, tier, 1 if lesson_id else 0,
+                 lesson_id, skill_name, tier, injected,
                  int(chars_injected or 0), assist_mode or UNKNOWN_MODE,
                  "redacted"))
             return iid, "ok"
@@ -93,16 +98,41 @@ def injections_for_lesson(lesson_id, db_path=None, limit=50):
         return []
 
 
+def injections_for_skill(skill_name, db_path=None, limit=50):
+    """Most recent skill-assist rows for one skill, newest first; [] on
+    any problem. Issue #13 acceptance 3: the ledger distinguishes a
+    lesson assist from a skill assist, and this is the skill side of
+    that question."""
+    try:
+        conn = _db.connect(db_path)
+        try:
+            rows = conn.execute(
+                "SELECT injection_id, ts, session_id, failure_key, repo,"
+                " tier, digest_injected, chars_injected, assist_mode"
+                " FROM learning_injections WHERE skill_name = ?"
+                " ORDER BY ts DESC LIMIT ?", (skill_name, int(limit))
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+    except Exception:
+        return []
+
+
 def injection_counts(db_path=None, limit=50):
     """Per-lesson injection counts, busiest first: how often each lesson
     was injected and when it last fired.
 
-    Issue #20: the `lesson_id IS NULL` rows - the decisions that had
-    nothing to offer - are counted and named as `misses` instead of being
-    dropped. They are the denominator of every retrieval question, and a
-    caller that has to subtract to find them will present them as
-    nothing. `None` for every number when the store predates migration
-    015, so "this store cannot say" never renders as a zero rate."""
+    Issue #20: the decisions that had nothing to offer are counted and
+    named as `misses` instead of being dropped. They are the denominator
+    of every retrieval question, and a caller that has to subtract to
+    find them will present them as nothing. `None` for every number when
+    the store predates migration 015, so "this store cannot say" never
+    renders as a zero rate.
+
+    Issue #13 acceptance 3: a skill assist also has no lesson_id, but it
+    injected something, so it is not a miss. A miss is a row that
+    injected nothing: `digest_injected = 0`."""
     try:
         conn = _db.connect(db_path)
         try:
@@ -114,7 +144,7 @@ def injection_counts(db_path=None, limit=50):
                 " LIMIT ?", (int(limit),)).fetchall()
             missed = conn.execute(
                 "SELECT COUNT(*) AS n FROM learning_injections"
-                " WHERE lesson_id IS NULL").fetchone()
+                " WHERE digest_injected = 0").fetchone()
             return {"lessons": [dict(r) for r in rows],
                     "misses": int(missed["n"]) if missed else 0}
         finally:
@@ -124,15 +154,16 @@ def injection_counts(db_path=None, limit=50):
 
 
 def injection_miss_count(db_path=None):
-    """How many injection decisions had no lesson to offer - the
-    denominator half of every retrieval-tuning question. None when the
-    store is unreadable, so a caller never renders it as zero."""
+    """How many injection decisions had nothing to offer - the
+    denominator half of every retrieval-tuning question. A skill assist
+    injected something and is not a miss (#13 acceptance 3). None when
+    the store is unreadable, so a caller never renders it as zero."""
     try:
         conn = _db.connect(db_path)
         try:
             row = conn.execute(
                 "SELECT COUNT(*) AS n FROM learning_injections"
-                " WHERE lesson_id IS NULL").fetchone()
+                " WHERE digest_injected = 0").fetchone()
             return int(row["n"]) if row else 0
         finally:
             conn.close()

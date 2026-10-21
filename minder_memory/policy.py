@@ -52,16 +52,18 @@ def _lesson_digest_line(lesson):
 
 
 def _record_injection(ev, fkey, repo, lesson, line, assist_mode,
-                      db_path=None):
+                      db_path=None, skill_name=None):
     """Issue #13: record the injection decision, including the ones that
     found nothing to inject. Ledger-only — it never changes the directive,
-    and a ledger failure never changes one either."""
+    and a ledger failure never changes one either. A skill-section
+    injection carries skill_name instead of a lesson (acceptance 3)."""
     try:
         ledger.record_injection(
             session_id=(ev.get("session_id") or ev.get("task_id")),
             event_id=ev.get("event_id"), failure_key=fkey,
             repo=repo or ev.get("repo") or "",
             lesson_id=(lesson or {}).get("lesson_id"),
+            skill_name=skill_name,
             tier=ledger.tier_of(lesson, fkey),
             chars_injected=len(line), assist_mode=assist_mode,
             db_path=db_path)
@@ -470,13 +472,25 @@ def _decision_skill_assist(event, warden_out, directive, cfg=None,
         excerpt = "\n".join(lines[:_SKILL_BODY_LINES]).strip()
         if not excerpt:  # gate 8 has nothing compact to inject
             return directive
-        section = f"\nSKILL: {skill.get('name') or chosen}\n{excerpt}"
+        skill_name = str(skill.get("name") or chosen)
+        if directive and f"SKILL: {skill_name}" in (directive.get("digest")
+                                                    or ""):
+            # The guard path (P2.5) already attached this same skill to
+            # the digest it built. Attaching it again would duplicate the
+            # text for the agent and double-count the injection in the
+            # ledger (#13). The assist flag still reports the gateway ran.
+            return dict(directive, assist="decision_skill")
+        section = f"\nSKILL: {skill_name}\n{excerpt}"
         dtrace.record_decision(  # reuse DecisionTrace, log-only
             db_path=db_path, contract_id=contract.contract_id,
             contract_version=contract.version,
             session_id=str(ev.get("session_id") or ""), failure_key=fkey,
             state=state, menu=list(shortlist) + ["none"],
             decision=triage_decision, response=response)
+        # issue #13 acceptance 3: the gateway attach is an injection too,
+        # and the ledger names the skill it put in the digest
+        _record_injection(ev, fkey, repo, None, section, ledger.MODE_SKILL,
+                          db_path=db_path, skill_name=skill_name)
         # gate 9: this returns digest text only; frontier_payload is
         # never created or modified here
         if directive:
@@ -501,7 +515,9 @@ _SKILL_BODY_LINES = 10  # compact: first N lines of instructions in digest
 
 def _skill_section(ev, repo, db_path):
     """P2.5: 'SKILL: <name>' + short instruction excerpt when a skill
-    matches; None when nothing matches (the caller may draft a plan)."""
+    matches; None when nothing matches (the caller may draft a plan).
+    Issue #13 acceptance 3: the injection is ledgered with the skill
+    name, so the ledger distinguishes a skill assist from a lesson one."""
     try:
         selection = skill_load.select_skills_for_event(ev)
         if not selection["loaded"]:
@@ -512,6 +528,9 @@ def _skill_section(ev, repo, db_path):
         section = f"SKILL: {skill['name']}"
         if excerpt:
             section += f"\n{excerpt}"
+        _record_injection(ev, ev.get("failure_key") or "", repo, None,
+                          f"\n{section}", ledger.MODE_SKILL,
+                          db_path=db_path, skill_name=skill["name"])
         return section, None
     except Exception:
         return None, None

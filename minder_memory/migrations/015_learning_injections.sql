@@ -13,6 +13,19 @@
 --
 -- Append-only like every other evidence table: a later verdict about an
 -- injection is new evidence, never an edit of this row.
+--
+-- Column set frozen at f5091fd. This file is edited in place, not via a
+-- new migration, because no release has shipped it and no store exists
+-- at version 15: `minder-op migrate` on such a store re-runs this file
+-- whole, and an ALTER here would fail inside that CREATE (duplicate
+-- column). An installed store at version 15 needs a new forward
+-- migration instead.
+--
+-- skill_name (issue #13 acceptance 3): a skill-section injection
+-- records the skill it injected, so the ledger distinguishes a lesson
+-- assist from a skill assist. digest_injected, not lesson_id, marks
+-- whether anything reached the digest: a skill row has no lesson_id but
+-- did inject.
 
 CREATE TABLE learning_injections (
   injection_id     TEXT PRIMARY KEY,
@@ -21,12 +34,13 @@ CREATE TABLE learning_injections (
   event_id         TEXT,                 -- the failure event that asked
   failure_key      TEXT,
   repo             TEXT,
-  lesson_id        TEXT,                 -- NULL when nothing was injected
+  lesson_id        TEXT,                 -- NULL for a skill assist or a miss
+  skill_name       TEXT,                 -- NULL for a lesson assist or a miss
   tier             TEXT,                 -- exact | family | n/a
   trigger_matched  INTEGER,              -- NULL until #15 fills it
   digest_injected  INTEGER NOT NULL,     -- 1 = text reached the digest
   chars_injected   INTEGER NOT NULL DEFAULT 0,
-  assist_mode      TEXT NOT NULL,        -- retrieve | block_duplicate | ...
+  assist_mode      TEXT NOT NULL,        -- retrieve | block_duplicate | skill | ...
   redaction_status TEXT NOT NULL DEFAULT 'redacted'
 );
 CREATE TRIGGER learning_injections_no_update
@@ -37,5 +51,7 @@ BEFORE DELETE ON learning_injections
 BEGIN SELECT RAISE(ABORT, 'learning_injections is append-only'); END;
 CREATE INDEX idx_learning_injections_lesson
   ON learning_injections (lesson_id, ts);
+CREATE INDEX idx_learning_injections_skill
+  ON learning_injections (skill_name, ts);
 CREATE INDEX idx_learning_injections_failure
   ON learning_injections (failure_key, ts);
