@@ -82,7 +82,12 @@ def check(unit, configured, unit_state, run=None):
         return ("engine-upstream", "info",
                 f"no MINDER_UPSTREAM in {unit} Environment "
                 f"(unit {unit_state}); the proxy takes it from its own "
-                f"environment, registry value {configured} unverified")
+                f"environment, registry value {configured} unverified. "
+                "A unit with no Environment= line at all prints this too: "
+                "an empty Environment= is what a systemd user manager "
+                "returns for a unit that declares no variables, so no "
+                "minder install is indistinguishable from an install "
+                "whose unit lost its upstream")
     if effective == configured:
         return ("engine-upstream", "ok",
                 f"{unit} dials {effective}, matching the active engine")

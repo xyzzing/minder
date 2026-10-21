@@ -156,12 +156,20 @@ def test_the_ci_host_shape_is_reported_not_asserted():
     host-shaped path now routes through the check, whose info branch this
     asserts: the same response the doctor would report, and the skip in
     the test above can only fire on a host that really has no unit."""
-    if unit_upstream is None:  # pre-change code: fail, never vacuous-pass
-        pytest.fail("unit_upstream missing: the check this gate protects "
-                    "does not exist")
     runner = _run({SHOW: (0, "Environment=MINDER_PORT=8390\n", "")})
     status = unit_upstream.check("minder-proxy.service",
                                  "http://127.0.0.1:8081",
                                  "active", run=runner)
     assert status[1] == "info"
     assert "no MINDER_UPSTREAM" in status[2]
+    # The empty Environment= line is what a user manager returns for a
+    # unit that declares no variables at all, so a CI host with no minder
+    # install prints the same report as an install whose unit lost its
+    # upstream. The report has to say that, or an operator reads a
+    # healthy host as a broken install and vice versa.
+    empty = unit_upstream.check("minder-proxy.service",
+                                "http://127.0.0.1:8081", "active",
+                                run=_run({SHOW: (0, "Environment=\n", "")}))
+    assert empty[1] == "info"
+    assert "no MINDER_UPSTREAM" in empty[2]
+    assert "no minder install is indistinguishable" in empty[2]
