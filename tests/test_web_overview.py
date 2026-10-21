@@ -82,6 +82,15 @@ def _seed_injections(dbp, lessons=(None, "L1", None, "L2", None)):
                 " ?, ?, 'retrieve')",
                 (f"inj_{i}", lesson, "n/a" if lesson is None else "exact",
                  0 if lesson is None else 1, 0 if lesson is None else 240))
+        # one skill assist (#13): no lesson_id, but text reached the
+        # digest, so the panel counts it as a hit
+        _db.write(
+            conn,
+            "INSERT INTO learning_injections (injection_id, ts,"
+            " session_id, failure_key, lesson_id, tier,"
+            " digest_injected, chars_injected, assist_mode, skill_name)"
+            " VALUES ('inj_s', '2026-10-01T00:00:00+00:00', 's1', 'k1',"
+            " NULL, 'n/a', 1, 106, 'skill', 'diagnose-env')")
     finally:
         conn.close()
 
@@ -90,13 +99,14 @@ def test_learning_panel_shows_the_retrieval_hit_rate(tmp_path, monkeypatch):
     """Issue #20 acceptance 3: the learning panel states the plane-level
     hit rate - of the decisions that asked for a lesson, how many got one
     - and names the misses, so a per-lesson impact split has a base rate
-    to be read against."""
+    to be read against. Issue #13: the skill-assist row the seed adds is
+    a hit, so the panel must not count it among the misses."""
     dbp = new_db(tmp_path)
     _seed_injections(dbp)
     text = webseed.client_for(dbp, monkeypatch).get("/").text
     assert "retrieval hit rate" in text
-    assert "2 of 5 asked" in text
-    assert "40.0%" in text
+    assert "3 of 6 asked" in text
+    assert "50.0%" in text
     assert "3 missed" in text
 
 

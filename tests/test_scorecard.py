@@ -79,12 +79,21 @@ def test_scorecard_learning_line_carries_the_hit_rate(tmp_path, monkeypatch):
             "+00:00', 's1', 'k1', ?, ?, ?, ?, 'retrieve')",
             (f"inj_{i}", lesson, "n/a" if lesson is None else "exact",
              0 if lesson is None else 1, 0 if lesson is None else 240))
+    # one skill assist (#13): no lesson_id, text reached the digest, so
+    # the scorecard counts it as a hit
+    _db.write(
+        conn,
+        "INSERT INTO learning_injections (injection_id, ts, session_id,"
+        " failure_key, lesson_id, tier, digest_injected, chars_injected,"
+        " assist_mode, skill_name) VALUES ('inj_s',"
+        " '2026-09-30T00:00:00+00:00', 's1', 'k1', NULL, 'n/a', 1, 106,"
+        " 'skill', 'diagnose-env')")
     conn.close()
     learning = scorecard.build(dbp, now=NOW)["scores"]["learning"]
-    assert learning["retrieval_asked"] == 4
-    assert learning["retrieval_hits"] == 2
+    assert learning["retrieval_asked"] == 5
+    assert learning["retrieval_hits"] == 3
     assert learning["retrieval_misses"] == 2
-    assert learning["retrieval_hit_rate"] == 0.5
+    assert learning["retrieval_hit_rate"] == 0.6
 
     absent = tmp_path / "gone.sqlite"
     conn = _db.connect(absent)

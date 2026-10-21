@@ -63,11 +63,20 @@ def test_status_names_the_retrieval_hit_rate(tmp_path, capsys):
             "+00:00', 's1', 'k1', ?, ?, ?, ?, 'retrieve')",
             (f"inj_{i}", lesson, "n/a" if lesson is None else "exact",
              0 if lesson is None else 1, 0 if lesson is None else 240))
+    # one skill assist (#13): no lesson_id, but text reached the digest,
+    # so `status` must count it as a hit, not a miss
+    _db.write(
+        conn,
+        "INSERT INTO learning_injections (injection_id, ts, session_id,"
+        " failure_key, lesson_id, tier, digest_injected, chars_injected,"
+        " assist_mode, skill_name) VALUES ('inj_s',"
+        " '2026-10-01T00:00:00+00:00', 's1', 'k1', NULL, 'n/a', 1, 106,"
+        " 'skill', 'diagnose-env')")
     conn.close()
     main(["--db", str(dbp), "status"])
     out = " ".join(capsys.readouterr().out.split())
-    assert "retrieval_asked : 4" in out
-    assert "retrieval_hits : 2" in out
+    assert "retrieval_asked : 5" in out
+    assert "retrieval_hits : 3" in out
     assert "retrieval_misses : 2" in out
 
 
