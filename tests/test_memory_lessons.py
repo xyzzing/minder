@@ -95,9 +95,11 @@ def test_retrieved_payload_compact_no_raw_logs(tmp_path):
                            db_path=dbp)
     got = retrieval.retrieve_lessons(REPO, KEY, db_path=dbp)
     # failure_key is carried so the injection ledger (issue #13) can name
-    # the tier that matched without a second query; nothing else widens.
+    # the tier that matched without a second query; the tier itself is
+    # named too, since issue #22 added a third one. Nothing else widens.
     assert set(got[0]) == {"lesson_id", "instruction", "anti_pattern",
-                           "verification", "status", "failure_key"}
+                           "verification", "status", "failure_key",
+                           "tier"}
     assert got[0]["failure_key"] == KEY
     assert "payload" not in got[0] and "tool_logs" not in got[0]
 

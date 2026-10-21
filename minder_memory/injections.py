@@ -24,6 +24,7 @@ from .store import _now, _uid
 # TIER_NONE is the no-injection case, which the ledger records too.
 TIER_EXACT = "exact"
 TIER_FAMILY = "family"
+TIER_REPO = "repo"
 TIER_NONE = "n/a"
 
 # assist_mode column: which code path made the decision.
@@ -38,10 +39,14 @@ UNKNOWN_MODE = "unknown"
 
 def tier_of(lesson, failure_key):
     """Which retrieval tier produced this lesson: the exact repo +
-    failure_key match, or the failure-family fallback. No lesson, no
+    failure_key match, the failure-family fallback, or the repo-wide
+    preference tier (issue #22: a stated preference carries no
+    failure_key, so neither failure tier can match it). No lesson, no
     tier."""
     if not lesson:
         return TIER_NONE
+    if not lesson.get("failure_key"):
+        return TIER_REPO
     return TIER_EXACT if lesson.get("failure_key") == failure_key \
         else TIER_FAMILY
 

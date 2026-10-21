@@ -1,7 +1,9 @@
 """Verified lesson retrieval (docs/prd-memory-v1.md PR 4).
 
 Order: (1) exact repo + failure_key, verified and still valid;
-(2) same repo + same failure family. No cross-repo retrieval in v1.
+(2) same repo + same failure family; (3) repo-wide preferences, whose
+`failure_key` is empty because they bind how work is done here rather
+than one failure shape (issue #22). No cross-repo retrieval in v1.
 Payloads are compact: instruction, anti-pattern, verification summary —
 never raw tool logs. Never raises; [] on any problem.
 """
@@ -15,11 +17,19 @@ from . import db as _db
 _COMPACT_KEYS = ("lesson_id", "instruction", "anti_pattern", "verification",
                  "status", "failure_key")
 
+# The tiers, in the order retrieval tries them. A stated preference has
+# no failure_key, so the first two tiers can never carry it; `repo` is
+# the tier that does, and the ledger records it.
+TIER_EXACT = "exact"
+TIER_FAMILY = "family"
+TIER_REPO = "repo"
+
 
 def retrieve_lessons(repo, failure_key, paths=None, limit=3, db_path=None,
                      current_commit=None):
     """Order: (1) exact repo + failure_key, verified and still valid;
-    (2) same repo + same failure family. No cross-repo retrieval in v1.
+    (2) same repo + same failure family; (3) repo-wide preferences
+    (empty failure_key, issue #22). No cross-repo retrieval in v1.
     Graph-validity filters (P3.3): a lesson is excluded when superseded by
     a newer verified lesson, or when its APPLIES_TO commit differs from
     current_commit and that commit node is marked changed.
@@ -36,10 +46,10 @@ def retrieve_lessons(repo, failure_key, paths=None, limit=3, db_path=None,
                     " AND status = 'verified' AND valid_to IS NULL"
                     " ORDER BY valid_from DESC LIMIT ?",
                     (repo, failure_key, limit)).fetchall()
-                out = [dict(r) for r in rows]
+                out = [(TIER_EXACT, dict(r)) for r in rows]
             if len(out) < limit and repo and failure_key and "|" in failure_key:
                 family = failure_key.split("|")[1]
-                exclude = [r["lesson_id"] for r in out]
+                exclude = [r["lesson_id"] for _tier, r in out]
                 ph = ",".join("?" * len(exclude)) or "''"
                 rows = conn.execute(
                     f"SELECT * FROM lessons WHERE repo = ? AND"
@@ -48,10 +58,23 @@ def retrieve_lessons(repo, failure_key, paths=None, limit=3, db_path=None,
                     f" ORDER BY valid_from DESC LIMIT ?",
                     (repo, f"%|{family}|%", *exclude, limit - len(out))
                 ).fetchall()
-                out += [dict(r) for r in rows]
-            out = [r for r in out
+                out += [(TIER_FAMILY, dict(r)) for r in rows]
+            # Repo-wide preferences: the instruction binds the repo, not a
+            # failure shape, so it carries no failure_key to match on.
+            if len(out) < limit and repo:
+                exclude = [r["lesson_id"] for _tier, r in out]
+                ph = ",".join("?" * len(exclude)) or "''"
+                rows = conn.execute(
+                    f"SELECT * FROM lessons WHERE repo = ? AND"
+                    f" failure_key = '' AND status = 'verified' AND"
+                    f" valid_to IS NULL AND lesson_id NOT IN ({ph})"
+                    f" ORDER BY valid_from DESC LIMIT ?",
+                    (repo, *exclude, limit - len(out))
+                ).fetchall()
+                out += [(TIER_REPO, dict(r)) for r in rows]
+            out = [(tier, r) for tier, r in out
                    if _authoritative(r, current_commit, db_path)]
-            return [compact_lesson(r) for r in out[:limit]]
+            return [compact_lesson(r, tier) for tier, r in out[:limit]]
         finally:
             conn.close()
     except Exception:
@@ -79,10 +102,13 @@ def _authoritative(row, current_commit, db_path):
     return True
 
 
-def compact_lesson(row):
+def compact_lesson(row, tier=None):
     try:
         verification = json.loads(row.get("verification_json") or "{}")
     except (ValueError, TypeError):
         verification = {}
-    return {k: row.get(k) for k in _COMPACT_KEYS} | \
+    payload = {k: row.get(k) for k in _COMPACT_KEYS} | \
         {"verification": verification}
+    if tier is not None:
+        payload["tier"] = tier
+    return payload
