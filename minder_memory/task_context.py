@@ -23,8 +23,20 @@ DOMAINS = ("coding", "trading_research", "resume_application",
 ORIGINS = ("explicit_user", "harness", "router_validated", "restricted")
 HUMAN_KINDS = ("clarify_request", "factual_correction", "wording_approval",
                "intent_choice", "holdout_unlock", "permission",
-               "review_decision")
+               "review_decision",
+               # Issue #22: a durable working preference stated by someone
+               # with the authority to state it ("always run the tests
+               # through make"), and an ideal answer supplied for future
+               # work rather than a correction of a past one (Reflexio's
+               # expert_content input). Both are promotable evidence; the
+               # vocabulary stays closed.
+               "working_preference", "expert_answer")
 HUMAN_AUTHORITIES = ("user", "operator", "reviewer")
+# Which kinds state how work should be done here, and therefore which
+# authorities carry the standing to have them promoted to a lesson. A
+# reviewer reviews a past answer; they do not set the repo's habit.
+PREFERENCE_KINDS = ("working_preference", "expert_answer")
+PREFERENCE_AUTHORITIES = ("user", "operator")
 DEFAULT_CONTRACT_VERSION = "domain-route/v1"
 
 

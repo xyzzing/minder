@@ -30,6 +30,18 @@ def _stored_verification(episode_id, db_path):
     return None
 
 
+def _project_quietly(lesson, db_path):
+    """P3.2 graph projection. Additive by contract: the projection is
+    rebuildable from the lessons table, so a failure here must never turn
+    a stored lesson into an error, and both promotion paths share this
+    one swallow rather than each carrying its own."""
+    try:
+        from . import graph_project
+        graph_project.project_lesson_promotion(lesson, db_path=db_path)
+    except Exception:
+        pass
+
+
 def promote_lesson(episode_id, instruction, anti_pattern="", verification=None,
                    repo="", failure_key="", actor="operator", db_path=None,
                    expires_when=""):
@@ -66,15 +78,93 @@ def promote_lesson(episode_id, instruction, anti_pattern="", verification=None,
             out = _get(lid, conn)
         finally:
             conn.close()
-        if out:  # P3.2 graph projection — additive, never blocks promotion
-            try:
-                from . import graph_project
-                graph_project.project_lesson_promotion(out, db_path=db_path)
-            except Exception:
-                pass
+        if out:
+            _project_quietly(out, db_path)
         return out, "ok"
     except Exception as e:
         return None, f"degraded:{type(e).__name__}"
+
+
+def promote_stated_preference(event_id, instruction, repo="",
+                              anti_pattern="", actor="operator",
+                              db_path=None):
+    """Promote a directly stated preference to a lesson (issue #22).
+
+    A stated preference has no episode, so `promote_lesson`'s two gates,
+    a verified episode and `verification.tests_passed`, have nothing to
+    check. This entry point does not relax them: it replaces them with
+    the evidence the event actually carries and records that swap in the
+    lesson's verification, so the record shows why it was accepted
+    (`tests_passed: false` plus `evidence: stated_preference`, the
+    authority, and the event id).
+
+    The gates it does enforce are the ones the store owns: the event must
+    exist, its kind must be one of the closed `PREFERENCE_KINDS` (an
+    event written by another writer under an unknown kind is not
+    evidence), its authority must be one of `PREFERENCE_AUTHORITIES`, and
+    the operator states the instruction - nothing is guessed from the
+    event's summary. The lesson names the `human_input_events` row in
+    `source_human_input`, so it is reviewable and invalidatable like any
+    other. Never raises - returns (lesson_dict, status).
+    """
+    from . import task_context
+    try:
+        event = _get_human_input(event_id, db_path)
+        if not event:
+            return None, "rejected:no-such-event"
+        kind = event.get("kind")
+        if kind not in task_context.PREFERENCE_KINDS:
+            return None, f"rejected:kind-{kind}"
+        authority = event.get("authority")
+        if authority not in task_context.PREFERENCE_AUTHORITIES:
+            return None, f"rejected:authority-{authority}"
+        text = str(instruction or "").strip()
+        if not text:
+            return None, "rejected:no-instruction"
+        verification = {
+            "actor": actor,
+            "tests_passed": False,
+            "evidence": "stated_preference",
+            "human_input_event_id": event_id,
+            "kind": kind,
+            "authority": authority,
+        }
+        conn = _db.connect(db_path)
+        try:
+            lid = _uid("les")
+            _db.write(conn, "INSERT INTO lessons (lesson_id, repo,"
+                      " failure_key, instruction, anti_pattern,"
+                      " verification_json, status, source_episode,"
+                      " valid_from, valid_to, expires_when,"
+                      " source_human_input)"
+                      " VALUES (?, ?, '', ?, ?, ?, 'verified', NULL, ?,"
+                      " NULL, '', ?)",
+                      (lid, repo, text, str(anti_pattern or ""),
+                       json.dumps(verification), _now(), event_id))
+            out = _get(lid, conn)
+        finally:
+            conn.close()
+        if out:
+            _project_quietly(out, db_path)
+        return out, "ok"
+    except Exception as e:
+        return None, f"degraded:{type(e).__name__}"
+
+
+def _get_human_input(event_id, db_path):
+    """One human_input_events row, or None. Read here rather than through
+    task_context's lifecycle helpers so the promotion path depends only on
+    the store."""
+    try:
+        conn = _db.connect(db_path)
+        try:
+            row = conn.execute("SELECT * FROM human_input_events WHERE"
+                               " event_id = ?", (event_id,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+    except Exception:
+        return None
 
 
 def invalidate_lesson(lesson_id, reason, diagnosis=None, db_path=None):

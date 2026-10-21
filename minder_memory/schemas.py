@@ -88,6 +88,7 @@ class Lesson:
     status: str = "observation"
     lesson_id: Optional[str] = None
     source_episode: Optional[str] = None
+    source_human_input: Optional[str] = None
     valid_from: Optional[str] = None
     valid_to: Optional[str] = None
     expires_when: str = ""
