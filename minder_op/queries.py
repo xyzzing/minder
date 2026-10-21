@@ -153,51 +153,6 @@ def episode_events(path, episode_id):
                  " WHERE ee.episode_id = ? ORDER BY ee.seq", (episode_id,))
 
 
-def lessons(path, status_filter=None, failure_key=None, repo=None,
-            limit=50):
-    sql = "SELECT * FROM lessons WHERE 1=1"
-    params = []
-    if status_filter:
-        sql += " AND status = ?"
-        params.append(status_filter)
-    else:
-        # default view mirrors retrieval semantics: live verified only —
-        # candidates are inert until promoted and surface via --status
-        sql += " AND status = 'verified' AND valid_to IS NULL"
-    if failure_key:
-        sql += " AND failure_key = ?"
-        params.append(failure_key)
-    if repo:
-        sql += " AND repo = ?"
-        params.append(repo)
-    sql += " ORDER BY valid_from DESC LIMIT ?"
-    params.append(int(limit))
-    return _rows(path, sql, params)
-
-
-def lesson(path, lesson_id):
-    return _one(path, "SELECT * FROM lessons WHERE lesson_id = ?",
-                (lesson_id,))
-
-
-def lesson_decisions(path, lesson_id, limit=20):
-    """Decision ledger for one lesson (issue #14): the closed reason code
-    and note behind every invalidate / reject / adopt."""
-    return _rows(path,
-                 "SELECT decision_id, ts, action, code, note, actor"
-                 " FROM lesson_decisions WHERE lesson_id = ?"
-                 " ORDER BY ts DESC LIMIT ?", (lesson_id, int(limit)))
-
-
-def decision_counts(path):
-    """Decisions per (action, code), straight off the ledger (issue #14).
-    The whole point of the taxonomy: these counts come from stored rows,
-    never from parsing a free-text reason."""
-    return _rows(path,
-                 "SELECT action, code, COUNT(*) AS n FROM lesson_decisions"
-                 " GROUP BY action, code ORDER BY action, code")
-
-
 def gaps(path, status_filter="open", limit=100):
     sql = "SELECT * FROM skill_gaps WHERE 1=1"
     params = []
@@ -390,3 +345,5 @@ def event_filter_values(path):
 # cycle.
 from minder_op.injections import (  # noqa: E402, F401
     lesson_injections, retrieval_hit_rate)
+from minder_op.lesson_queries import (  # noqa: E402, F401
+    decision_counts, human_input_event, lesson, lesson_decisions, lessons)

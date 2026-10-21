@@ -130,6 +130,32 @@ def build_parser():
     tk_close.add_argument("--task", default="default")
     tk_close.add_argument("--reason", default="closed")
 
+    hu = sub.add_parser("human", help="human evidence events: record what "
+                                      "a person stated (issue #22)")
+    hu_sub = hu.add_subparsers(dest="subcommand", required=True)
+    hu_in = hu_sub.add_parser("input", help="record one human input event")
+    hu_in.add_argument("--kind", required=True,
+                       help="closed HUMAN_KINDS vocabulary; "
+                            "working_preference and expert_answer are the "
+                            "kinds a stated habit can promote from")
+    hu_in.add_argument("--actor", default="operator")
+    hu_in.add_argument("--authority", default="user",
+                       choices=["user", "operator", "reviewer"])
+    hu_in.add_argument("--question")
+    hu_in.add_argument("--answer", help="what was stated; free text, "
+                                        "redacted on the way out")
+    hu_in.add_argument("--affects-repo", action="append", default=[],
+                       help="a repo this statement binds; repeatable")
+    hu_in.add_argument("--decision", choices=["approved", "rejected",
+                                              "deferred"])
+    hu_in.add_argument("--method")
+    hu_in.add_argument("--note")
+    hu_in.add_argument("--promote", action="store_true",
+                       help="also promote a lesson from this event, using "
+                            "--answer as the instruction. The default "
+                            "records the event only.")
+    hu_in.add_argument("--yes", action="store_true")
+
     fam = sub.add_parser("families", help="trading research protocol "
                                           "(preregistration, manifests)")
     fam_sub = fam.add_subparsers(dest="subcommand", required=True)
@@ -394,6 +420,12 @@ def build_parser():
     le_promote.add_argument("--from-candidate", action="store_true",
                             help="adopt a frontier-distilled candidate "
                                  "lesson (id, not episode)")
+    le_promote.add_argument("--from-event",
+                            help="promote from a human_input_events id "
+                                 "instead of an episode (issue #22): the "
+                                 "event's kind must be working_preference "
+                                 "or expert_answer and its authority user "
+                                 "or operator")
     le_promote.add_argument("--yes", action="store_true")
 
     gp = sub.add_parser("gaps", help="skill gaps")
@@ -557,6 +589,8 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_families_status(args, path)
     if command == "families" and sub == "holdout-unlock":
         return _cmd_families_unlock(args, path)
+    if command == "human" and sub == "input":
+        return _cmd_human_input(args, path)
     if command == "routes" and sub == "eval":
         return decision_eval.cmd_routes_eval(args, path)
     if command == "routes" and sub == "ls":
@@ -818,15 +852,30 @@ def _cmd_lessons_ls(args, path):
     rows = queries.lessons(path, status_filter=args.status,
                            failure_key=args.failure_key, repo=args.repo,
                            limit=args.limit)
+    # The source column names which evidence a lesson rests on: the kind
+    # of the human input event for a preference-based lesson (issue #22),
+    # otherwise the episode it was promoted from. A preference lesson has
+    # no failure_key, so the failure_key column would otherwise be the
+    # only blank in the row.
     fmt.table([{"id": r["lesson_id"], "status": r["status"],
-                "from": r["valid_from"], "failure_key":
-                    fmt.safe(r["failure_key"], 48),
+                "from": r["valid_from"],
+                "source": _lesson_source(r),
+                "failure_key": fmt.safe(r["failure_key"], 48),
                 "instruction": fmt.safe(r["instruction"], 60)}
                for r in rows],
               [("id", "id"), ("status", "status"), ("from", "from"),
-               ("failure_key", "failure_key"),
+               ("source", "source"), ("failure_key", "failure_key"),
                ("instruction", "instruction")])
     return EXIT_OK
+
+
+def _lesson_source(row):
+    """Where a lesson's evidence came from, for the operator queue."""
+    kind = row.get("source_kind")
+    if kind:
+        return fmt.safe(kind, 32)
+    episode = row.get("source_episode")
+    return episode or "n/a"
 
 
 def _cmd_lesson_show(args, path):
@@ -842,6 +891,23 @@ def _cmd_lesson_show(args, path):
             ("verification", fmt.safe(row["verification_json"], 200)),
             ("source_episode", row["source_episode"]),
             ("valid_from", row["valid_from"]), ("valid_to", row["valid_to"])])
+    # Issue #22: a stated preference has no episode, so the lesson names
+    # the human input event instead. Read-only, and a store that predates
+    # the events table says so rather than printing a blank.
+    event_id = row.get("source_human_input")
+    if event_id:
+        try:
+            event = queries.human_input_event(path, event_id)
+        except queries.DBError:
+            event = None
+        if event:
+            fmt.kv([("human_input_event", event["event_id"]),
+                    ("kind", fmt.safe(event["kind"], 60)),
+                    ("actor", fmt.safe(event["actor"], 60)),
+                    ("authority", fmt.safe(event["authority"], 32)),
+                    ("stated", fmt.safe(event.get("answer_summary"), 200))])
+        else:
+            print("human input event: not available in this store")
     # Issue #13: is this lesson still doing anything? Read-only, and a
     # store without the ledger says so instead of printing a zero.
     try:
@@ -1509,6 +1575,8 @@ def _cmd_lessons_promote(args, path):
     from minder_memory import lessons as memory_lessons
     if args.from_candidate:
         return _promote_candidate_lesson(args, path, memory_lessons)
+    if args.from_event:
+        return _promote_from_event(args, path, memory_lessons)
     if not args.episode_id:
         print("error: lessons promote needs an EPISODE_ID, or --from-candidate "
               "with a LESSON_ID", file=sys.stderr)
@@ -1555,15 +1623,78 @@ def _promote_candidate_lesson(args, path, memory_lessons):
     return _report_promotion(lesson, status)
 
 
+def _promote_from_event(args, path, memory_lessons):
+    """A stated preference has no episode to promote from, so the
+    operator names the human input event instead and states the
+    instruction themselves (issue #22). Nothing is guessed from the
+    event's summary text."""
+    event_id = args.from_event
+    if not args.instruction:
+        print("error: --from-event needs --instruction, the wording the "
+              "lesson should carry", file=sys.stderr)
+        return EXIT_USAGE
+    if _refuse_without_yes(
+            args, f"lessons promote event={event_id} "
+                  f"instruction={args.instruction!r} "
+                  f"(evidence: the stated preference, not test runs)"):
+        return EXIT_USAGE
+    lesson, status = memory_lessons.promote_stated_preference(
+        event_id, args.instruction, repo=args.repo,
+        anti_pattern=args.anti_pattern, actor="operator", db_path=path)
+    return _report_promotion(lesson, status)
+
+
 def _report_promotion(lesson, status):
     if not lesson:
         print(f"error: {status}", file=sys.stderr)
         return EXIT_USAGE
-    fmt.kv([("lesson_id", lesson["lesson_id"]), ("status", status),
-            ("lesson_status", lesson["status"]),
-            ("instruction", fmt.safe(lesson["instruction"], 200)),
-            ("source_episode", lesson["source_episode"])])
+    pairs = [("lesson", lesson["lesson_id"]), ("status", status),
+             ("lesson_status", lesson["status"]),
+             ("instruction", fmt.safe(lesson["instruction"], 200))]
+    # The promotion path that produced the lesson is the evidence a later
+    # rejection reason code is recorded against (issue #14), so the
+    # report names it.
+    if lesson.get("source_human_input"):
+        pairs.append(("source_event", lesson["source_human_input"]))
+    else:
+        pairs.append(("source_episode", lesson["source_episode"]))
+    fmt.kv(pairs)
     return EXIT_OK
+
+
+def _cmd_human_input(args, path):
+    """Record one human input event, and promote a lesson from it only
+    when the operator asks (issue #22). The kind and authority gates live
+    in the store, not here; this command reports what they decided."""
+    from minder_memory import lessons as memory_lessons
+    from minder_memory import task_context
+    affects = [{"type": "repo", "id": repo} for repo in args.affects_repo]
+    if _refuse_without_yes(
+            args, f"human input kind={args.kind} actor={args.actor} "
+                  f"authority={args.authority} answer={args.answer!r} "
+                  f"affects={len(affects)}"
+                  + (" + promote" if args.promote else "")):
+        return EXIT_USAGE
+    row, status = task_context.record_human_input(
+        args.kind, actor=args.actor, authority=args.authority,
+        question=args.question, answer_summary=args.answer,
+        affects=affects or None, decision=args.decision,
+        method=args.method, note=args.note, db_path=path)
+    if not row:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("event", row["event_id"]), ("kind", row["kind"]),
+            ("actor", row["actor"]), ("authority", row["authority"]),
+            ("stated", fmt.safe(row["answer_summary"], 200))])
+    if not args.promote:
+        print("recorded only; promote with: minder-op lessons promote "
+              f"--from-event {row['event_id']} --instruction ... --yes")
+        return EXIT_OK
+    lesson, pstatus = memory_lessons.promote_stated_preference(
+        row["event_id"], args.answer or "", repo=(args.affects_repo
+                                                  or [""])[0],
+        actor="operator", db_path=path)
+    return _report_promotion(lesson, pstatus)
 
 
 def _cmd_gaps_close(args, path):
