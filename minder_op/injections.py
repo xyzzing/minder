@@ -29,16 +29,20 @@ def injection_section(db_path, win):
 
     `injected` alone is a vanity number; `missed` is the denominator that
     makes it mean something, and `unused_verified` names a lesson an
-    operator promoted that never reached an agent. A store predating
-    migration 015 degrades to available False, never to zeros."""
+    operator promoted that never reached an agent. Injected and missed
+    read `digest_injected`, not `lesson_id`: a skill assist (#13) has no
+    lesson to name but did reach the digest, and counting it as a miss
+    here would contradict the memory plane's read of the same rows.
+    A store predating migration 015 degrades to available False, never to
+    zeros."""
     start, until = win
     try:
         rows = _rows(db_path,
-                     "SELECT SUM(CASE WHEN lesson_id IS NOT NULL THEN 1"
+                     "SELECT SUM(CASE WHEN digest_injected = 1 THEN 1"
                      " ELSE 0 END) AS injected,"
-                     " SUM(CASE WHEN lesson_id IS NULL THEN 1 ELSE 0 END)"
+                     " SUM(CASE WHEN digest_injected = 0 THEN 1 ELSE 0 END)"
                      " AS missed,"
-                     " SUM(CASE WHEN lesson_id IS NOT NULL AND ts >= ?"
+                     " SUM(CASE WHEN digest_injected = 1 AND ts >= ?"
                      " AND ts < ? THEN 1 ELSE 0 END) AS injected_in_window"
                      " FROM learning_injections", (start, until))
         row = rows[0] if rows else {}
@@ -74,9 +78,10 @@ def retrieval_hit_rate(path):
 
     The miss count is a named number, not something a reader subtracts
     from a total - the same reason #13 put the nothing rows in the table.
-    `asked` counts every decision row, hits are the rows that carried a
-    lesson, and `rate` is None whenever there is nothing to divide by, so
-    an empty ledger is not reported as a 0 % hit rate.
+    `asked` counts every decision row, hits are the rows that put text in
+    the digest (`digest_injected`, which covers a skill assist as well as
+    a lesson), and `rate` is None whenever there is nothing to divide by,
+    so an empty ledger is not reported as a 0 % hit rate.
 
     A store predating migration 015 has no table at all: `available` is
     False and every number is None. That is the difference between "this
@@ -85,7 +90,7 @@ def retrieval_hit_rate(path):
     try:
         row = _one(path,
                    "SELECT COUNT(*) AS asked,"
-                   " SUM(CASE WHEN lesson_id IS NOT NULL THEN 1 ELSE 0 END)"
+                   " SUM(CASE WHEN digest_injected = 1 THEN 1 ELSE 0 END)"
                    " AS hits FROM learning_injections")
     except DBError as exc:
         # Only a missing table degrades to "not available"; a genuinely

@@ -60,9 +60,9 @@ def test_status_names_the_retrieval_hit_rate(tmp_path, capsys):
             "INSERT INTO learning_injections (injection_id, ts,"
             " session_id, failure_key, lesson_id, tier, digest_injected,"
             " chars_injected, assist_mode) VALUES (?, '2026-10-01T00:00:00"
-            "+00:00', 's1', 'k1', ?, ?, 1, ?, 'retrieve')",
+            "+00:00', 's1', 'k1', ?, ?, ?, ?, 'retrieve')",
             (f"inj_{i}", lesson, "n/a" if lesson is None else "exact",
-             0 if lesson is None else 240))
+             0 if lesson is None else 1, 0 if lesson is None else 240))
     conn.close()
     main(["--db", str(dbp), "status"])
     out = " ".join(capsys.readouterr().out.split())

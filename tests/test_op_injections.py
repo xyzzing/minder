@@ -20,16 +20,20 @@ TS_OLD = "2026-09-01T09:00:00+00:00"
 
 
 def _inj(conn, inj_id, ts, lesson_id, tier="exact", chars=120,
-         mode="block_duplicate", failure_key=webseed.HOSTILE):
+         mode="block_duplicate", failure_key=webseed.HOSTILE,
+         injected=1, skill_name=None):
     """failure_key carries the hostile marker so the read side is asserted
-    to redact it, not assumed to."""
+    to redact it, not assumed to. `injected` and `skill_name` mirror the
+    #13 columns: a skill assist has no lesson_id yet injected, so the
+    miss predicate must read digest_injected, not lesson_id."""
     _db.write(conn, "INSERT INTO learning_injections (injection_id, ts,"
               " session_id, event_id, failure_key, repo, lesson_id, tier,"
               " trigger_matched, digest_injected, chars_injected,"
-              " assist_mode, redaction_status)"
-              " VALUES (?, ?, 's1', 'ev1', ?, '/repo', ?, ?, NULL, 1, ?,"
-              " ?, 'redacted')",
-              (inj_id, ts, failure_key, lesson_id, tier, chars, mode))
+              " assist_mode, redaction_status, skill_name)"
+              " VALUES (?, ?, 's1', 'ev1', ?, '/repo', ?, ?, NULL, ?, ?,"
+              " ?, 'redacted', ?)",
+              (inj_id, ts, failure_key, lesson_id, tier, injected, chars,
+               mode, skill_name))
 
 
 def test_lesson_show_lists_injections_with_redaction(tmp_path, capsys):
@@ -58,7 +62,7 @@ def test_weekly_summary_reports_injections_and_misses(tmp_path, capsys):
         _inj(conn, "inj1", TS_IN, "les_used")
         _inj(conn, "inj2", TS_OLD, "les_used")
         _inj(conn, "inj3", TS_IN, None, tier="n/a", chars=0,
-             mode="retrieve")
+             mode="retrieve", injected=0)
     finally:
         conn.close()
     report = build_weekly_summary(dbp, days=7, now=NOW)
@@ -100,9 +104,9 @@ def test_lessons_injections_labels_misses_as_misses(tmp_path, capsys):
         _inj(conn, "inj1", TS_IN, "les1")
         _inj(conn, "inj2", TS_OLD, "les1", tier="family", chars=88)
         _inj(conn, "inj3", TS_IN, None, tier="n/a", chars=0,
-             mode="retrieve")
+             mode="retrieve", injected=0)
         _inj(conn, "inj4", TS_OLD, None, tier="n/a", chars=0,
-             mode="retrieve")
+             mode="retrieve", injected=0)
     finally:
         conn.close()
     assert main(["--db", str(dbp), "lessons", "injections"]) == EXIT_OK
@@ -136,7 +140,7 @@ def test_weekly_summary_states_the_hit_rate(tmp_path, capsys):
             _inj(conn, f"inj_h{i}", TS_IN, "les1")
         for i in range(3):
             _inj(conn, f"inj_m{i}", TS_IN, None, tier="n/a", chars=0,
-                 mode="retrieve")
+                 mode="retrieve", injected=0)
     finally:
         conn.close()
     inj = build_weekly_summary(dbp, days=7, now=NOW)["injections"]
@@ -145,6 +149,35 @@ def test_weekly_summary_states_the_hit_rate(tmp_path, capsys):
 
     render_text(build_weekly_summary(dbp, days=7, now=NOW))
     assert "retrieval hit rate" in capsys.readouterr().out
+
+
+def test_a_skill_assist_is_not_a_miss_on_the_op_side(tmp_path, capsys):
+    """Issue #13: a skill assist has no lesson_id but did put text in the
+    digest. If the miss predicate reads lesson_id, every skill assist
+    counts as a miss here while the memory read side calls it a success,
+    and the two surfaces disagree about the same rows."""
+    dbp, conn = _mig(tmp_path)
+    try:
+        _inj(conn, "inj_s1", TS_IN, None, tier="n/a", chars=106,
+             mode="skill", skill_name="diagnose-env")
+        _inj(conn, "inj_s2", TS_IN, None, tier="n/a", chars=90,
+             mode="skill", skill_name="diagnose-build-environment")
+        _inj(conn, "inj_m1", TS_IN, None, tier="n/a", chars=0,
+             mode="retrieve", injected=0)
+    finally:
+        conn.close()
+    inj = build_weekly_summary(dbp, days=7, now=NOW)["injections"]
+    assert inj["asked_total"] == 3
+    assert inj["missed_total"] == 1
+    # the summary rounds the rate to 4 decimals; the two skill rows are
+    # hits, so the rate is 2/3 and not 0/3
+    assert inj["hit_rate"] == round(2 / 3, 4)
+
+    assert main(["--db", str(dbp), "lessons", "injections"]) == EXIT_OK
+    out = " ".join(capsys.readouterr().out.split())
+    assert "misses: 1" in out
+    # the skill rows are not a lesson bucket with an empty id
+    assert "n/a" not in out.split("misses:")[0]
 
 
 def _mig(tmp_path):

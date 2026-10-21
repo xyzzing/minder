@@ -66,8 +66,10 @@ def test_nav_groups_links_behind_advanced_drawer(tmp_path, monkeypatch):
 
 
 def _seed_injections(dbp, lessons=(None, "L1", None, "L2", None)):
-    """Rows straight into the ledger: a miss is a row with no lesson_id,
-    exactly as policy.py writes one."""
+    """Rows straight into the ledger: a miss is a decision that reached
+    the digest with nothing in it (digest_injected 0), exactly as
+    policy.py writes one. A row with a lesson or a skill injected is a
+    hit (#13: the lesson_id is not what marks the injection)."""
     conn = _db.connect(dbp)
     try:
         for i, lesson in enumerate(lessons):
@@ -77,9 +79,9 @@ def _seed_injections(dbp, lessons=(None, "L1", None, "L2", None)):
                 " session_id, failure_key, lesson_id, tier,"
                 " digest_injected, chars_injected, assist_mode)"
                 " VALUES (?, '2026-10-01T00:00:00+00:00', 's1', 'k1', ?, ?,"
-                " 1, ?, 'retrieve')",
+                " ?, ?, 'retrieve')",
                 (f"inj_{i}", lesson, "n/a" if lesson is None else "exact",
-                 0 if lesson is None else 240))
+                 0 if lesson is None else 1, 0 if lesson is None else 240))
     finally:
         conn.close()
 

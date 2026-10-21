@@ -70,17 +70,19 @@ def add_lesson(dbp, lesson_id="les1", status="verified",
 def add_injection(dbp, injection_id="inj1", lesson_id="les1",
                   ts=TS, tier="exact", chars=137, mode="block_duplicate",
                   failure_key=f"bash|keyerror|{SECRET}|a.py"):
-    """One injection-ledger row (issue #13). lesson_id None is the miss
-    case: a decision that considered the lesson store and had nothing to
-    offer. failure_key carries the marker secret so redaction is
-    asserted on this surface too."""
+    """One injection-ledger row (issue #13). The miss case is a decision
+    that considered the lesson store and injected nothing: that is
+    digest_injected 0, which is also how a row with no lesson_id has to
+    be written or the read side counts it as a hit. failure_key carries
+    the marker secret so redaction is asserted on this surface too."""
     _ins(dbp, "INSERT INTO learning_injections (injection_id, ts,"
           " session_id, event_id, failure_key, repo, lesson_id, tier,"
           " trigger_matched, digest_injected, chars_injected,"
           " assist_mode, redaction_status)"
-          " VALUES (?, ?, 's1', 'ev1', ?, '/repo', ?, ?, NULL, 1, ?, ?,"
+          " VALUES (?, ?, 's1', 'ev1', ?, '/repo', ?, ?, NULL, ?, ?, ?,"
           " 'redacted')",
-          (injection_id, ts, failure_key, lesson_id, tier, chars, mode))
+          (injection_id, ts, failure_key, lesson_id, tier,
+           1 if lesson_id else 0, chars, mode))
 
 
 def add_lesson_decision(dbp, decision_id="lds1", lesson_id="les1",
