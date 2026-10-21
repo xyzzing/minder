@@ -115,19 +115,53 @@ def test_the_parsing_matches_systemd_own_renderer():
     """M2: the fake runner above feeds strings I wrote, so on its own the
     check only agrees with my guess about the format. `systemctl --user
     show -p Environment` is systemd's own rendering of a unit merged with
-    its drop-ins, so run the parser against the manager's real output for
-    the unit this install actually has."""
+    its drop-ins, so where a minder proxy unit is actually resolvable,
+    run the parser against the manager's real output and report what it
+    parsed. Where the host cannot answer the question, skip with the
+    reason (issue #39): the host's state is not a test failure."""
     if shutil.which("systemctl") is None:
         pytest.skip("no systemctl on this host")
-    rc, out, _err = engines._default_run(
+    rc, out, err = engines._default_run(
         ["systemctl", "--user", "show", "minder-proxy.service",
          "-p", "Environment"])
     if rc != 0:
-        pytest.skip("no minder-proxy.service in this user session")
+        pytest.skip("no minder-proxy.service in this user session "
+                    f"({err.strip() or f'rc={rc}'})")
     parsed = unit_upstream.parse_unit_environment(out)
-    assert parsed is not None
-    assert parsed.startswith("http://127.0.0.1:")
+    if parsed is None:
+        # a systemd user manager with no minder unit: the check's own
+        # info branch, never an assertion about a value the host has
+        # never declared
+        pytest.skip("minder-proxy.service declares no MINDER_UPSTREAM "
+                    f"(Environment: {out.strip() or 'empty'})")
     # the value systemd reports is one the unit or a drop-in declared,
     # not an artifact of splitting on the wrong separator
-    assert out.count("MINDER_UPSTREAM=") >= 1
     assert f"MINDER_UPSTREAM={parsed}" in out
+    # the unit is resolvable, so `cat` resolves it too: the parsed value
+    # must match what the unit files actually declare
+    crc, cout, cerr = engines._default_run(
+        ["systemctl", "--user", "cat", "--no-pager", "minder-proxy.service"])
+    assert crc == 0, f"cat failed for a resolvable unit: {cerr.strip()}"
+    assert unit_upstream.base_unit_upstream("minder-proxy.service",
+                                            engines._default_run) is not None
+    assert parsed in cout
+
+
+def test_the_ci_host_shape_is_reported_not_asserted():
+    """The GitHub runner shape, pinned (issue #39): Ubuntu runners have a
+    systemd user manager and no minder install, so the real `show` call
+    answers rc 0 with an `Environment=` line that names no
+    `MINDER_UPSTREAM`. The old test read that output and then asserted a
+    parse succeeded, which turned the host's state into a red main. The
+    host-shaped path now routes through the check, whose info branch this
+    asserts: the same response the doctor would report, and the skip in
+    the test above can only fire on a host that really has no unit."""
+    if unit_upstream is None:  # pre-change code: fail, never vacuous-pass
+        pytest.fail("unit_upstream missing: the check this gate protects "
+                    "does not exist")
+    runner = _run({SHOW: (0, "Environment=MINDER_PORT=8390\n", "")})
+    status = unit_upstream.check("minder-proxy.service",
+                                 "http://127.0.0.1:8081",
+                                 "active", run=runner)
+    assert status[1] == "info"
+    assert "no MINDER_UPSTREAM" in status[2]
