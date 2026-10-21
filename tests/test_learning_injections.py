@@ -453,3 +453,40 @@ def test_ledger_failure_cannot_cost_the_agent_a_skill_section(tmp_path,
     assert out["action"] == "block_duplicate"
     assert "SKILL: diagnose-env" in out["digest"]
     assert rows(dbp, "SELECT * FROM learning_injections") == []
+
+
+def test_the_skill_row_is_written_by_the_injection_call_itself(tmp_path,
+                                                               monkeypatch):
+    """Issue #13 acceptance 3, carried by one self-contained test.
+
+    The other #13 assertions lean on module fixtures, and a gate that
+    runs this file against pre-change code needs at least one test that
+    needs nothing from outside itself. This one drives a skill-section
+    injection through policy.evaluate() and reads the row back: on code
+    before the change the ledger has no skill_name column and
+    injections_for_skill does not exist, so the injection cannot be
+    named and the assertion fails."""
+    body = tmp_path / "skill-body.md"
+    body.write_text("STEP ONE: confirm the runtime and PATH.")
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps([{
+        "name": "diagnose-env", "description": "environment failures",
+        "triggers": ["FileNotFoundError"], "risk_level": "low",
+        "body": str(body)}]))
+    monkeypatch.setattr(skill_load, "DEFAULT_INDEX", index)
+
+    dbp = tmp_path / "m.sqlite"
+    ev = {"session_id": "s-13-carrier", "hook_event_name": "PostToolUse",
+          "tool_name": "Bash", "repo": REPO,
+          "tool_input": {"command": "python3 app.py"},
+          "tool_response": "FileNotFoundError: [Errno 2] config.toml"}
+    for _ in range(3):
+        from_hook.record(ev, db_path=dbp)
+
+    out = memory_policy.evaluate(ev, warden(), db_path=dbp, repo=REPO)
+    assert "SKILL: diagnose-env" in out["digest"]
+
+    named = ledger.injections_for_skill("diagnose-env", db_path=dbp)
+    assert len(named) == 1
+    assert named[0]["skill_name"] == "diagnose-env"
+    assert named[0]["digest_injected"] == 1

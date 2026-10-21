@@ -108,7 +108,8 @@ def injections_for_skill(skill_name, db_path=None, limit=50):
         try:
             rows = conn.execute(
                 "SELECT injection_id, ts, session_id, failure_key, repo,"
-                " tier, digest_injected, chars_injected, assist_mode"
+                " skill_name, tier, digest_injected, chars_injected,"
+                " assist_mode"
                 " FROM learning_injections WHERE skill_name = ?"
                 " ORDER BY ts DESC LIMIT ?", (skill_name, int(limit))
             ).fetchall()
