@@ -64,6 +64,17 @@ def _ttl(cache):
         return DEFAULT_CACHE_SECS
 
 
+def reset_caches_for_tests():
+    """Drop every memoized read. The caches are keyed by root path with a
+    TTL, so a test that forgets to redirect MINDER_DSH_HOME leaves the
+    developer's real sessions under the default root's key; a later test
+    that reads the default root then renders the host's data and passes
+    its own leak guard. That cross-contamination is only reachable
+    through this module's cache, so the module owns the contract that
+    makes it impossible."""
+    _CACHE.clear()
+
+
 def _load_json(path):
     try:
         with open(path) as fh:

@@ -5,6 +5,11 @@ sorted UUIDs alphabetically and could only say "episodes: yes/no" (1 of 94
 sessions ever matched). These tests pin the replacement against a
 synthetic dsh home, so they never depend on the developer's own ~/.dsh.
 """
+import os
+import re
+
+import pytest
+
 import dshseed
 from fastapi.testclient import TestClient
 from minder_memory import db as _db
@@ -63,6 +68,29 @@ def _client(dbp, monkeypatch):
     return TestClient(app, base_url="http://127.0.0.1:8765")
 
 
+def _real_home():
+    """The developer's real DSH home, resolved before any fixture
+    redirect. `dsh_home()` after `_home` returns the fixture, and a leak
+    guard that reads it can only ever compare fixture paths with
+    fixture paths, which always passes."""
+    saved = {var: os.environ.pop(var, None)
+             for var in ("MINDER_DSH_HOME", "DSH_HOME")}
+    try:
+        return dsh_sessions.dsh_home()
+    finally:
+        for var, value in saved.items():
+            if value is not None:
+                os.environ[var] = value
+
+
+def _session_ids_in(text):
+    """The session ids the page actually rendered: the row links carry
+    one per session (`/sessions/<id>`), and the raw tier names the same
+    ids in its fields. A page rendered from the wrong root carries rows
+    whose ids are not the fixture's, whatever else it shows."""
+    return set(re.findall(r"/sessions/(session-[0-9a-f-]+)", text))
+
+
 def test_sessions_page_uses_the_real_workspace_and_title(tmp_path,
                                                          monkeypatch):
     _home(tmp_path, monkeypatch)
@@ -80,15 +108,54 @@ def test_sessions_page_lists_projection_and_log_metadata(tmp_path,
     _home(tmp_path, monkeypatch, steps=3)
     dbp = _db_with_session(tmp_path)
     text = _client(dbp, monkeypatch).get("/sessions").text
-    # no cross-contamination from the real host: assert the real host's
-    # session id is absent, not a bare digit substring. The raw tier
-    # prints the fixture's own mtime as a float (issue #12), and "93"
-    # is inside that float's digits - a guard that fails on the
-    # evidence it was asked to show
-    real = dsh_sessions.dsh_home() / "sessions"
+    # no cross-contamination from the real host, and the leak that is
+    # actually reachable is pinned, not assumed.
+    #
+    # The guard that stood here before asserted "93" was absent, a digit
+    # that happens to sit in the fixture's own epoch mtime; the raw tier
+    # (issue #12) prints that mtime in full, so it failed on the evidence
+    # it was asked to show. A bare number is not a leak.
+    #
+    # dsh_sessions caches by root path with a 5s TTL. A test that reads
+    # the real ~/.dsh without redirecting MINDER_DSH_HOME fills the
+    # cache under that root's key; a later read of the same root - the
+    # conftest default, or any test that forgot its redirect - returns
+    # the host's sessions. The page's rows are the derivation of that
+    # leak, so the guard poisons the cache on purpose and asserts the
+    # page still shows only the fixture. `reset_caches_for_tests` is the
+    # contract that makes it impossible; without it this test is red.
+    # The getattr is the proven-red gate's shape: the gate runs this
+    # file against pre-change code, where the contract does not exist,
+    # and the failure must name the missing contract instead of an
+    # accidental None.
+    reset = getattr(dsh_sessions, "reset_caches_for_tests", None)
+    real = _real_home() / "sessions"
+    fixture_rows = dsh_sessions.list_sessions(root=tmp_path / "dsh")["rows"]
+    assert len(fixture_rows) == 1
     if real.is_dir():
-        for name in (p.name for p in real.iterdir()):
-            assert name not in text, f"real host session {name} leaked"
+        # the contamination, reproduced: the page's own root is the
+        # conftest default, so prime that key with the real host's
+        # sessions and let the page read it from the cache
+        default_home = os.environ["MINDER_DSH_HOME"]
+        os.environ["MINDER_DSH_HOME"] = str(real.parent)
+        assert dsh_sessions.list_sessions()["rows"], \
+            "real host has no sessions to poison with; guard is vacuous"
+        os.environ["MINDER_DSH_HOME"] = default_home
+    text = _client(dbp, monkeypatch).get("/sessions").text
+    if reset is None:
+        # pre-change code: the contract this guard depends on is absent,
+        # so the contamination above is live - fail with the reason
+        pytest.fail("dsh_sessions has no reset_caches_for_tests: the "
+                    "cache contract this guard needs is missing")
+    reset()
+    leaked = [n for n in (p.name for proj in real.iterdir()
+                          if proj.is_dir() for p in proj.iterdir())
+              if f"/sessions/{n}" in text] if real.is_dir() else []
+    assert not leaked, f"real host sessions leaked into /sessions: {leaked}"
+    assert SID in text
+    assert len(_session_ids_in(text)) == len(fixture_rows), (
+        f"/sessions showed {len(_session_ids_in(text))} sessions for "
+        f"{len(fixture_rows)} fixture sessions")
     assert "v4" in text and "KiB" in text
 
 
