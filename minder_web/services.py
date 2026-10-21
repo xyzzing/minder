@@ -171,9 +171,22 @@ def lesson_detail(db_path, lesson_id):
     # the countable part; the note is the human part.
     decisions = _try(queries.lesson_decisions, db_path, lesson_id,
                      default=None)
+    # issue #22: and what the lesson was promoted from. A stated
+    # preference has no episode, so the page names the human input event
+    # and what was stated. A store predating either table reads as no
+    # source, not as an error.
+    source_id = row.get("source_human_input")
+    event = _try(queries.human_input_event, db_path, source_id,
+                 default=None) if source_id else None
+    # A store predating migration 017 has no such column at all, and the
+    # template reads the key. Say "no source" rather than leave the
+    # template guessing.
+    row["source_human_input"] = source_id
     return {"lesson": _safe_row(row, ("failure_key", "instruction",
                                       "anti_pattern",
                                       "verification_json")),
+            "human_input": _safe_row(event, ("question", "answer_summary",
+                                             "note")) if event else None,
             "injections": _safe_injection_rows(injections),
             "ledger_available": injections is not None,
             "decisions": _safe_decision_rows(decisions),

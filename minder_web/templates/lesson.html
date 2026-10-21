@@ -10,6 +10,13 @@
   <tr><th scope="row">{{ S.lesson.col_anti_pattern }}</th><td>{{ lesson.anti_pattern or '-' }}</td></tr>
   <tr><th scope="row">{{ S.lesson.col_verification }}</th><td>{{ lesson.verification_json or '-' }}</td></tr>
   <tr><th scope="row">{{ S.lesson.col_source_episode }}</th><td>{{ lesson.source_episode or '-' }}</td></tr>
+  {% if human_input %}
+  <tr><th scope="row">{{ S.lesson.human_input_title }}</th><td>{{ human_input.kind }}<span class="row-key">{{ human_input.event_id }}</span></td></tr>
+  <tr><th scope="row">{{ S.lesson.col_actor }}</th><td>{{ human_input.actor }} ({{ human_input.authority }})</td></tr>
+  <tr><th scope="row">{{ S.lesson.col_stated }}</th><td>{{ human_input.answer_summary or S.common.na }}</td></tr>
+  {% else %}
+  <tr><th scope="row">{{ S.lesson.human_input_title }}</th><td>{{ S.lesson.human_input_none }}</td></tr>
+  {% endif %}
   <tr><th scope="row">{{ S.lesson.col_valid_from }}</th><td>{{ lesson.valid_from or '-' }}</td></tr>
   <tr><th scope="row">{{ S.lesson.col_valid_to }}</th><td>{{ lesson.valid_to or '-' }}</td></tr>
   <tr><th scope="row">{{ S.lesson.col_diagnosis }}</th><td>{{ lesson.invalidated_diagnosis or S.common.na }}</td></tr>

@@ -154,6 +154,15 @@ S = {
         "col_source_episode": "source_episode",
         "col_valid_from": "valid_from", "col_valid_to": "valid_to",
         "col_diagnosis": "diagnosis",
+        # Issue #22: a lesson promoted from a stated preference names the
+        # human input event instead of an episode, and the reader needs
+        # the stated wording to judge it.
+        "human_input_title": "human input event",
+        "col_event": "event", "col_kind": "kind",
+        "col_actor": "stated by", "col_authority": "authority",
+        "col_stated": "stated",
+        "human_input_none": "no human input event - this lesson was "
+                            "promoted from an episode",
     },
     # "lesson_decisions", not "decisions": the top-level key already
     # names the decision-gateway page, and a duplicate key in a dict
