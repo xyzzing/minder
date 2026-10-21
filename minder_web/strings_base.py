@@ -191,12 +191,29 @@ S = {
         "unit": "open skill gap", "empty": "not available.",
     },
     "skills": {
-        "title": "skill index",
-        "gloss": "(live - metadata only, bodies stay operator-owned)",
+        "title": "skills installed",
+        "gloss": "(every skill the harness has - registered or not -"
+                 " metadata only, bodies stay operator-owned)",
         "col_name": "name", "col_description": "description",
         "col_triggers": "triggers", "col_risk": "risk",
-        "col_body": "body", "ok": "ok", "missing": "missing",
+        "col_body": "body", "col_source": "source",
+        "ok": "ok", "missing": "missing",
+        "no_triggers": "none registered",
+        "how_index": "registered", "how_installed": "installed only",
         "unit": "skill", "empty": "not available.",
+        "answer": {
+            "empty": "no skills are installed - nothing can be retrieved,"
+                     " so every failure looks like a gap. Install one or"
+                     " write one from the gaps page.",
+            "rows": "{installed} skill(s) installed.",
+            "rows_action": "{installed} skill(s) installed - {covered} of"
+                           " them have a registered trigger, so only those"
+                           " can fire on a failure; {unused} are visible"
+                           " but unused. {action}",
+            "no_cover": "{installed} skill(s) installed - none of them has"
+                        " a registered trigger, so no skill can fire on a"
+                        " failure yet. {action}",
+        },
     },
     "engine": {
         "title": "engines", "col_engine": "engine",

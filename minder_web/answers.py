@@ -31,22 +31,27 @@ def _answer_table(template):
 
 
 def _text(key, facts, level, action=None, table=None):
-    """Compose one answer from a strings entry. A missing placeholder
-    value falls back to the entry without the action clause, so a page
-    can never 500 on its own summary line. `section` names the strings
-    namespace to read: the shared `answer` copy, or a page's own section
-    when the sentence is specific to that page's data."""
+    """Compose one answer from a strings entry. A placeholder the caller
+    cannot fill falls back to a variant that needs no action clause, so a
+    page can never 500 on its own summary line and never prints an
+    unfilled `{...}` to the reader unless no variant fits at all.
+    `table` names the strings namespace to read: the shared `answer` copy,
+    or a page's own section when the sentence is specific to that page."""
     table = strings_copy.ANSWER if table is None else table
-    template = table[key]
-    if action is None and key + "_action" in table:
-        template = table[key + "_action"]
     fields = dict(facts)
     if action is not None:
         fields["action"] = action
-    try:
-        body = template.format(**fields)
-    except (KeyError, IndexError):
-        body = template
+    # order: the action variant when an action exists, then the plain one,
+    # so a page that has copy for both picks the sentence it can fill
+    order = (key + "_action", key) if action is not None else (key,
+                                                               key + "_action")
+    body = table.get(key, "")
+    for name in [n for n in order if n in table]:
+        try:
+            body = table[name].format(**fields)
+            break
+        except (KeyError, IndexError):
+            body = table[name]
     return {"lead": strings_copy.ANSWER["lead"], "body": body,
             "level": level}
 
@@ -57,6 +62,29 @@ def _rows_answer(ctx):
         return _text("empty", {"count": 0}, _LEVEL_WARN)
     return _text("rows", {"count": count}, _LEVEL_OK,
                  _first_action(ctx.get("actions")))
+
+
+def _skills_answer(ctx):
+    """/skills answers with two numbers, not one (issue #40): how many
+    skills are installed, and how many of them have a registered trigger.
+    The second is the one that decides whether a skill can ever fire, and
+    a single row count conflated them - 45 installed read as 5.
+
+    Both sentences carry the action clause: the number of skills that are
+    visible but cannot fire is the page's real finding, and a reader who
+    is told only how many exist cannot act on the difference."""
+    table = _answer_table("skills")
+    installed = int(ctx.get("installed") or 0)
+    covered = int(ctx.get("covered") or 0)
+    facts = {"installed": installed, "covered": covered,
+             "unused": installed - covered}
+    if not installed:
+        return _text("empty", facts, _LEVEL_WARN, table=table)
+    if not covered:
+        return _text("no_cover", facts, _LEVEL_WARN,
+                     _first_action(ctx.get("actions")), table=table)
+    return _text("rows", facts, _LEVEL_OK,
+                 _first_action(ctx.get("actions")), table=table)
 
 
 def answer_for(template, ctx):
@@ -76,6 +104,8 @@ def answer_for(template, ctx):
         return _difficulty_answer(ctx)
     if template == "domains":
         return _domains_answer(ctx)
+    if template == "skills":
+        return _skills_answer(ctx)
     if template == "capture":
         warnings = ctx.get("warnings") or ()
         if _capture_is_down({"sink": ctx.get("sink")}):

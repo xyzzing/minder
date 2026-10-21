@@ -512,28 +512,34 @@ def events_page(db_path, limit=DEFAULT_LIMIT, event_type=None, tool=None,
 
 
 def skills_page():
-    """Live skill index: metadata only (name, description, triggers,
-    risk) plus whether each body file is present. No body text is
-    served — the console is read-only and bodies are operator-owned."""
+    """Every skill the harness has, registered in the index or not
+    (issue #40): metadata only (name, description, triggers, risk),
+    whether each body file is present, and how the skill is known -
+    registered, or installed but unreferenced by the index. No body text
+    is served: the console is read-only and bodies are operator-owned.
+
+    The count of registered triggers is the page's answer, because it is
+    the difference between "we have skills" and "any of them can fire".
+    """
     try:
-        from minder_memory import skill_load
+        from minder_memory import skill_inventory
         rows = []
-        for meta in skill_load.list_skill_metadata():
-            name = meta.get("name")
-            if not name:
-                continue
-            full = skill_load.load_skill(name)
+        for entry in skill_inventory.inventory():
             rows.append({
-                "name": name,
-                "description": fmt.safe(meta.get("description"), 160),
+                "name": fmt.safe(entry.get("name"), 160),
+                "description": fmt.safe(entry.get("description"), 160),
                 "triggers": ", ".join(str(t) for t in
-                                      meta.get("triggers") or []),
-                "risk_level": meta.get("risk_level") or "?",
-                "body_ok": bool(full and full.get("instructions")),
+                                      entry.get("triggers") or []),
+                "risk_level": entry.get("risk_level") or "?",
+                "body_ok": bool(entry.get("body_ok")),
+                "source": fmt.safe(entry.get("source"), 160),
+                "indexed": bool(entry.get("indexed")),
             })
-        return {"rows": rows, "actions": page_actions.skill_actions(rows)}
+        covered = sum(1 for r in rows if r["triggers"])
+        return {"rows": rows, "installed": len(rows), "covered": covered,
+                "actions": page_actions.skill_actions(rows)}
     except Exception:
-        return {"rows": [], "actions": []}
+        return {"rows": [], "installed": 0, "covered": 0, "actions": []}
 
 
 def benchmarks_page():
