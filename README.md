@@ -38,11 +38,26 @@ other subject areas - trading, finance, sustainability, privacy law,
 resume work - under the same rules. See
 [Domains](#domains-one-governance-kernel-many-subject-areas) below.
 
-**How to read the rest of this file:** the first three sections are for
+**How to read the rest of this file:** the first four sections are for
 everyone. From "Requirements" on, it is operator and developer
 material - commands to type, configuration files, and test suites.
 Each command is shown with a plain-language comment saying what it
 answers.
+
+## Is this for you?
+
+minder runs on your own computer, watches one AI assistant at a time,
+and shows its evidence as terminal output and a local web page. There
+is nothing to double-click and nothing hosted anywhere.
+
+It will suit you if you run an AI coding assistant locally, you want a
+record of what it does and why, and you would rather have fixed rules
+spend a small second-opinion budget than let a model retry forever.
+
+It is not for you if you want a hosted service or team dashboard
+(minder is deliberately single-machine and single-user), a Windows
+program (not yet), or a tool that changes model behavior by itself
+(minder's models only propose; fixed rules decide).
 
 ## The pieces
 
@@ -123,11 +138,25 @@ kernel itself does not change.
   part of Linux that starts and restarts background programs for you);
   the generic proxy path works anywhere Python runs.
 
-## Quick start: look around (no model required)
+## Try it in two minutes (nothing installed, nothing sent)
 
 The operator tools read minder's local evidence store and work even
-without a running model. Type these in a terminal after cloning this
-repository (`git clone` downloads the code):
+without a running model. On a fresh machine they report empty state,
+which is itself the demonstration: this is what honesty about "nothing
+happened yet" looks like.
+
+You do not need a GitHub account. On this page, click the green
+**Code** button, then **Download ZIP**, then unzip the file anywhere.
+(If you already have git, `git clone
+https://github.com/xyzzing/minder` does the same thing and lets you
+update later with `git pull`; to update a ZIP download, download the
+new ZIP over the old folder.)
+
+Open a terminal, and move into the unzipped folder:
+
+```bash
+cd Downloads/minder-main      # the unzipped folder name ends in -main
+```
 
 ```bash
 git clone https://github.com/xyzzing/minder && cd minder
@@ -144,9 +173,32 @@ The web console shows the same evidence in a browser:
 
 ```bash
 pip install --user -r requirements-web.txt
-minder-web --port 8765 --db ~/.local/state/minder/memory.sqlite
-# then open http://127.0.0.1:8765
+python3 -m minder_web --port 8765 --db ~/.local/state/minder/memory.sqlite
+# then open http://127.0.0.1:8765  (127.0.0.1 means "this computer only")
 ```
+
+Nothing here configures an assistant, starts a model, or writes
+outside `~/.local/state/minder`. That is the next section's job.
+
+### Already running a local model? (Ollama, LM Studio, llama-server)
+
+minder attaches to what you already have. The generic install needs
+Python 3.10+ only - no Linux, no systemd - and speaks the standard
+OpenAI chat format, so anything that can point at a web address can
+point at minder's proxy instead:
+
+```bash
+./install.sh --generic --upstream http://127.0.0.1:11434/v1  # Ollama
+# LM Studio:  http://127.0.0.1:1234/v1
+# llama-server: http://127.0.0.1:8080
+```
+
+Then point your assistant at `http://127.0.0.1:8390/v1` instead of the
+model's own address. Every request now passes the supervisor: failures
+spotted, retries escalated on evidence, second opinions budgeted,
+everything logged locally. To go back, point your assistant at the
+model directly again - minder sits in front, not inside. Details and
+the deeper Linux integration follow in the next sections.
 
 Every page leads with one plain-language answer - what the page
 concludes and what to do first - then the tables, then a collapsed
@@ -389,7 +441,9 @@ from minder_core import compare_reports, failure_key, result_signature
 
 - Local-first: SQLite + JSONL logs in `~/.local/state/minder/`; the web
   console binds 127.0.0.1 only and refuses any other address; no
-  telemetry.
+  telemetry. Your work is never sent anywhere by minder itself; the
+  only optional outbound call is the second opinion, to a provider you
+  configure, after redaction.
 - Secrets and API-key-shaped strings are redacted when records are
   written; consult traces store hashes, never raw prompts or responses.
 - Fixed policy decides; models and classifiers propose. Corrections
@@ -425,12 +479,31 @@ laya models warm; `minder-op capture` is the check that says whether
 it is working. The mechanics and the ten monitored metrics are in
 [docs/operator-web.md](docs/operator-web.md#capture-how-the-hooks-persist).
 
+## Related projects
+
+minder is one layer of a local-AI stack. These are separate tools that
+slot in around it:
+
+- [sinter](https://github.com/xyzzing/sinter) - supervises the *engine*
+  process below minder: deterministic llama-server lifecycle, admission
+  checks, verifiable state, on AMD Radeon. minder supervises what the
+  assistant does; sinter supervises whether the thing serving the model
+  behaves.
+- [Strata](https://github.com/xyzzing/Strata) - the inference engine
+  this stack was measured on.
+- [awesome-dsh-plugin](https://github.com/xyzzing/awesome-dsh-plugin) -
+  plugins for the DeepSeek Harness (dsh), including the hooks minder
+  uses for first-class integration.
+
 ## Development
 
 ```bash
 python3 -m pytest -q        # no network, no model required
 ruff check .                # config: ruff.toml (CI enforces it)
 ```
+
+The test suite is the fastest way to see what minder promises: each
+test name is one behavior.
 
 Packaging: `pip wheel . --no-deps` builds a wheel of the operator plane
 + `minder_core` (entry points `minder-op` / `minder-web`, version
