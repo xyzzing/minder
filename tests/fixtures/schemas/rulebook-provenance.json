@@ -1,0 +1,11 @@
+{
+  "rows": [
+    {
+      "rule": "sg_carbon_tax.rate",
+      "source": "EPA Singapore",
+      "verification": "primary",
+      "verified_on": "2026-09-30"
+    }
+  ],
+  "schema": "roomwise.rulebook-provenance/v1"
+}

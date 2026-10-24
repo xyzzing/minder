@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-10-12T06:00:00Z",
+  "label_map": {
+    "finance/gst_invoice": "mechanical"
+  },
+  "model_fingerprint": {
+    "chat_template_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "engine": "strata 0.1.42-0ebe4053",
+    "model_id": "qwen3.8-flash-next",
+    "n_ctx": 131072,
+    "quant": "IQ3_S",
+    "weights_path": "/models/Qwen3.8-Flash-Next-IQ3_S-00001-of-00002.gguf"
+  },
+  "requires_approval": [
+    "effort_off_for_auto"
+  ],
+  "rules": [
+    {
+      "evidence": {
+        "families": [
+          "finance/gst_invoice"
+        ],
+        "n": 42,
+        "passed": 42,
+        "repeats": 3
+      },
+      "match": {
+        "contract": "task-difficulty/v1",
+        "label": "mechanical"
+      },
+      "room": {
+        "budget": null,
+        "effort": "off",
+        "max_tokens": 2048,
+        "reply_format": "json"
+      }
+    }
+  ],
+  "schema": "roomwise.room-policy/v1",
+  "source_report_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+}

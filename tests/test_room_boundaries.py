@@ -78,3 +78,66 @@ def test_runtime_imports_no_roomwise():
     files = _runtime_files()
     assert len(files) >= MIN_RUNTIME_FILES, f"scanned only {len(files)} files"
     assert violations(files, FORBIDDEN_IN_RUNTIME) == []
+
+
+# ---- two-sided schema contract (issue #44) ---------------------------------
+# SCHEMAS-room.md and the fixtures minder consumes are byte-identical
+# in both repos. The "byte-identical both sides" invariant lapsed once
+# silently; this gate holds minder's side to a recorded digest and,
+# whenever the sibling repo is on this machine (MINDER_ROOMWISE_REPO or
+# ../roomwise), compares the bytes directly. CI without the sibling
+# still catches minder-side drift through the digest.
+
+import hashlib
+
+import pytest
+
+SCHEMA_FILES = {
+    "SCHEMAS-room.md":
+        "13e268052e36dc720502cc3175481e9601ad098ace0b52f333f0eeec84d867c9",
+    "tests/fixtures/schemas/room-policy.json":
+        "93965e85ba0e0d018cf97755749d54cea4b6f41114fbde3068f9b6a70450b1d3",
+    "tests/fixtures/schemas/rulebook-provenance.json":
+        "a4700104650ee0a825a51c3db3f7062e8e7389a8f9d1f7e12decfbd15f53c119",
+    "tests/fixtures/schemas/minder-benchmark-report.json":
+        "7213b47945b479425c0cca30bc23abca4efc2071ef277bdbe4383d78be70de8a",
+}
+
+
+def _digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _roomwise_root():
+    import os
+    root = os.environ.get("MINDER_ROOMWISE_REPO")
+    if root:
+        return Path(root)
+    sibling = REPO.parent / "roomwise"
+    return sibling if (sibling / "docs" / "SCHEMAS-room.md").exists() \
+        else None
+
+
+def test_schema_contract_digests_hold():
+    for rel, want in SCHEMA_FILES.items():
+        path = REPO / rel
+        assert path.exists(), f"{rel} is missing from this side"
+        assert _digest(path) == want, (
+            f"{rel} changed; resync BOTH copies (minder and roomwise) "
+            "and update the digests in both gates together")
+
+
+def test_schema_contract_matches_roomwise_when_present():
+    root = _roomwise_root()
+    if root is None:
+        pytest.skip("sibling roomwise repo not on this machine")
+    pairs = [(REPO / "SCHEMAS-room.md",
+              root / "docs" / "SCHEMAS-room.md")]
+    for name in ("room-policy.json", "rulebook-provenance.json",
+                 "minder-benchmark-report.json"):
+        pairs.append((REPO / "tests" / "fixtures" / "schemas" / name,
+                      root / "tests" / "fixtures" / "schemas" / name))
+    for mine, theirs in pairs:
+        assert mine.read_bytes() == theirs.read_bytes(), (
+            f"{mine.name} drifted between minder and roomwise; the "
+            "contract is one document, resync both sides")
