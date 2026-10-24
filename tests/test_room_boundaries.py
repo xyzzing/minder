@@ -1,14 +1,15 @@
-"""Boundary gate for the Roomwise extraction (room runtime PRD, phase M0a).
+"""Boundary gate for the Roomwise extraction (room runtime PRD, M0a/M0b).
 
-Two directions, both settled by parsing imports rather than grepping text:
+M0b removed minder_domain_evals from this repository; the boundary now
+settles by parsing imports rather than grepping text:
 
-1. minder_domain_evals imports no minder runtime module, so it can move to
-   the Roomwise repository without dragging minder along.
-2. No minder runtime module imports roomwise; minder only reads Roomwise
-   output files (SCHEMAS-room.md) and works without them.
+1. The extracted package stays gone: reappearing means someone
+   reintroduced a second eval home (issue #44).
+2. No minder runtime module imports roomwise; minder only reads
+   Roomwise output files (SCHEMAS-room.md) and works without them.
 
-Each check asserts its own denominator (M2): a gate that scanned nothing
-must not report green.
+Each scan check asserts its own denominator (M2): a gate that scanned
+nothing must not report green.
 """
 from __future__ import annotations
 
@@ -22,9 +23,7 @@ RUNTIME_ROOT_MODULES = ("minder", "proxy", "adapter", "hook", "sink",
 RUNTIME_PACKAGES = ("minder_core", "minder_memory", "minder_decision",
                     "minder_trace", "minder_op", "minder_web",
                     "minder_quality", "dsh")
-FORBIDDEN_IN_EVALS = frozenset(RUNTIME_ROOT_MODULES + RUNTIME_PACKAGES)
 FORBIDDEN_IN_RUNTIME = frozenset({"roomwise", "roomwise_train"})
-MIN_EVALS_FILES = 8
 MIN_RUNTIME_FILES = 50
 
 
@@ -50,10 +49,6 @@ def violations(paths, forbidden):
     return found
 
 
-def _evals_files():
-    return sorted((REPO / EVALS_DIR).rglob("*.py"))
-
-
 def _runtime_files():
     files = [REPO / f"{name}.py" for name in RUNTIME_ROOT_MODULES
              if (REPO / f"{name}.py").exists()]
@@ -71,10 +66,12 @@ def test_detector_flags_planted_imports():
     assert imported_top_levels(clean) == {"json"}
 
 
-def test_evals_import_no_minder_runtime():
-    files = _evals_files()
-    assert len(files) >= MIN_EVALS_FILES, f"scanned only {len(files)} files"
-    assert violations(files, FORBIDDEN_IN_EVALS) == []
+def test_evals_package_stays_extracted():
+    """M0b removed minder_domain_evals; Roomwise is the only eval home.
+    If this fails, a second eval home reappeared in this repository."""
+    assert not (REPO / EVALS_DIR).exists(), \
+        f"{EVALS_DIR}/ reappeared; the Roomwise extraction (issue #44) " \
+        "left exactly one eval home"
 
 
 def test_runtime_imports_no_roomwise():

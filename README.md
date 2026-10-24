@@ -404,15 +404,12 @@ stated company policy. The suite also scores abstention
 document extraction, and metamorphic consistency (the same question in
 a different costume must get the same answer).
 
-```bash
-python3 -m minder_domain_evals selfcheck --seed 7 --n 200
-python3 -m minder_domain_evals generate --seed 7 --n 50 --out cases.jsonl
-python3 -m minder_domain_evals run --cases cases.jsonl --out answers.jsonl --model qwen-exec
-python3 -m minder_domain_evals score --cases cases.jsonl --answers answers.jsonl --out report.json
-```
-
-Details, rule provenance and limits:
-[docs/domain-evals.md](docs/domain-evals.md).
+The generators, grader and rule provenance for this suite live in a
+separate extraction project (Roomwise), not in this repository; minder
+keeps only the suites that test minder itself (coding, routing,
+difficulty). The console's `/domains` page still renders the rule
+provenance table when `rulebook_provenance_path` points at Roomwise's
+`rules --json` output, and shows "not available" otherwise.
 
 ## Use the pieces without the runtime
 

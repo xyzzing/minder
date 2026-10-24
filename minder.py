@@ -50,6 +50,9 @@ DEFAULTS = {
     "laya_timeout_ms": 1500,      # wall-clock cap on one classify pass
     "spend_guardrail_tokens": 50000,  # session thinking-token cap (0 = off)
     "difficulty_bands": {},       # optional per-label band overrides
+    # roomwise rulebook-provenance/v1 file for the console /domains
+    # page; None renders the not-available copy (issue #44)
+    "rulebook_provenance_path": None,
     # dual-engine registry (issue #3): name -> {"upstream": url, "unit":
     # systemd user unit}; installs without this key keep the legacy
     # single-upstream behavior resolved from MINDER_UPSTREAM

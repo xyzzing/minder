@@ -5,16 +5,25 @@ the eval suites and their pinned baselines, the domain rulebook's
 provenance grades, and the difficulty-router mode. Every source can be
 missing or malformed - each section degrades to a named "not
 available" instead of a 500. No SQL here and no policy: config comes
-from minder.cfg(), suites from minder_op.benchmark, rules from
-minder_domain_evals.rulebook.
+from minder.cfg(), suites from minder_op.benchmark, rule provenance
+from a Roomwise rulebook-provenance/v1 file (issue #44).
 """
 import json
 import os
+from pathlib import Path
 
 from minder_op import benchmark as bench
 from minder_op import format as fmt
 
 from minder_web.strings_base import NOT_AVAILABLE
+
+PROVENANCE_SCHEMA = "roomwise.rulebook-provenance/v1"
+
+# paths already logged as invalid: one diagnostic per bad file, like
+# the proxy's escalation-marker map — a loop of page loads must not
+# flood the ledger (bounded, dropped when full)
+_provenance_warned: set[str] = set()
+_PROVENANCE_WARN_CAP = 64
 
 # profile knobs shown on the page, in display order: (config key,
 # strings_pages label key)
@@ -100,18 +109,41 @@ def _suites_model():
 
 
 def _provenance_model():
+    """Rule provenance from a Roomwise rulebook-provenance/v1 file at
+    cfg key rulebook_provenance_path (issue #44). Absent or malformed
+    renders the not-available copy; a malformed file logs one
+    diagnostic so a producer bug cannot hide behind a silent n/a."""
+    global _provenance_warned
+    cfg, _cfg_error = _config()
+    path = cfg.get("rulebook_provenance_path")
+    if not path:
+        return {"rows": [], "error": None}
     try:
-        from minder_domain_evals import rulebook
-        rows = rulebook.provenance_table()
-        error = None
-    except Exception as e:  # noqa: BLE001 - degraded, named
-        return {"rows": [], "error": f"{type(e).__name__}: {e}"}
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        # an empty rows list is a producer bug (SCHEMAS-room.md §9),
+        # indistinguishable from a rulebook with no rules: refuse it
+        if (not isinstance(raw, dict)
+                or raw.get("schema") != PROVENANCE_SCHEMA
+                or not isinstance(raw.get("rows"), list)
+                or not raw["rows"]):
+            raise ValueError(
+                f"not a non-empty {PROVENANCE_SCHEMA} document")
+        rows = raw["rows"]
+    except (OSError, ValueError, TypeError) as exc:
+        if str(path) not in _provenance_warned \
+                and len(_provenance_warned) < _PROVENANCE_WARN_CAP:
+            import minder
+            minder.log("console", "rulebook_provenance_invalid",
+                       path=str(path),
+                       error=f"{type(exc).__name__}: {exc}")
+            _provenance_warned.add(str(path))
+        return {"rows": [], "error": None}
     safe = []
     for row in rows:
         row = dict(row)
         row["caveat"] = fmt.safe(row.get("caveat"), 160)
         safe.append(row)
-    return {"rows": safe, "error": error}
+    return {"rows": safe, "error": None}
 
 
 _ROUTER_TEXT = {

@@ -367,6 +367,19 @@ def test_every_raw_tier_renders_its_values(tmp_path, monkeypatch):
             "unsafe_executions": 0, "harmful_frontier_acceptances": 0,
             "external_prohibited_egress": 0}}))
     monkeypatch.setenv("MINDER_BENCHMARKS_DIR", str(bench))
+    # the provenance tier only renders when a rulebook-provenance/v1
+    # file is configured (Roomwise owns the rulebook since #44); seed
+    # one or the test would check a tier the page never shows
+    prov = tmp_path / "provenance.json"
+    prov.write_text(json.dumps({
+        "schema": "roomwise.rulebook-provenance/v1",
+        "rows": [{"rule": "sg_gst.rate", "verification": "primary",
+                  "verified_on": "2026-09-30", "source": "EPA",
+                  "caveat": "rate reviewed annually"}]}))
+    config = tmp_path / "minder.json"
+    config.write_text(json.dumps(
+        {"rulebook_provenance_path": str(prov)}))
+    monkeypatch.setenv("MINDER_CONFIG", str(config))
     # seed the rows the tiers read: an unseeded page renders a tier with
     # no rows, which is a real state but proves nothing about the tier
     dbp = new_db(tmp_path)

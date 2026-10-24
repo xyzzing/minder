@@ -29,13 +29,13 @@ def test_domains_page_renders_profile_suites_provenance(tmp_path,
     # active profile named, its override visible as a plain value
     assert "finance" in text
     assert "4096" in text
-    # suites listed with their plain-language verdicts
-    assert "legal-core-v1" in text and "finance-core-v1" in text
+    # the suites that stayed in minder are listed with their plain
+    # verdicts; the business-rule suites moved to Roomwise (#44)
+    assert "coding-core-v1" in text and "routing-core-v1" in text
+    assert "legal-core-v1" not in text
     assert "no pinned baseline yet" in text
-    # provenance grades rendered with the secondary gloss
-    assert "primary" in text and "secondary" in text
-    assert "re-verify before relying on it externally" in text
-    assert _PRIMARY_RULE in text
+    # no provenance file configured: the not-available copy, not a 500
+    assert "rulebook not available in this install." in text
     # seeded fixture secrets never reach the page
     assert SECRET not in text and HOSTILE not in text
 
@@ -62,6 +62,53 @@ def test_domains_page_malformed_config_is_a_named_error(tmp_path,
     assert resp.status_code == 200
     assert "JSONDecodeError" in resp.text
     assert "coding (default" in resp.text
+
+
+def test_domains_provenance_file_renders_rows(tmp_path, monkeypatch):
+    """A configured roomwise.rulebook-provenance/v1 file renders its
+    rows (issue #44, AT-M2): rule id, grade badge, caveat text."""
+    prov = tmp_path / "provenance.json"
+    prov.write_text(json.dumps({
+        "schema": "roomwise.rulebook-provenance/v1",
+        "rows": [{"rule": _PRIMARY_RULE, "verification": "primary",
+                  "verified_on": "2026-09-30", "source": "EPA",
+                  "caveat": "rate reviewed annually"}]}))
+    monkeypatch.setenv("MINDER_CONFIG", _config(tmp_path, {
+        "rulebook_provenance_path": str(prov)}))
+    dbp = new_db(tmp_path)
+    text = webseed.client_for(dbp, monkeypatch).get("/domains").text
+    assert _PRIMARY_RULE in text and "primary" in text
+    assert "rate reviewed annually" in text
+    assert "rulebook not available" not in text
+
+
+def test_domains_provenance_invalid_renders_na_and_logs_once(
+        tmp_path, monkeypatch):
+    """A malformed provenance file renders the same not-available copy
+    and logs exactly one diagnostic across repeated loads, so a Roomwise
+    producer bug cannot hide behind a silent n/a (AT-M2)."""
+    # minder.STATE_DIR binds at import (conftest pins it to a session
+    # tmp); patch the constant, not the env, to capture the ledger
+    state = tmp_path / "state"
+    monkeypatch.setattr("minder.STATE_DIR", state)
+    for name, body in (
+            ("wrong-schema.json", json.dumps({"schema": "other/v1",
+                                              "rows": [{"rule": "x"}]})),
+            ("empty-rows.json", json.dumps({
+                "schema": "roomwise.rulebook-provenance/v1", "rows": []})),
+            ("not-json.json", "{not json")):
+        bad = tmp_path / name
+        bad.write_text(body)
+        monkeypatch.setenv("MINDER_CONFIG", _config(tmp_path, {
+            "rulebook_provenance_path": str(bad)}))
+        dbp = new_db(tmp_path)
+        client = webseed.client_for(dbp, monkeypatch)
+        text = client.get("/domains").text
+        assert client.get("/domains").status_code == 200  # twice: log once
+        assert "rulebook not available in this install." in text
+        assert _PRIMARY_RULE not in text
+    events = (state / "events.jsonl").read_text()
+    assert events.count("rulebook_provenance_invalid") == 3  # once each
 
 
 def test_domains_page_routing_modes(tmp_path, monkeypatch):

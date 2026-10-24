@@ -1,8 +1,9 @@
 """Install staging gate (issue #8): every module the console or the
 operator CLI imports at runtime must be staged into the share by
-install.sh. minder_domain_evals (rulebook provenance) and benchmarks/
-(suite manifests + baselines) were missing, which left the live
-/domains page half-empty while every test stayed green."""
+install.sh. benchmarks/ (suite manifests + baselines) was missing,
+which left the live /domains page half-empty while every test stayed
+green. minder_domain_evals moved to Roomwise and is staged never
+(issue #44)."""
 from pathlib import Path
 
 INSTALL = Path(__file__).resolve().parents[1] / "install.sh"
@@ -10,7 +11,7 @@ INSTALL = Path(__file__).resolve().parents[1] / "install.sh"
 # modules staged with cp -R; files with cp -f are covered separately
 STAGED_DIRS = (
     "minder_memory", "minder_decision", "minder_core", "minder_op",
-    "minder_web", "minder_trace", "minder_domain_evals",
+    "minder_web", "minder_trace",
     "benchmarks", "skills", "presets",
 )
 
@@ -23,3 +24,7 @@ def test_install_stages_every_runtime_module():
         assert f'cp -R "$SRC/{module}" "$SHARE/"' in stage_block, \
             f"install.sh does not stage {module}/ - the live console " \
             "will degrade where the repo tests pass (M2)"
+    # the extracted evals package must not come back silently (#44)
+    assert 'cp -R "$SRC/minder_domain_evals"' not in stage_block
+    assert "Roomwise" in stage_block, \
+        "the informational line about the moved evals is gone"
