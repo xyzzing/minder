@@ -396,3 +396,120 @@ def test_atm12_coding_multiturn_reserve_stable_no_prefix_break(
         assert seen[2] == seen[0]
     finally:
         _stop(mock, srv)
+
+
+# ---- room apply (AT-M13) ----------------------------------------------------
+
+def _policy(tmp_path, **over):
+    policy = {
+        "schema": "roomwise.room-policy/v1",
+        "generated_at": "2026-10-25T00:00:00Z",
+        "source_report_sha256": "a" * 64,
+        "model_fingerprint": {"model_id": "qwen3.8-flash-next"},
+        "requires_approval": ["effort_off_for_auto"],
+        "rules": [
+            {"match": {"contract": "task-difficulty/v1", "label": "complex"},
+             "room": {"reply_format": "work", "effort": "low",
+                      "budget": 1024, "max_tokens": 4096},
+             "evidence": {"families": ["finance/npv"], "passed": 21,
+                          "n": 30, "repeats": 3}},
+            {"match": {"contract": "task-difficulty/v1",
+                       "label": "mechanical"},
+             "room": {"reply_format": "json", "effort": "off",
+                      "budget": None, "max_tokens": 2048},
+             "evidence": {"families": ["finance/gst_invoice"],
+                          "passed": 42, "n": 42, "repeats": 3}}],
+        "label_map": {"finance/npv": "complex"},
+    }
+    policy.update(over)
+    path = tmp_path / "room-policy.json"
+    path.write_text(json.dumps(policy))
+    return path
+
+
+_CAPS = {"fingerprint": {"model_id": "qwen3.8-flash-next"}}
+
+
+def test_atm13_room_apply_refusals_and_opt_in(tmp_path, monkeypatch):
+    from minder_op import room_apply
+    monkeypatch.setattr(minder_state_target(), "STATE_DIR",
+                        tmp_path / "state")
+    config = tmp_path / "minder.json"
+    config.write_text(json.dumps({"difficulty_bands": {}}))
+
+    def run(policy, **kw):
+        return room_apply.apply_policy(
+            str(policy), config_path=str(config), caps=_CAPS, **kw)
+
+    # unknown schema major refused
+    bad = _policy(tmp_path, schema="roomwise.room-policy/v2")
+    code, msg = run(bad)
+    assert code == 1 and "v2" in msg
+    # fingerprint mismatch refused; override applies and logs
+    code, msg = run(_policy(tmp_path, model_fingerprint={
+        "model_id": "other-model"}))
+    assert code == 1 and "mismatch" in msg
+    code, msg = run(_policy(tmp_path, model_fingerprint={
+        "model_id": "other-model"}), allow_mismatch=True)
+    assert code == 0 and "difficulty_bands" in msg
+    # effort-off rule skipped without the opt-in, applied with it
+    code, msg = run(_policy(tmp_path))
+    assert code == 0
+    assert "effort_off_for_auto" in msg
+    # nothing written: config untouched in every dry run above
+    assert json.loads(config.read_text()) == {"difficulty_bands": {}}
+    code, msg = run(_policy(tmp_path), opt_ins=("effort_off_for_auto",))
+    assert "skipped" not in msg
+    assert "mechanical" in msg and "off" in msg
+
+
+def test_atm13_room_apply_reserve_refusal(tmp_path):
+    from minder_op import room_apply
+    config = tmp_path / "minder.json"
+    config.write_text("{}")
+    starve = _policy(tmp_path, rules=[
+        {"match": {"contract": "task-difficulty/v1",
+                   "label": "expert_or_ambiguous"},
+         "room": {"reply_format": "json", "effort": "xhigh",
+                  "budget": 12000, "max_tokens": 2048}}])
+    code, msg = room_apply.apply_policy(
+        str(starve), config_path=str(config), caps=_CAPS)
+    assert code == 1 and "expert_or_ambiguous" in msg
+    assert json.loads(config.read_text()) == {}
+
+
+def test_atm13_room_apply_write_verifies_and_logs(tmp_path, monkeypatch):
+    from minder_op import room_apply
+    state = tmp_path / "state"
+    monkeypatch.setattr(minder_state_target(), "STATE_DIR", state)
+    config = tmp_path / "minder.json"
+    config.write_text(json.dumps({"profile": "finance",
+                                  "difficulty_bands":
+                                      {"routine": {"effort": "low"}}}))
+    code, msg = room_apply.apply_policy(
+        str(_policy(tmp_path)), write=True, config_path=str(config),
+        caps=_CAPS)
+    assert code == 0 and "backup" in msg
+    written = json.loads(config.read_text())
+    assert written["profile"] == "finance"  # other keys survive
+    assert written["difficulty_bands"]["complex"] == \
+        {"effort": "low", "budget": 1024, "max_tokens": 4096}
+    assert "routine" not in written["difficulty_bands"]  # replaced set
+    assert (tmp_path / "minder.json.bak-room").exists()
+    events = [json.loads(ln) for ln in
+              (state / "events.jsonl").read_text().splitlines() if ln]
+    applied = [e for e in events if e.get("event") == "room_policy_applied"]
+    assert len(applied) == 1
+    assert applied[0]["source_report_sha256"] == "a" * 64
+    assert applied[0]["rules"] == 1 and applied[0]["skipped"] == 1
+
+
+def test_atm13_room_apply_reports_evidence_and_reply_format(tmp_path):
+    from minder_op import room_apply
+    config = tmp_path / "minder.json"
+    config.write_text("{}")
+    code, msg = room_apply.apply_policy(
+        str(_policy(tmp_path)), config_path=str(config), caps=_CAPS)
+    assert code == 0
+    assert "finance/npv" in msg          # evidence provenance printed
+    assert "advisory" in msg             # reply_format=work reported

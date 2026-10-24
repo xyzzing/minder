@@ -65,6 +65,25 @@ def build_parser():
 
     sub.add_parser("status", help="one screen: schema, counts, flags")
     sub.add_parser("flags", help="show MINDER_* decision flags (read-only")
+    room = sub.add_parser("room", help=(
+        "room runtime (issue #46): apply a roomwise.room-policy/v1 file "
+        "to difficulty bands"))
+    room_sub = room.add_subparsers(dest="subcommand")
+    room_ap = room_sub.add_parser("apply", help=(
+        "validate + translate a room policy (dry run by default; "
+        "--write backs up the config and verifies)"))
+    room_ap.add_argument("--policy", required=True,
+                         help="path to the room-policy JSON")
+    room_ap.add_argument("--opt-in", action="append", default=[],
+                         choices=["effort_off_for_auto"], help=(
+                             "approve a default-changing rule "
+                             "(repeatable)"))
+    room_ap.add_argument("--write", action="store_true", help=(
+        "write the config; default prints the diff only"))
+    room_ap.add_argument("--allow-fingerprint-mismatch",
+                         action="store_true", help=(
+                             "apply despite a model fingerprint "
+                             "mismatch (logged)"))
     eng = sub.add_parser("engine", help=(
         "dual-engine registry: unit state, upstream health, lifecycle "
         "switch (issue #3)"))
@@ -567,6 +586,8 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_engine_status(args)
     if command == "engine" and sub == "switch":
         return _cmd_engine_switch(args)
+    if command == "room" and sub == "apply":
+        return _cmd_room_apply(args)
     if command == "doctor":
         return _cmd_doctor(args)
     if command == "events" and sub == "ls":
@@ -781,6 +802,15 @@ def _cmd_flags():
     print()
     print(DEFERRED)
     return EXIT_OK
+
+
+def _cmd_room_apply(args):
+    from minder_op import room_apply
+    code, message = room_apply.apply_policy(
+        args.policy, opt_ins=args.opt_in, write=args.write,
+        allow_mismatch=args.allow_fingerprint_mismatch)
+    print(message, file=sys.stderr if code else sys.stdout)
+    return code
 
 
 def _cmd_engine_status(args):
@@ -1729,7 +1759,7 @@ def main(argv=None):
     needs_db = args.command not in ("flags", "export-stats", "benchmark",
                                     "quality", "doctor", "capture",
                                     "scorecard", "trace", "engine",
-                                    "calibrate")
+                                    "calibrate", "room")
     if needs_db:
         code = _guard_db(path)
         if code != EXIT_OK:

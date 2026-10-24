@@ -27,6 +27,27 @@ _ENFORCED_STEP = ("thinking budgets are advisory on this engine: every "
                   "or accept advisory budgets knowingly")
 
 
+def reserve_violations(overrides, cfg=None):
+    """Labels whose band (defaults merged with overrides) cannot fund
+    both its budget and the answer reserve under its own max_tokens
+    ceiling. Shared by the doctor check and `room apply`'s pre-write
+    lint, so the two can never disagree about what breaks."""
+    cfg = cfg or {}
+    bands = dict(DEFAULT_BANDS)
+    for label, override in (overrides or {}).items():
+        if isinstance(override, dict):
+            bands[label] = {**bands.get(label, {}), **override}
+    reserve = cfg.get("answer_reserve_tokens", ANSWER_RESERVE_TOKENS)
+    reserve = max(ROOM_RESERVE_FLOOR, reserve)
+    breaking = []
+    for label, band in sorted(bands.items()):
+        budget, ceiling = band.get("budget"), band.get("max_tokens")
+        if isinstance(budget, int) and isinstance(ceiling, int) \
+                and budget + reserve > ceiling:
+            breaking.append(label)
+    return breaking
+
+
 def room_checks(cfg=None, caps=None, events_ledger=None, now=None):
     """Returns a list of doctor-shaped checks. Never raises on missing
     inputs - a missing caps file is itself the finding."""
@@ -46,18 +67,9 @@ def room_checks(cfg=None, caps=None, events_ledger=None, now=None):
                        "detail": "thinking_budget_enforced is "
                                  f"{enforced!r}; {_ENFORCED_STEP}"})
 
-    reserve = cfg.get("answer_reserve_tokens", ANSWER_RESERVE_TOKENS)
-    reserve = max(ROOM_RESERVE_FLOOR, reserve)
-    breaking = []
-    bands = dict(DEFAULT_BANDS)
-    for label, override in (cfg.get("difficulty_bands") or {}).items():
-        if isinstance(override, dict):
-            bands[label] = {**bands.get(label, {}), **override}
-    for label, band in sorted(bands.items()):
-        budget, ceiling = band.get("budget"), band.get("max_tokens")
-        if isinstance(budget, int) and isinstance(ceiling, int) \
-                and budget + reserve > ceiling:
-            breaking.append(label)
+    breaking = reserve_violations(cfg.get("difficulty_bands"), cfg)
+    reserve = max(ROOM_RESERVE_FLOOR,
+                  cfg.get("answer_reserve_tokens", ANSWER_RESERVE_TOKENS))
     if breaking:
         checks.append({"id": "room_band_reserve", "status": "warn",
                        "detail": "band(s) " + ", ".join(breaking) +
