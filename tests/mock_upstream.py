@@ -15,6 +15,11 @@ Behaviors (constructor arg):
   slow             — sleeps 0.3 s before answering (queue serialization tests)
   context_400      — 400 with a strata-shaped context-overflow message when
                      max_tokens > 600, otherwise a normal reply
+  starved          — finish_reason "length" with empty content (the room
+                     ate the whole completion; issue #45)
+  truncated        — finish_reason "length" with partial content
+  sse_starved      — SSE stream ending in finish_reason "length" with no
+                     content deltas (streaming starved room)
 Records every request body to .requests (list) for body assertions (AT-7b, AT-16).
 """
 import json
@@ -77,6 +82,23 @@ class MockUpstream:
                     self._json(400, {"error": {"message":
                         "reasoning_effort rejected"}})
                     return
+                if outer.behavior == "sse_starved":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    for chunk in (
+                            b'data: {"choices": [{"delta": {}, '
+                            b'"finish_reason": null}]}\n\n',
+                            b'data: {"choices": [{"delta": {}, '
+                            b'"finish_reason": "length"}]}\n\n',
+                            b"data: [DONE]\n\n"):
+                        half = max(1, len(chunk) // 2)
+                        self.wfile.write(chunk[:half])
+                        self.wfile.flush()
+                        self.wfile.write(chunk[half:])
+                        self.wfile.flush()
+                    return
                 if outer.behavior in ("sse", "sse_usage"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
@@ -119,7 +141,11 @@ class MockUpstream:
                     else:
                         ctk = body.get("chat_template_kwargs") or {}
                         want_think = bool(ctk.get("enable_thinking", True))
-                if outer.behavior == "reasoning_content" and want_think:
+                if outer.behavior == "starved":
+                    msg = {"role": "assistant", "content": ""}
+                elif outer.behavior == "truncated":
+                    msg = {"role": "assistant", "content": THINK_BLOCK[:20]}
+                elif outer.behavior == "reasoning_content" and want_think:
                     msg = {"role": "assistant", "content": PLAIN,
                            "reasoning_content": THINK_BLOCK[8:-9]}
                 elif want_think:
@@ -129,7 +155,10 @@ class MockUpstream:
                 resp = {"id": "mock", "object": "chat.completion",
                         "model": body.get("model", "mock") if body else "mock",
                         "choices": [{"index": 0, "message": msg,
-                                     "finish_reason": "stop"}]}
+                                     "finish_reason":
+                                         "length" if outer.behavior in
+                                         ("starved", "truncated")
+                                         else "stop"}]}
                 if outer.behavior == "json_usage":
                     resp["usage"] = {"prompt_tokens": 11,
                                      "completion_tokens": 5,

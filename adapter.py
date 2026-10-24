@@ -384,6 +384,15 @@ def run_cap(base_url, cfg=None, post=None, get=None):
                           "detail": tool_detail or None}
     if conc is not None:
         caps["concurrency"] = conc
+    # budget ENFORCEMENT is measured, not assumed (issue #45, F2):
+    # acceptance only means "not a 400". A softswitch mechanism has no
+    # budget to enforce, so the probe runs for kwargs only; failure to
+    # measure leaves the fragment out entirely (reads as null).
+    if mechanism == "kwargs" and budget_supported:
+        from minder_decision.room_probe import probe_budget_enforcement
+        fragment = probe_budget_enforcement(post)
+        if fragment is not None:
+            caps["thinking"].update(fragment)
     return caps, None
 
 

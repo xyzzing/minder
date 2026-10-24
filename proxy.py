@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adapter
 import minder
+from minder_decision import room
 from minder_decision import router as decision_router
 
 _KNOWN_EFFORTS = set(decision_router.KNOWN_EFFORTS)
@@ -350,6 +351,12 @@ def apply_pipeline(req, session_fp, mode=None):
             ctk = dict(req.get("chat_template_kwargs") or {})
             ctk["thinking_budget"] = MODE_BUDGET[mode]
             req["chat_template_kwargs"] = ctk
+        req = _reserve_room(req, session_fp, minder.cfg())
+        ctk = req.get("chat_template_kwargs") or {}
+        _note_room_applied(
+            session_fp, None,
+            ctk.get("thinking_budget") if isinstance(ctk, dict) else None,
+            req.get("max_tokens"))
         _note_prefix(session_fp, req)
 
     um = active.get("upstream_model")
@@ -364,6 +371,65 @@ def apply_pipeline(req, session_fp, mode=None):
 _ESC_SEEN = {}
 _ESC_LOCK = threading.Lock()
 _ESC_MAX = 1024
+
+
+# Room the pipeline actually applied, per session (issue #45): the
+# relay reads it back to classify the outcome. Same bounded shape as
+# _ESC_SEEN. A session absent here was not routed (no preset) and gets
+# no room_outcome row.
+_ROOM_APPLIED = {}
+_ROOM_LOCK = threading.Lock()
+
+# sessions already warned that budgets are advisory on this engine
+_BUDGET_WARNED = set()
+_BUDGET_WARN_LOCK = threading.Lock()
+
+
+def _note_room_applied(session_fp, effort, budget, max_tokens):
+    try:
+        with _ROOM_LOCK:
+            if len(_ROOM_APPLIED) >= _ESC_MAX and \
+                    session_fp not in _ROOM_APPLIED:
+                _ROOM_APPLIED.pop(next(iter(_ROOM_APPLIED)))
+            _ROOM_APPLIED[session_fp] = {
+                "effort": effort, "budget": budget,
+                "max_tokens": max_tokens}
+    except Exception:  # noqa: BLE001 - observation only, fail-open
+        pass
+
+
+def _room_applied(session_fp):
+    try:
+        with _ROOM_LOCK:
+            return _ROOM_APPLIED.get(session_fp)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _reserve_room(req, session_fp, cfg):
+    """Answer-reserve clamp + budget-enforcement audit, both fail-open
+    (issue #45). Placed immediately before _note_prefix so any kwargs
+    change surfaces in the existing cache_prefix_break audit."""
+    try:
+        req, event = room.reserve_budget(req, cfg)
+        if event:
+            minder.log(session_fp, event.pop("event"), **event)
+        ctk = req.get("chat_template_kwargs") or {}
+        if isinstance(ctk, dict) and ctk.get("thinking_budget"):
+            caps = get_caps() or {}
+            if (caps.get("thinking") or {})\
+                    .get("thinking_budget_enforced") is not True:
+                with _BUDGET_WARN_LOCK:
+                    first = session_fp not in _BUDGET_WARNED
+                    if first and len(_BUDGET_WARNED) < _ESC_MAX:
+                        _BUDGET_WARNED.add(session_fp)
+                if first:
+                    minder.log(session_fp, "budget_unenforced",
+                               budget=ctk["thinking_budget"])
+    except Exception as exc:  # noqa: BLE001 - never block a request
+        minder.log(session_fp, "room_reserve_error",
+                   error=f"{type(exc).__name__}: {exc}")
+    return req
 
 
 def _note_escalation(session_fp, level):
@@ -552,6 +618,12 @@ def apply_auto_pipeline(req, preset, escalated, session_fp, mode=None,
             req["chat_template_kwargs"] = ctk
     else:
         req["chat_template_kwargs"] = {"enable_thinking": want}
+    req = _reserve_room(req, session_fp, cfg)
+    ctk = req.get("chat_template_kwargs") or {}
+    _note_room_applied(
+        session_fp, effort,
+        ctk.get("thinking_budget") if isinstance(ctk, dict) else None,
+        req.get("max_tokens"))
     _note_prefix(session_fp, req)
     um = preset.get("upstream_model")
     if um:
@@ -582,11 +654,30 @@ class Handler(BaseHTTPRequestHandler):
         u = ev.get("usage")
         if isinstance(u, dict) and u.get("prompt_tokens") is not None:
             self._usage = u
+        # room outcome tracking (issue #45): last finish_reason, visible
+        # content size, any tool call - lengths only, never text
+        sse = getattr(self, "_room_sse", None)
+        if sse is not None:
+            choices = ev.get("choices")
+            ch = choices[0] if isinstance(choices, list) and choices else {}
+            if isinstance(ch, dict):
+                delta = ch.get("delta") or {}
+                if isinstance(delta, dict):
+                    sse["content_chars"] += len(delta.get("content") or "")
+                    sse["tool_calls"] = sse["tool_calls"] or \
+                        bool(delta.get("tool_calls"))
+                if ch.get("finish_reason"):
+                    sse["finish_reason"] = ch["finish_reason"]
         return not (watch == "swallow" and ev.get("choices") == [])
 
     def _relay_sse(self, up, watch):
         """Byte-exact SSE relay; reassembles lines only to find the usage
         event (injected streams swallow it, passive streams forward as-is)."""
+        # outcome tracking only when a watch is active; the passthrough
+        # path relays bytes without parsing, so its outcome is unknown
+        self._room_sse = ({"content_chars": 0, "tool_calls": False,
+                           "finish_reason": None}
+                          if watch is not None else None)
         buf = b""
         while True:
             chunk = up.read(4096)
@@ -638,6 +729,23 @@ class Handler(BaseHTTPRequestHandler):
                 u = ev.get("usage")
                 if isinstance(u, dict) and u.get("prompt_tokens") is not None:
                     self._usage = u
+                # room outcome (issue #45): finish_reason and visible
+                # sizes from the buffered JSON; lengths only
+                choices = ev.get("choices")
+                ch = choices[0] if isinstance(choices, list) and choices \
+                    else {}
+                if isinstance(ch, dict):
+                    msg = ch.get("message") or {}
+                    self._room_summary = {
+                        "stream": False,
+                        "finish_reason": ch.get("finish_reason"),
+                        "content_chars": len(
+                            (msg.get("content") if isinstance(msg, dict)
+                             else None) or ""),
+                        "tool_calls": bool(
+                            isinstance(msg, dict)
+                            and msg.get("tool_calls")),
+                    }
             self.wfile.write(body)
             self.wfile.flush()
 
@@ -661,6 +769,49 @@ class Handler(BaseHTTPRequestHandler):
                        "token_usage", engine=minder.engine_registry()[1],
                        **flat, **details)
 
+    def _log_room_outcome(self):
+        """One room_outcome row per routed response (issue #45). Fail-open:
+        a classifier bug costs one diagnostic line, never the response.
+        A relayed response nobody parsed classifies as unknown, not fit."""
+        try:
+            fp = getattr(self, "_fp", None)
+            applied = _room_applied(fp)
+            if applied is None:
+                return  # not a routed request (no preset, no room)
+            sse = getattr(self, "_room_sse", None)
+            if sse is not None:
+                summary = dict(sse)
+                summary["stream"] = True
+            else:
+                summary = getattr(self, "_room_summary", None) or \
+                    {"finish_reason": None}
+            usage = getattr(self, "_usage", None) or {}
+            details = usage.get("completion_tokens_details")
+            if isinstance(details, dict):
+                summary.setdefault("reasoning_tokens",
+                                   details.get("reasoning_tokens"))
+            summary.setdefault("completion_tokens",
+                               usage.get("completion_tokens"))
+            minder.log(fp, "room_outcome",
+                       **room.classify_outcome(summary, applied))
+        except Exception as exc:  # noqa: BLE001 - observation only
+            minder.log(getattr(self, "_fp", None), "room_outcome_error",
+                       error=f"{type(exc).__name__}: {exc}")
+
+    def _room_fail(self, stage):
+        """room_outcome=error for a routed request that never relayed
+        (upstream refused or died); the room cannot be judged."""
+        try:
+            fp = getattr(self, "_fp", None)
+            if _room_applied(fp) is None:
+                return
+            minder.log(fp, "room_outcome", stage=stage,
+                       **room.classify_outcome(
+                           {"error": True, "finish_reason": None}, None))
+        except Exception as exc:  # noqa: BLE001
+            minder.log(getattr(self, "_fp", None), "room_outcome_error",
+                       error=f"{type(exc).__name__}: {exc}")
+
     def _relay(self, up):
         self.send_response(up.status)
         ctype = None
@@ -676,6 +827,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         self._usage = None
+        self._room_summary = None
+        self._room_sse = None
         watch = getattr(self, "_usage_watch", None)
         try:
             if (ctype or "").lower().startswith("text/event-stream"):
@@ -684,6 +837,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._relay_body(up)
         finally:
             self._log_usage()
+            self._log_room_outcome()
 
     def _forward_raw(self, body=None, parsed=None):
         headers = {"Content-Type": self.headers.get("Content-Type",
@@ -716,6 +870,7 @@ class Handler(BaseHTTPRequestHandler):
                     except urllib.error.HTTPError as e2:
                         up = e2
                 else:
+                    self._room_fail("upstream_" + str(e.code))
                     self._respond(e.code, captured,
                                   e.headers.get("Content-Type")
                                   if e.headers else None)
@@ -723,6 +878,7 @@ class Handler(BaseHTTPRequestHandler):
             if up is None:
                 up = e
         except Exception:
+            self._room_fail("upstream_unreachable")
             msg = json.dumps({"error": {"message":
                 f"minder: upstream unreachable at {UPSTREAM} (fail-open: "
                 f"transport is honest — fix upstream or bypass the proxy)",

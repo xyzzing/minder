@@ -23,7 +23,7 @@ import minder
 from minder_op import benchmark as bench
 from minder_op.ages import age_text as _age_text
 from minder_op import queries, router
-from minder_op import rollout, unit_upstream
+from minder_op import rollout, unit_upstream, room_checks
 from minder_op.worker import worker_check
 from minder_op.queries import DBError
 
@@ -306,6 +306,16 @@ def run_checks(db_path, probe=True, now=None, proxy_config=None,
         add("baseline", "ok",
             f"{len(baselines)} pinned: "
             + ", ".join(row["suite_id"] for row in baselines))
+
+    # room runtime (issue #45): enforcement, band reserve, starved
+    # share; a caps file that cannot be read still runs the checks
+    try:
+        caps = json.loads(minder.caps_path().read_text())
+    except (OSError, ValueError):
+        caps = None
+    for check in room_checks.room_checks(minder.cfg(), caps or {},
+                                         events_ledger):
+        add(check["id"], check["status"], check["detail"])
 
     # Engine registry (issue #3): which engine is active, is its unit
     # running, is its upstream answering; warn when two engine units run

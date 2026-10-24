@@ -581,8 +581,11 @@ def test_token_usage_injected_and_swallowed(proxy_over_mock, tmp_path,
         assert b"he" in raw and b"llo" in raw and b"[DONE]" in raw
         assert b"prompt_tokens" not in raw
         assert _wait_ledger(ledger)
-        line = ledger.read_text().strip().splitlines()[-1]
-        ev = json.loads(line)
+        # room_outcome lands after token_usage now (issue #45); find
+        # the row instead of trusting line order
+        ev = next(json.loads(ln) for ln in
+                  reversed(ledger.read_text().strip().splitlines())
+                  if json.loads(ln).get("event") == "token_usage")
         assert ev["event"] == "token_usage"
         assert ev["prompt_tokens"] == 7 and ev["completion_tokens"] == 3
         assert ev["cached_tokens"] == 4
@@ -605,7 +608,9 @@ def test_token_usage_passive_when_client_asked(proxy_over_mock, tmp_path,
         assert mock.last_body["stream_options"]["include_usage"] is True
         assert b"prompt_tokens" in raw and b"[DONE]" in raw
         assert _wait_ledger(ledger)
-        ev = json.loads(ledger.read_text().strip().splitlines()[-1])
+        ev = next(json.loads(ln) for ln in
+                  reversed(ledger.read_text().strip().splitlines())
+                  if json.loads(ln).get("event") == "token_usage")
         assert ev["event"] == "token_usage" and ev["prompt_tokens"] == 7
     finally:
         stop(mock, srv)
@@ -621,7 +626,9 @@ def test_token_usage_non_streaming(proxy_over_mock, tmp_path, monkeypatch):
                                                     "content": "hi"}]})
         assert st == 200 and body["usage"]["total_tokens"] == 16
         assert _wait_ledger(ledger)
-        ev = json.loads(ledger.read_text().strip().splitlines()[-1])
+        ev = next(json.loads(ln) for ln in
+                  reversed(ledger.read_text().strip().splitlines())
+                  if json.loads(ln).get("event") == "token_usage")
         assert ev["event"] == "token_usage" and ev["reasoning_tokens"] == 4
     finally:
         stop(mock, srv)
