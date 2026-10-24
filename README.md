@@ -335,6 +335,17 @@ minder-op engine status             # rows: active flag, unit state, health
 minder-op engine switch strata --yes
 ```
 
+### Room policies
+
+A room policy says how much room to think each task difficulty should
+get, measured by the separate Roomwise project (a sweep over the graded
+suites). `minder-op room apply --policy room-policy.json` validates the
+file, checks the model fingerprint against the live engine, and shows
+the `difficulty_bands` diff it would write; `--write` backs up the
+config first, and rules that would flip a minder default (thinking off
+in automatic mode) need an explicit `--opt-in`. Dry run by default —
+nothing changes until you say so.
+
 The console exposes the same switch at `/engine`: the row links to a
 confirm step that names the unit it will stop and the upstream it will
 flip, and the switch itself still needs the POST from that page (issue
