@@ -1,0 +1,16 @@
+{
+  "template_id": "trade-ucp600-working",
+  "family": "trade",
+  "status": "evidence_checked",
+  "producer_profile": "qwen3.8-flash-next",
+  "applicability": {"model_specific": true},
+  "provenance": {
+    "source": "a1 contract finding: UCP600 cells fail on unsupported conclusions without article-level working; structural undeclared-no-route class",
+    "exported": "2026-10-25"
+  },
+  "payload": {
+    "system_hint": "For letter-of-credit presentation questions, cite the governing article inside <work></work> tags before concluding.",
+    "suffix_template": "Before answering, write brief working inside <work></work> tags: name the UCP600 article(s) that govern the question, list the date or amount facts you extracted, and state the rule you applied to them. Then finish with exactly one JSON object and nothing outside it."
+  },
+  "est_tokens": 200
+}

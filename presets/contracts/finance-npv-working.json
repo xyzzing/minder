@@ -1,0 +1,17 @@
+{
+  "template_id": "finance-npv-working",
+  "family": "finance",
+  "kind": "npv",
+  "status": "evidence_checked",
+  "producer_profile": "qwen3.8-flash-next",
+  "applicability": {"model_specific": true},
+  "provenance": {
+    "source": "a1 arms B vs A (EVIDENCE.md section 8.3, finance-7-00001: 31-token JSON-only wrong, ~752-token working correct; seed-8 A-to-B +41.5pt)",
+    "exported": "2026-10-25"
+  },
+  "payload": {
+    "system_hint": "For arithmetic tasks, reason step by step inside <work></work> tags before writing your final answer.",
+    "suffix_template": "Before answering, write brief step-by-step working inside <work></work> tags: state the formula, the substituted values, and each intermediate result. Then finish with exactly one JSON object and nothing outside it."
+  },
+  "est_tokens": 200
+}

@@ -61,9 +61,24 @@ def reserve_violations(overrides, cfg=None):
     return breaking
 
 
-def room_checks(cfg=None, caps=None, events_ledger=None, now=None):
+def doctor_checks(cfg=None, caps=None, events_ledger=None, now=None):
+    """The room checks plus the template-store check, with the store
+    actually loaded - the one I/O step the doctor owes this module
+    (room_checks itself stays I/O-free). Deferred import: room_apply
+    imports this module for the reserve lint."""
+    from minder_op.room_apply import load_templates
+    templates, problems = load_templates()
+    return room_checks(cfg, caps, events_ledger, now,
+                       contracts_loaded=len(templates),
+                       contract_problems=problems)
+
+
+def room_checks(cfg=None, caps=None, events_ledger=None, now=None,
+                contracts_loaded=0, contract_problems=()):
     """Returns a list of doctor-shaped checks. Never raises on missing
-    inputs - a missing caps file is itself the finding."""
+    inputs - a missing caps file is itself the finding. The template
+    inputs come from the caller (minder_op.room_apply.load_templates)
+    because this module stays I/O-free."""
     cfg = cfg or {}
     caps = caps or {}
     now = time.time() if now is None else now
@@ -92,6 +107,15 @@ def room_checks(cfg=None, caps=None, events_ledger=None, now=None):
         checks.append({"id": "room_band_reserve", "status": "ok",
                        "detail": f"all bands leave a {reserve}-token "
                                  "answer reserve"})
+
+    if contract_problems:
+        checks.append({"id": "contract_templates", "status": "warn",
+                       "detail": "output-contract template problem(s): "
+                                 + "; ".join(contract_problems[:3])})
+    else:
+        checks.append({"id": "contract_templates", "status": "ok",
+                       "detail": f"{contracts_loaded} output-contract "
+                                 "template(s) loaded (issue #47)"})
 
     total = starved = 0
     if events_ledger is not None:
