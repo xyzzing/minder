@@ -28,15 +28,22 @@ SCORE_LABELS = (
 # 2026-10-07 policy: automatic mode selects exactly low/medium/high/xhigh
 # — no band schedules off/minimal, so even mechanical tasks think at low
 # (its ceiling is sized to leave room for reasoning tokens).
+# `contract` names an output-contract template (issue #47) the band
+# wants injected; None means plain output. contract_sha256, when set by
+# a room-policy rule, pins the template's payload digest (fail-closed).
 DEFAULT_BANDS = {
     "mechanical": {"level": 0, "effort": "low", "budget": None,
-                   "max_tokens": 8192, "guardrail": None},
+                   "max_tokens": 8192, "guardrail": None,
+                   "contract": None},
     "routine": {"level": 1, "effort": "medium", "budget": 2048,
-                "max_tokens": 8192, "guardrail": None},
+                "max_tokens": 8192, "guardrail": None,
+                "contract": None},
     "complex": {"level": 2, "effort": "high", "budget": 10240,
-                "max_tokens": 32768, "guardrail": "spend"},
+                "max_tokens": 32768, "guardrail": "spend",
+                "contract": None},
     "expert_or_ambiguous": {"level": 2, "effort": "xhigh", "budget": 12000,
-                            "max_tokens": 32768, "guardrail": "spend"},
+                            "max_tokens": 32768, "guardrail": "spend",
+                            "contract": None},
 }
 
 
@@ -146,7 +153,7 @@ def _band_for_label(label, cfg):
         if isinstance(override, dict):
             merged = dict(bands[label])
             for key in ("level", "effort", "budget", "max_tokens",
-                        "guardrail"):
+                        "guardrail", "contract", "contract_sha256"):
                 if key in override and override[key] is not None:
                     merged[key] = override[key]
             bands[label] = merged
@@ -167,7 +174,8 @@ def apply_band(req, band, cfg):
     budget/ceiling). Returns the applied params for logging.
     max_tokens is a ceiling: min(current, band ceiling) — never raised."""
     applied = {"effort": band.get("effort"), "budget": band.get("budget"),
-               "max_tokens": None, "guardrail": band.get("guardrail")}
+               "max_tokens": None, "guardrail": band.get("guardrail"),
+               "contract": band.get("contract")}
     budget = band.get("budget")
     if budget is not None:
         try:
