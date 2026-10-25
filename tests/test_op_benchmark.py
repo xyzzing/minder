@@ -349,3 +349,48 @@ def test_list_baselines_read_model(tmp_root):
     assert rows[0]["status"] == "ok"
     assert rows[0]["fingerprint"] == FP_A[:12]
     assert rows[0]["rate"] == 0.9
+
+
+# --- measurement-backbone metrics (issue #48) -------------------------------
+# Optional on v1: a report without them did not measure them, which is
+# never a validation failure; present, they must be well-formed. None
+# of them is a gate (issue #24's law): validation shapes, never judges.
+
+def test_backbone_metrics_absent_still_validates():
+    assert bench.validate_report(make_report()) == []
+
+
+def test_backbone_metrics_well_formed_validate():
+    report = make_report(metrics=dict(make_report()["metrics"],
+                                      pass_k=0.81,
+                                      cost_per_correct={"tokens": 1840,
+                                                        "usd": 0.0042},
+                                      gco2e_per_correct=0.128))
+    assert bench.validate_report(report) == []
+
+
+@pytest.mark.parametrize("mutate,fragment", [
+    (lambda r: r["metrics"].__setitem__("pass_k", 1.5), "pass_k"),
+    (lambda r: r["metrics"].__setitem__("pass_k", "high"), "pass_k"),
+    (lambda r: r["metrics"].__setitem__("cost_per_correct", 12),
+     "cost_per_correct"),
+    (lambda r: r["metrics"].__setitem__(
+        "cost_per_correct", {"tokens": -5}), "tokens"),
+    (lambda r: r["metrics"].__setitem__(
+        "cost_per_correct", {"tokens": "lots"}), "tokens"),
+    (lambda r: r["metrics"].__setitem__(
+        "cost_per_correct", {"usd": "cheap"}), "usd"),
+    (lambda r: r["metrics"].__setitem__("gco2e_per_correct", -1),
+     "gco2e_per_correct"),
+    (lambda r: r["metrics"].__setitem__("gco2e_per_correct", "green"),
+     "gco2e_per_correct"),
+])
+def test_backbone_metrics_malformed_are_rejected(mutate, fragment):
+    report = make_report(metrics=dict(make_report()["metrics"],
+                                      pass_k=0.5,
+                                      cost_per_correct={"tokens": 100,
+                                                        "usd": 0.001},
+                                      gco2e_per_correct=0.1))
+    mutate(report)
+    errors = bench.validate_report(report)
+    assert errors and fragment in " ".join(errors)
