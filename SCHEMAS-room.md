@@ -99,17 +99,26 @@ Producer: Roomwise `policy`. Consumer: minder `minder-op room apply`.
                  "passed": 42, "n": 42, "repeats": 3}},
    {"match": {"contract": "task-difficulty/v1", "label": "complex"},
     "room": {"reply_format": "work", "effort": "low", "budget": 1024,
-             "max_tokens": 4096},
+             "max_tokens": 4096,
+             "contract": {"name": "finance-npv-working", "sha256": "<64 hex>"}},
     "evidence": {"families": ["finance/npv"], "passed": 21, "n": 30, "repeats": 3}}],
  "label_map": {"finance/npv": "complex", "finance/gst_invoice": "mechanical"},
- "requires_approval": ["effort_off_for_auto"]}
+ "requires_approval": ["effort_off_for_auto", "prompt_contract_for_auto"]
 ```
 
 - `match` keys are labels minder can see at runtime (a Laya contract
   label), never benchmark family names, because live requests have no
   family. `label_map` records how families were mapped to labels.
-- `room.reply_format: "work"` is advisory for minder in v1 (minder does not
-  rewrite prompts); minder applies `effort`, `budget` and `max_tokens`.
+- `room.reply_format: "work"` is advisory: minder never rewrites prompts
+  from it. minder applies `effort`, `budget` and `max_tokens` directly.
+- `room.contract` (optional) names an output-contract template and may pin
+  its payload sha256. minder applies it only when the policy lists
+  `prompt_contract_for_auto` in `requires_approval` AND the operator
+  passes `--opt-in prompt_contract_for_auto`; only for non-streaming
+  automatic-mode requests; only from the local template store
+  (`presets/contracts/`) with a matching digest; and only when the band
+  can fund the template's est_tokens under its own ceiling. Otherwise the
+  rule is skipped or the apply refused, with the reason reported.
 - `requires_approval` lists policy choices that change a minder default
   (for example thinking off in automatic mode). minder refuses them unless
   the operator passes the matching opt-in.

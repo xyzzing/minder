@@ -513,3 +513,115 @@ def test_atm13_room_apply_reports_evidence_and_reply_format(tmp_path):
     assert code == 0
     assert "finance/npv" in msg          # evidence provenance printed
     assert "advisory" in msg             # reply_format=work reported
+
+
+# ---- room.contract rules (issue #47) ----------------------------------------
+
+def _template(**over):
+    tpl = {"template_id": "finance-npv-working",
+           "family": "finance",
+           "status": "evidence_checked",
+           "producer_profile": "qwen3-8b-local",
+           "applicability": {"model_specific": True},
+           "payload": {"system_hint": "Work inside <work></work>.",
+                       "suffix_template": "Then answer with one JSON."},
+           "est_tokens": 180}
+    tpl.update(over)
+    return tpl
+
+
+def _contract_policy(tmp_path, sha=None, approvals=("effort_off_for_auto",
+                                                   "prompt_contract_for_auto")):
+    room = {"reply_format": "work", "effort": "high", "budget": 10240,
+            "max_tokens": 32768,
+            "contract": {"name": "finance-npv-working"}}
+    if sha:
+        room["contract"]["sha256"] = sha
+    return _policy(tmp_path, requires_approval=list(approvals), rules=[
+        {"match": {"contract": "task-difficulty/v1", "label": "complex"},
+         "room": room,
+         "evidence": {"families": ["finance/npv"], "passed": 21, "n": 30,
+                      "repeats": 3}}])
+
+
+def test_atm14_contract_rule_skipped_without_operator_opt_in(tmp_path):
+    from minder_op import room_apply
+    config = tmp_path / "minder.json"
+    config.write_text("{}")
+    code, msg = room_apply.apply_policy(
+        str(_contract_policy(tmp_path)), config_path=str(config),
+        caps=_CAPS, templates={"finance-npv-working": _template()})
+    assert code == 0
+    assert "prompt_contract_for_auto" in msg and "skipped" in msg
+    assert json.loads(config.read_text()) == {}  # dry run regardless
+
+
+def test_atm14_contract_rule_skipped_when_policy_never_asks(tmp_path):
+    from minder_op import room_apply
+    config = tmp_path / "minder.json"
+    config.write_text("{}")
+    code, msg = room_apply.apply_policy(
+        str(_contract_policy(tmp_path, approvals=("effort_off_for_auto",))),
+        config_path=str(config), caps=_CAPS,
+        opt_ins=("prompt_contract_for_auto",),
+        templates={"finance-npv-working": _template()})
+    assert code == 0
+    assert "requires_approval" in msg
+
+
+def test_atm14_contract_rule_applies_name_and_digest_pin(tmp_path):
+    from minder_decision.output_contracts import payload_digest
+    from minder_op import room_apply
+    tpl = _template()
+    policy = _contract_policy(tmp_path, sha=payload_digest(tpl))
+    config = tmp_path / "minder.json"
+    config.write_text("{}")
+    code, msg = room_apply.apply_policy(
+        str(policy), config_path=str(config), caps=_CAPS, write=True,
+        opt_ins=("prompt_contract_for_auto",),
+        templates={"finance-npv-working": tpl})
+    assert code == 0, msg
+    band = json.loads(config.read_text())["difficulty_bands"]["complex"]
+    assert band["contract"] == "finance-npv-working"
+    assert band["contract_sha256"] == payload_digest(tpl)
+    assert band["budget"] == 10240 and band["effort"] == "high"
+
+
+def test_atm14_contract_rule_refuses_unknown_template(tmp_path):
+    from minder_op import room_apply
+    config = tmp_path / "minder.json"
+    config.write_text("{}")
+    code, msg = room_apply.apply_policy(
+        str(_contract_policy(tmp_path)), config_path=str(config),
+        caps=_CAPS, opt_ins=("prompt_contract_for_auto",), templates={})
+    assert code == 1 and "not in the local store" in msg
+    assert json.loads(config.read_text()) == {}
+
+
+def test_atm14_contract_rule_refuses_digest_mismatch(tmp_path):
+    from minder_op import room_apply
+    config = tmp_path / "minder.json"
+    config.write_text("{}")
+    code, msg = room_apply.apply_policy(
+        str(_contract_policy(tmp_path, sha="c" * 64)),
+        config_path=str(config), caps=_CAPS,
+        opt_ins=("prompt_contract_for_auto",),
+        templates={"finance-npv-working": _template()})
+    assert code == 1 and "digest mismatch" in msg
+    assert json.loads(config.read_text()) == {}
+
+
+def test_atm14_contract_rule_refused_when_room_cannot_fund_it(tmp_path):
+    from minder_op import room_apply
+    config = tmp_path / "minder.json"
+    config.write_text("{}")
+    starved = _contract_policy(tmp_path)
+    policy = json.loads(starved.read_text())
+    policy["rules"][0]["room"]["max_tokens"] = 4096  # 10240+512+180 > 4096
+    starved.write_text(json.dumps(policy))
+    code, msg = room_apply.apply_policy(
+        str(starved), config_path=str(config), caps=_CAPS,
+        opt_ins=("prompt_contract_for_auto",),
+        templates={"finance-npv-working": _template()})
+    assert code == 1 and "complex" in msg
+    assert json.loads(config.read_text()) == {}
