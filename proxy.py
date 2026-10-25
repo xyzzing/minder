@@ -562,6 +562,46 @@ def _apply_contract(req, band, session_fp, cfg):
                    error=f"{type(exc).__name__}: {exc}")
 
 
+def _apply_lessons(req, label, session_fp, cfg):
+    """Lessons at the proxy (issue #48): the declared memory
+    contribution. Opt-in (`proxy_lessons` + `proxy_lessons_repo`);
+    minder_memory renders the authority-limited block and journals
+    every decision in the #13 ledger, this side only lands it in the
+    system message and logs. Fail-open: the block can never block a
+    request."""
+    if not cfg.get("proxy_lessons"):
+        return
+    try:
+        from minder_memory import proxy_assist
+        summary = proxy_assist.assist(session_id=session_fp, label=label,
+                                      repo=cfg.get("proxy_lessons_repo"),
+                                      cfg=cfg)
+        if not summary:
+            return
+        if not summary.get("injected"):
+            minder.log(session_fp, "lesson_proxy_miss", label=label,
+                       repo=summary.get("repo"))
+            return
+        messages = req.get("messages")
+        if not isinstance(messages, list) or not messages \
+                or not isinstance(messages[0], dict) \
+                or not isinstance(messages[0].get("content"), str):
+            minder.log(session_fp, "lesson_proxy_skipped",
+                       why="no-system-message")
+            return
+        if messages[0].get("role") == "system":
+            messages[0]["content"] += "\n\n" + summary["block"]
+        else:
+            messages.insert(0, {"role": "system",
+                                "content": summary["block"]})
+        minder.log(session_fp, "lesson_proxy_injected", label=label,
+                   n_lessons=summary["n_lessons"],
+                   chars=summary["chars"], digest=summary["digest"])
+    except Exception as exc:  # noqa: BLE001 - never block a request
+        minder.log(session_fp, "lesson_proxy_error",
+                   error=f"{type(exc).__name__}: {exc}")
+
+
 def _apply_band_opinion(opinion, req, session_fp, cfg):
     """Apply a laya band to the request and audit it. Returns the applied
     params. The spending guardrail downgrades one band on a session already
@@ -580,6 +620,7 @@ def _apply_band_opinion(opinion, req, session_fp, cfg):
                guardrail=applied["guardrail"],
                direction=_routed_direction(band, req))
     _apply_contract(req, band, session_fp, cfg)
+    _apply_lessons(req, label, session_fp, cfg)
     return (applied["effort"], applied["budget"], applied["guardrail"])
 
 
