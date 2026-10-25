@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adapter
 import minder
+from minder_decision import output_contracts
 from minder_decision import room
 from minder_decision import router as decision_router
 
@@ -74,6 +75,14 @@ def load_presets():
 
 
 PRESETS = load_presets()
+
+# Output-contract templates (issue #47): share-dir statics, config-dir
+# overrides (a later directory wins). Loaded once at startup; the
+# doctor surfaces load problems — the request path only ever sees a
+# resolved template or a logged skip reason.
+_CONTRACTS, _CONTRACT_PROBLEMS = output_contracts.load_contracts(
+    (SHARE_DIR / "presets" / "contracts",
+     CONFIG_DIR / "presets" / "contracts"))
 
 
 def _config_stamp():
@@ -526,6 +535,33 @@ def _downgrade_band(band, session_fp, cfg):
     return new_band
 
 
+def _apply_contract(req, band, session_fp, cfg):
+    """Output-contract scaffolding for the applied band (issue #47).
+    Opt-in (`prompt_contracts`), non-streaming, digest-pinned and
+    status-floored by resolve_contract; every refusal logs its reason
+    and the request goes out untouched. Fail-open: an injection bug
+    must never block a request."""
+    try:
+        record, why = output_contracts.resolve_contract(
+            req, band, _CONTRACTS,
+            opt_in=bool(cfg.get("prompt_contracts")))
+        if record is None:
+            if why:
+                minder.log(session_fp, "contract_skipped", why=why,
+                           contract=band.get("contract"))
+            return
+        summary = output_contracts.apply_contract(req, record)
+        if summary.get("applied"):
+            minder.log(session_fp, "contract_applied", **summary)
+        else:
+            minder.log(session_fp, "contract_skipped",
+                       why=summary.get("why"),
+                       contract=record.get("template_id"))
+    except Exception as exc:  # noqa: BLE001 - never block a request
+        minder.log(session_fp, "contract_error",
+                   error=f"{type(exc).__name__}: {exc}")
+
+
 def _apply_band_opinion(opinion, req, session_fp, cfg):
     """Apply a laya band to the request and audit it. Returns the applied
     params. The spending guardrail downgrades one band on a session already
@@ -543,6 +579,7 @@ def _apply_band_opinion(opinion, req, session_fp, cfg):
                budget=applied["budget"], max_tokens=applied["max_tokens"],
                guardrail=applied["guardrail"],
                direction=_routed_direction(band, req))
+    _apply_contract(req, band, session_fp, cfg)
     return (applied["effort"], applied["budget"], applied["guardrail"])
 
 

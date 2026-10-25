@@ -2,6 +2,7 @@
 the answer reserve, the room_outcome ledger, the budget-enforcement
 probe and the doctor checks. AT-M4 through AT-M12."""
 import json
+import pathlib
 import threading
 import time
 import urllib.request
@@ -625,3 +626,89 @@ def test_atm14_contract_rule_refused_when_room_cannot_fund_it(tmp_path):
         templates={"finance-npv-working": _template()})
     assert code == 1 and "complex" in msg
     assert json.loads(config.read_text()) == {}
+
+
+# ---- proxy contract injection (issue #47) -----------------------------------
+
+def _events(ledger):
+    try:
+        return [json.loads(ln) for ln in
+                pathlib.Path(ledger).read_text().splitlines() if ln]
+    except OSError:
+        return []
+
+
+def test_proxy_contract_applied_and_audited(tmp_path, monkeypatch):
+    import proxy as proxy_mod
+    from minder_decision.output_contracts import payload_digest
+    monkeypatch.setattr(minder_state_target(), "STATE_DIR", tmp_path)
+    band = {"label": "complex", "effort": "high", "budget": 10240,
+            "max_tokens": 32768, "guardrail": None,
+            "contract": "finance-npv-working"}
+    tpl = {"template_id": "finance-npv-working",
+           "status": "evidence_checked", "producer_profile": "p",
+           "applicability": {"model_specific": True},
+           "payload": {"system_hint": "hint", "suffix_template": "sfx"},
+           "est_tokens": 180}
+    monkeypatch.setattr(proxy_mod, "_CONTRACTS",
+                        {"finance-npv-working": tpl})
+    req = {"messages": [{"role": "user", "content": "q"}], "max_tokens": 32768}
+    cfg = {"prompt_contracts": True}
+    proxy_mod._apply_band_opinion(("complex", band), req, "sess-c", cfg)
+    assert req["messages"][-1]["content"].endswith("sfx")
+    events = _events(tmp_path / "events.jsonl")
+    applied = [e for e in events if e.get("event") == "contract_applied"]
+    assert len(applied) == 1
+    assert applied[0]["contract"] == "finance-npv-working"
+    assert applied[0]["est_tokens"] == 180
+    # digest pin honored: a wrong pin refuses the whole injection
+    band["contract_sha256"] = payload_digest(
+        {**tpl, "payload": {**tpl["payload"], "suffix_template": "other"}})
+    req2 = {"messages": [{"role": "user", "content": "q"}]}
+    proxy_mod._apply_band_opinion(("complex", band), req2, "sess-d", cfg)
+    assert req2["messages"][-1]["content"] == "q"
+    skips = [e for e in _events(tmp_path / "events.jsonl")
+             if e.get("event") == "contract_skipped"]
+    assert skips and skips[-1]["why"] == "digest-mismatch"
+
+
+def test_proxy_contract_opt_in_gate_and_streaming_skip(tmp_path, monkeypatch):
+    import proxy as proxy_mod
+    monkeypatch.setattr(minder_state_target(), "STATE_DIR", tmp_path)
+    band = {"label": "complex", "contract": "finance-npv-working"}
+    tpl = {"template_id": "finance-npv-working",
+           "status": "evidence_checked", "producer_profile": "p",
+           "applicability": {"model_specific": True},
+           "payload": {"system_hint": "", "suffix_template": "sfx"},
+           "est_tokens": 180}
+    monkeypatch.setattr(proxy_mod, "_CONTRACTS",
+                        {"finance-npv-working": tpl})
+    # opt-in off: skipped, untouched
+    req = {"messages": [{"role": "user", "content": "q"}]}
+    proxy_mod._apply_band_opinion(("complex", band), req, "sess-a", {})
+    assert req["messages"][-1]["content"] == "q"
+    skips = [e for e in _events(tmp_path / "events.jsonl")
+             if e.get("event") == "contract_skipped"]
+    assert skips[-1]["why"] == "no-opt-in"
+    # streaming request: skipped even with opt-in
+    req = {"messages": [{"role": "user", "content": "q"}], "stream": True}
+    proxy_mod._apply_band_opinion(("complex", band), req, "sess-b",
+                                  {"prompt_contracts": True})
+    assert req["messages"][-1]["content"] == "q"
+    skips = [e for e in _events(tmp_path / "events.jsonl")
+             if e.get("event") == "contract_skipped"]
+    assert skips[-1]["why"] == "streaming"
+
+
+def test_proxy_contract_silent_when_band_schedules_none(tmp_path, monkeypatch):
+    import proxy as proxy_mod
+    monkeypatch.setattr(minder_state_target(), "STATE_DIR", tmp_path)
+    band = {"label": "routine", "effort": "medium", "budget": 2048,
+            "max_tokens": 8192, "guardrail": None, "contract": None}
+    req = {"messages": [{"role": "user", "content": "q"}]}
+    applied = proxy_mod._apply_band_opinion(("routine", band), req, "sess-e",
+                                            {"prompt_contracts": True})
+    assert applied[0] == "medium"
+    assert req["messages"][-1]["content"] == "q"
+    assert not [e for e in _events(tmp_path / "events.jsonl")
+                if e.get("event", "").startswith("contract_")]
