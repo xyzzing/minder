@@ -29,8 +29,11 @@ _ENFORCED_STEP = ("thinking budgets are advisory on this engine: every "
 
 def reserve_violations(overrides, cfg=None):
     """Labels whose band (defaults merged with overrides) cannot fund
-    both its budget and the answer reserve under its own max_tokens
-    ceiling. Shared by the doctor check and `room apply`'s pre-write
+    its budget, the answer reserve, and — when the band schedules an
+    output contract (issue #47) — that contract's est_tokens under its
+    own max_tokens ceiling. A contract whose est_tokens the caller did
+    not supply breaks the band: an unverifiable room is treated as no
+    room. Shared by the doctor check and `room apply`'s pre-write
     lint, so the two can never disagree about what breaks."""
     cfg = cfg or {}
     bands = dict(DEFAULT_BANDS)
@@ -39,11 +42,21 @@ def reserve_violations(overrides, cfg=None):
             bands[label] = {**bands.get(label, {}), **override}
     reserve = cfg.get("answer_reserve_tokens", ANSWER_RESERVE_TOKENS)
     reserve = max(ROOM_RESERVE_FLOOR, reserve)
+    est_by_name = cfg.get("contract_est_tokens") or {}
     breaking = []
     for label, band in sorted(bands.items()):
         budget, ceiling = band.get("budget"), band.get("max_tokens")
-        if isinstance(budget, int) and isinstance(ceiling, int) \
-                and budget + reserve > ceiling:
+        if not (isinstance(budget, int) and isinstance(ceiling, int)):
+            continue
+        name = band.get("contract")
+        if not name:
+            if budget + reserve > ceiling:
+                breaking.append(label)
+            continue
+        est = est_by_name.get(name)
+        if not isinstance(est, int) or isinstance(est, bool):
+            breaking.append(label)
+        elif budget + reserve + est > ceiling:
             breaking.append(label)
     return breaking
 
