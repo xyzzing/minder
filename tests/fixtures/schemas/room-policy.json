@@ -12,7 +12,8 @@
     "weights_path": "/models/Qwen3.8-Flash-Next-IQ3_S-00001-of-00002.gguf"
   },
   "requires_approval": [
-    "effort_off_for_auto"
+    "effort_off_for_auto",
+    "prompt_contract_for_auto"
   ],
   "rules": [
     {
@@ -33,6 +34,30 @@
         "effort": "off",
         "max_tokens": 2048,
         "reply_format": "json"
+      }
+    },
+    {
+      "evidence": {
+        "families": [
+          "finance/npv"
+        ],
+        "n": 30,
+        "passed": 21,
+        "repeats": 3
+      },
+      "match": {
+        "contract": "task-difficulty/v1",
+        "label": "complex"
+      },
+      "room": {
+        "budget": 10240,
+        "contract": {
+          "name": "finance-npv-working",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "effort": "high",
+        "max_tokens": 32768,
+        "reply_format": "work"
       }
     }
   ],
