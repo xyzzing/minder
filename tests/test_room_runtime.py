@@ -712,3 +712,22 @@ def test_proxy_contract_silent_when_band_schedules_none(tmp_path, monkeypatch):
     assert req["messages"][-1]["content"] == "q"
     assert not [e for e in _events(tmp_path / "events.jsonl")
                 if e.get("event", "").startswith("contract_")]
+
+
+# ---- contract template doctor check (issue #47) -----------------------------
+
+def test_atm15_doctor_reports_contract_template_problems():
+    from minder_op import room_checks
+    checks = {c["id"]: c for c in room_checks.room_checks(
+        caps={}, contract_problems=["npv.json: est_tokens must be a "
+                                    "non-negative integer"])}
+    assert checks["contract_templates"]["status"] == "warn"
+    assert "npv.json" in checks["contract_templates"]["detail"]
+
+
+def test_atm15_doctor_counts_loaded_contract_templates():
+    from minder_op import room_checks
+    checks = {c["id"]: c for c in room_checks.room_checks(
+        caps={}, contracts_loaded=3)}
+    assert checks["contract_templates"]["status"] == "ok"
+    assert "3" in checks["contract_templates"]["detail"]

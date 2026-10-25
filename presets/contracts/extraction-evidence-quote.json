@@ -1,0 +1,16 @@
+{
+  "template_id": "extraction-evidence-quote",
+  "family": "extraction",
+  "status": "evidence_checked",
+  "producer_profile": "qwen3.8-flash-next",
+  "applicability": {"model_specific": true},
+  "provenance": {
+    "source": "a1: extraction already 93% without controls; contract keeps the verbatim-quote requirement visible at the point of answer",
+    "exported": "2026-10-25"
+  },
+  "payload": {
+    "system_hint": "Extraction answers must quote the source document verbatim.",
+    "suffix_template": "Before answering, locate the supporting span inside <work></work> tags and copy it out verbatim. Then finish with exactly one JSON object whose quote field repeats that span verbatim, and nothing outside it."
+  },
+  "est_tokens": 200
+}

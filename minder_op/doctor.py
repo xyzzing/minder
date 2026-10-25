@@ -313,8 +313,8 @@ def run_checks(db_path, probe=True, now=None, proxy_config=None,
         caps = json.loads(minder.caps_path().read_text())
     except (OSError, ValueError):
         caps = None
-    for check in room_checks.room_checks(minder.cfg(), caps or {},
-                                         events_ledger):
+    for check in room_checks.doctor_checks(minder.cfg(), caps or {},
+                                           events_ledger):
         add(check["id"], check["status"], check["detail"])
 
     # Engine registry (issue #3): which engine is active, is its unit
