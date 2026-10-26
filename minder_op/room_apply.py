@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 
 import minder
@@ -87,6 +86,20 @@ def check_fingerprint(policy, caps):
                 f"{want.get('model_id')!r}, live is {live.get('model_id')!r}"
                 " (other fingerprint fields are not comparable here)")
     return None
+
+
+def _band_text(band):
+    """One line for a diff column: unset -> effort=off budget=none
+    max_tokens=4096, not Python's dict repr."""
+    if not band:
+        return "unset"
+    parts = []
+    for key in ("effort", "budget", "max_tokens", "contract"):
+        value = band.get(key)
+        if value is None:
+            value = "none" if key == "budget" else "unset"
+        parts.append(f"{key}={value}")
+    return " ".join(parts)
 
 
 def translate(policy, opt_ins=()):
@@ -234,8 +247,8 @@ def apply_policy(policy_path, opt_ins=(), write=False,
              + (", --write to apply" if not write else ", writing") + "):"]
     for label in sorted(set(old_bands) | set(overrides)):
         if old_bands.get(label) != overrides.get(label):
-            lines.append(f"  {label}: {old_bands.get(label)} -> "
-                         f"{overrides.get(label)}")
+            lines.append(f"  {label}: {_band_text(old_bands.get(label))}"
+                         f" -> {_band_text(overrides.get(label))}")
     for label, why in skipped:
         lines.append(f"  skipped {label}: {why}")
     lines.extend(f"  {note}" for note in reported)
@@ -263,31 +276,3 @@ def apply_policy(policy_path, opt_ins=(), write=False,
     lines.append(f"  written to {config_path} (backup at {backup})")
     return 0, "\n".join(lines)
 
-
-def cmd(argv):
-    """`minder-op room apply` entry; argparse-owned by cli.py."""
-    import argparse
-    parser = argparse.ArgumentParser(
-        prog="minder-op room apply",
-        description="Apply a roomwise.room-policy/v1 file to "
-                    "difficulty_bands (dry run by default).")
-    parser.add_argument("--policy", required=True,
-                        help="path to the room-policy JSON")
-    parser.add_argument("--opt-in", action="append", default=[],
-                        choices=[APPROVAL_EFFORT_OFF,
-                                 APPROVAL_PROMPT_CONTRACT],
-                        help="approve a default-changing rule "
-                             "(repeatable)")
-    parser.add_argument("--write", action="store_true",
-                        help="write the config (backup + verify); "
-                             "default is a dry run")
-    parser.add_argument("--allow-fingerprint-mismatch", action="store_true",
-                        help="apply despite a model fingerprint "
-                             "mismatch (logged)")
-    args = parser.parse_args(argv)
-    code, message = apply_policy(args.policy, opt_ins=args.opt_in,
-                                 write=args.write,
-                                 allow_mismatch=
-                                 args.allow_fingerprint_mismatch)
-    print(message, file=sys.stdout if code == 0 else sys.stderr)
-    return code

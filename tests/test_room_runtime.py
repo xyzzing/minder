@@ -457,6 +457,8 @@ def test_atm13_room_apply_refusals_and_opt_in(tmp_path, monkeypatch):
     code, msg = run(_policy(tmp_path))
     assert code == 0
     assert "effort_off_for_auto" in msg
+    # operator-readable band text, not Python repr (UX audit 2026-10-27)
+    assert "complex: unset -> effort=low budget=1024 max_tokens=4096" in msg
     # nothing written: config untouched in every dry run above
     assert json.loads(config.read_text()) == {"difficulty_bands": {}}
     code, msg = run(_policy(tmp_path), opt_ins=("effort_off_for_auto",))
