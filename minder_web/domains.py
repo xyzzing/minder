@@ -35,9 +35,7 @@ PROFILE_ROWS = (("l1_budget", "budget"), ("l2_budget", "budget2"),
 # themselves
 SUITE_DOMAIN = {
     "coding-core-v1": "coding",
-    "domain-core-v1": "general",
-    "legal-core-v1": "legal",
-    "finance-core-v1": "finance",
+    "difficulty-core-v1": "difficulty",
     "routing-core-v1": "routing",
 }
 
@@ -110,14 +108,17 @@ def _suites_model():
 
 def _provenance_model():
     """Rule provenance from a Roomwise rulebook-provenance/v1 file at
-    cfg key rulebook_provenance_path (issue #44). Absent or malformed
-    renders the not-available copy; a malformed file logs one
-    diagnostic so a producer bug cannot hide behind a silent n/a."""
+    cfg key rulebook_provenance_path (issue #44). Three states, three
+    renders: rows (table), unreadable (warn line - the operator
+    configured a path, so the page names the broken file, not the
+    absence of a rulebook), absent (not-available copy). A malformed
+    file also logs one diagnostic per path so a producer bug cannot
+    hide behind a quiet warning."""
     global _provenance_warned
     cfg, _cfg_error = _config()
     path = cfg.get("rulebook_provenance_path")
     if not path:
-        return {"rows": [], "error": None}
+        return {"rows": [], "error": None, "unreadable": None}
     try:
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
         # an empty rows list is a producer bug (SCHEMAS-room.md §9),
@@ -137,13 +138,14 @@ def _provenance_model():
                        path=str(path),
                        error=f"{type(exc).__name__}: {exc}")
             _provenance_warned.add(str(path))
-        return {"rows": [], "error": None}
+        return {"rows": [], "error": None,
+                "unreadable": f"{type(exc).__name__}: {exc}"}
     safe = []
     for row in rows:
         row = dict(row)
         row["caveat"] = fmt.safe(row.get("caveat"), 160)
         safe.append(row)
-    return {"rows": safe, "error": None}
+    return {"rows": safe, "error": None, "unreadable": None}
 
 
 _ROUTER_TEXT = {

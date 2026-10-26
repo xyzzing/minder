@@ -63,6 +63,8 @@
 <h2>{{ S.domains.knowledge }} <small>{{ S.domains.knowledge_gloss }}</small></h2>
 {% if provenance.error %}
 <p class="warn">{{ provenance.error }}</p>
+{% elif provenance.unreadable %}
+<p class="warn">{{ S.domains.knowledge_unreadable }}</p>
 {% elif provenance.rows %}
 <table class="stack">
   <caption>{{ S.common.caption.format(unit=S.domains.knowledge_unit) }}</caption>

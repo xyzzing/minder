@@ -61,6 +61,8 @@ DOMAINS = {
     "grade_convention": "convention",
     "grade_convention_gloss": "standard practice, not a published rule",
     "knowledge_empty": "rulebook not available in this install.",
+    "knowledge_unreadable": "the configured rulebook file could not be "
+                            "read - see the minder log",
     "suite_unit": "domain eval suite",
     "knowledge_unit": "domain rule",
     "routing": "routing",

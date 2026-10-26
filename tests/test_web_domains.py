@@ -30,8 +30,11 @@ def test_domains_page_renders_profile_suites_provenance(tmp_path,
     assert "finance" in text
     assert "4096" in text
     # the suites that stayed in minder are listed with their plain
-    # verdicts; the business-rule suites moved to Roomwise (#44)
+    # verdicts; the business-rule suites moved to Roomwise (#44) and
+    # difficulty-core-v1 (kept) carries a domain label like its siblings
     assert "coding-core-v1" in text and "routing-core-v1" in text
+    assert "difficulty-core-v1" in text
+    assert ">difficulty<" in text  # labeled, not a raw suite id
     assert "legal-core-v1" not in text
     assert "no pinned baseline yet" in text
     # no provenance file configured: the not-available copy, not a 500
@@ -82,15 +85,14 @@ def test_domains_provenance_file_renders_rows(tmp_path, monkeypatch):
     assert "rulebook not available" not in text
 
 
-def test_domains_provenance_invalid_renders_na_and_logs_once(
+def test_domains_provenance_invalid_renders_unreadable_and_logs_once(
         tmp_path, monkeypatch):
-    """A malformed provenance file renders the same not-available copy
-    and logs exactly one diagnostic across repeated loads, so a Roomwise
-    producer bug cannot hide behind a silent n/a (AT-M2)."""
-    # minder.STATE_DIR binds at import (conftest pins it to a session
-    # tmp); patch the constant, not the env, to capture the ledger
-    state = tmp_path / "state"
-    monkeypatch.setattr("minder.STATE_DIR", state)
+    """A configured but broken provenance file is its own state, not the
+    nothing-configured one: the operator set a path, so the page must
+    say the file could not be read (UX audit 2026-10-27), not deny that
+    a rulebook is installed. One diagnostic per bad file still lands in
+    the ledger."""
+    monkeypatch.setattr("minder.STATE_DIR", state := tmp_path / "state")
     for name, body in (
             ("wrong-schema.json", json.dumps({"schema": "other/v1",
                                               "rows": [{"rule": "x"}]})),
@@ -105,7 +107,8 @@ def test_domains_provenance_invalid_renders_na_and_logs_once(
         client = webseed.client_for(dbp, monkeypatch)
         text = client.get("/domains").text
         assert client.get("/domains").status_code == 200  # twice: log once
-        assert "rulebook not available in this install." in text
+        assert "could not be read" in text, name
+        assert "not available in this install" not in text, name
         assert _PRIMARY_RULE not in text
     events = (state / "events.jsonl").read_text()
     assert events.count("rulebook_provenance_invalid") == 3  # once each
