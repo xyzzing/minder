@@ -6,7 +6,7 @@ provenance grades, and the difficulty-router mode. Every source can be
 missing or malformed - each section degrades to a named "not
 available" instead of a 500. No SQL here and no policy: config comes
 from minder.cfg(), suites from minder_op.benchmark, rule provenance
-from a Roomwise rulebook-provenance/v1 file (issue #44).
+from a Windtunnel rulebook-provenance/v1 file (issue #44).
 """
 import json
 import os
@@ -17,7 +17,7 @@ from minder_op import format as fmt
 
 from minder_web.strings_base import NOT_AVAILABLE
 
-PROVENANCE_SCHEMA = "roomwise.rulebook-provenance/v1"
+PROVENANCE_SCHEMA = "windtunnel.rulebook-provenance/v1"
 
 # paths already logged as invalid: one diagnostic per bad file, like
 # the proxy's escalation-marker map — a loop of page loads must not
@@ -107,7 +107,7 @@ def _suites_model():
 
 
 def _provenance_model():
-    """Rule provenance from a Roomwise rulebook-provenance/v1 file at
+    """Rule provenance from a Windtunnel rulebook-provenance/v1 file at
     cfg key rulebook_provenance_path (issue #44). Three states, three
     renders: rows (table), unreadable (warn line - the operator
     configured a path, so the page names the broken file, not the

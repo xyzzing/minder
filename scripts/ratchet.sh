@@ -54,7 +54,7 @@ while IFS='|' read -r name cmd; do
   # sanctioned way to lower it (--update, check mode) is right there.
   # The old 10%/min-2 slack let a 0 -> 1 raise pass silently at small
   # counts, which is exactly where a new violation lands (found in
-  # roomwise, same script: runtime_deps 0 -> 1 stayed green).
+  # windtunnel, same script: runtime_deps 0 -> 1 stayed green).
   if [ "$mode" = check ]; then
     gap=$((base - real))
     [ "$gap" -gt 0 ] && {

@@ -1,10 +1,10 @@
 """`minder-op room apply` (issue #46, room runtime PRD M2).
 
-Imports a roomwise.room-policy/v1 file into minder's difficulty_bands.
-The policy is evidence from elsewhere (Roomwise R2); minder only
+Imports a windtunnel.room-policy/v1 file into minder's difficulty_bands.
+The policy is evidence from elsewhere (Windtunnel R2); minder only
 translates, lints and writes:
 
-- schema major must be roomwise.room-policy/v1 (other majors refused)
+- schema major must be windtunnel.room-policy/v1 (other majors refused)
 - model_fingerprint must match the live caps (fail-closed on mismatch
   or missing caps) unless --allow-fingerprint-mismatch (logged)
 - rules matching contract task-difficulty/v1 become difficulty_bands
@@ -34,7 +34,7 @@ import minder
 from minder_decision.difficulty import LABELS
 from minder_op.room_checks import reserve_violations
 
-POLICY_SCHEMA = "roomwise.room-policy/v1"
+POLICY_SCHEMA = "windtunnel.room-policy/v1"
 CONTRACT = "task-difficulty/v1"
 # the one v1 approval minder understands: thinking off in automatic
 # mode flips the 2026-10-07 policy that every automatic task thinks at

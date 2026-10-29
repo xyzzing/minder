@@ -30,7 +30,7 @@ def test_domains_page_renders_profile_suites_provenance(tmp_path,
     assert "finance" in text
     assert "4096" in text
     # the suites that stayed in minder are listed with their plain
-    # verdicts; the business-rule suites moved to Roomwise (#44) and
+    # verdicts; the business-rule suites moved to Windtunnel (#44) and
     # difficulty-core-v1 (kept) carries a domain label like its siblings
     assert "coding-core-v1" in text and "routing-core-v1" in text
     assert "difficulty-core-v1" in text
@@ -68,11 +68,11 @@ def test_domains_page_malformed_config_is_a_named_error(tmp_path,
 
 
 def test_domains_provenance_file_renders_rows(tmp_path, monkeypatch):
-    """A configured roomwise.rulebook-provenance/v1 file renders its
+    """A configured windtunnel.rulebook-provenance/v1 file renders its
     rows (issue #44, AT-M2): rule id, grade badge, caveat text."""
     prov = tmp_path / "provenance.json"
     prov.write_text(json.dumps({
-        "schema": "roomwise.rulebook-provenance/v1",
+        "schema": "windtunnel.rulebook-provenance/v1",
         "rows": [{"rule": _PRIMARY_RULE, "verification": "primary",
                   "verified_on": "2026-09-30", "source": "EPA",
                   "caveat": "rate reviewed annually"}]}))
@@ -97,7 +97,7 @@ def test_domains_provenance_invalid_renders_unreadable_and_logs_once(
             ("wrong-schema.json", json.dumps({"schema": "other/v1",
                                               "rows": [{"rule": "x"}]})),
             ("empty-rows.json", json.dumps({
-                "schema": "roomwise.rulebook-provenance/v1", "rows": []})),
+                "schema": "windtunnel.rulebook-provenance/v1", "rows": []})),
             ("not-json.json", "{not json")):
         bad = tmp_path / name
         bad.write_text(body)

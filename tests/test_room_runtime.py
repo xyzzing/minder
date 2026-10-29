@@ -403,7 +403,7 @@ def test_atm12_coding_multiturn_reserve_stable_no_prefix_break(
 
 def _policy(tmp_path, **over):
     policy = {
-        "schema": "roomwise.room-policy/v1",
+        "schema": "windtunnel.room-policy/v1",
         "generated_at": "2026-10-25T00:00:00Z",
         "source_report_sha256": "a" * 64,
         "model_fingerprint": {"model_id": "qwen3.8-flash-next"},
@@ -443,7 +443,7 @@ def test_atm13_room_apply_refusals_and_opt_in(tmp_path, monkeypatch):
             str(policy), config_path=str(config), caps=_CAPS, **kw)
 
     # unknown schema major refused
-    bad = _policy(tmp_path, schema="roomwise.room-policy/v2")
+    bad = _policy(tmp_path, schema="windtunnel.room-policy/v2")
     code, msg = run(bad)
     assert code == 1 and "v2" in msg
     # fingerprint mismatch refused; override applies and logs
