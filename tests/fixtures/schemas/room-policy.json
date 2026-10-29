@@ -61,6 +61,6 @@
       }
     }
   ],
-  "schema": "roomwise.room-policy/v1",
+  "schema": "windtunnel.room-policy/v1",
   "source_report_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 }

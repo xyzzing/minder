@@ -2,7 +2,7 @@
 operator CLI imports at runtime must be staged into the share by
 install.sh. benchmarks/ (suite manifests + baselines) was missing,
 which left the live /domains page half-empty while every test stayed
-green. minder_domain_evals moved to Roomwise and is staged never
+green. minder_domain_evals moved to Windtunnel and is staged never
 (issue #44)."""
 from pathlib import Path
 
@@ -26,5 +26,5 @@ def test_install_stages_every_runtime_module():
             "will degrade where the repo tests pass (M2)"
     # the extracted evals package must not come back silently (#44)
     assert 'cp -R "$SRC/minder_domain_evals"' not in stage_block
-    assert "Roomwise" in stage_block, \
+    assert "Windtunnel" in stage_block, \
         "the informational line about the moved evals is gone"

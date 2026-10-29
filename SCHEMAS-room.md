@@ -1,9 +1,9 @@
-# Shared file formats: Roomwise <-> minder
+# Shared file formats: Windtunnel <-> minder
 
-Single source of truth for every file that crosses between Roomwise
+Single source of truth for every file that crosses between Windtunnel
 (measurement and training) and minder (runtime). Neither project imports
 the other; these files are the whole interface. Referenced by
-`PRD-roomwise.md` and `PRD-minder-room-runtime.md`.
+`PRD-windtunnel.md` and `PRD-minder-room-runtime.md`.
 
 ## Rules for every format
 
@@ -23,13 +23,13 @@ the other; these files are the whole interface. Referenced by
 7. Files that depend on a specific model carry a `model_fingerprint`
    (§8). Consumers compare it with the current engine and warn on mismatch.
 
-## 1. `roomwise.sweep-manifest/v1`
+## 1. `windtunnel.sweep-manifest/v1`
 
-Producer: Roomwise `sweep`. Consumer: Roomwise reports, training, people.
+Producer: Windtunnel `sweep`. Consumer: Windtunnel reports, training, people.
 
 ```json
-{"schema": "roomwise.sweep-manifest/v1",
- "roomwise_version": "0.1.0", "git_sha": "...",
+{"schema": "windtunnel.sweep-manifest/v1",
+ "windtunnel_version": "0.1.0", "git_sha": "...",
  "target": {"base_url": "http://127.0.0.1:8081/v1", "kind": "engine|proxy",
             "model": "qwen3.8-flash-next"},
  "model_fingerprint": {"...": "§8"},
@@ -46,10 +46,10 @@ Producer: Roomwise `sweep`. Consumer: Roomwise reports, training, people.
  "started_at": "ISO-8601", "finished_at": "ISO-8601"}
 ```
 
-## 2. `roomwise.sweep-run/v1` (JSONL, one line per case per run file)
+## 2. `windtunnel.sweep-run/v1` (JSONL, one line per case per run file)
 
 ```json
-{"schema": "roomwise.sweep-run/v1", "setting": "json:off:0", "repeat": 1,
+{"schema": "windtunnel.sweep-run/v1", "setting": "json:off:0", "repeat": 1,
  "id": "finance-8-00004", "answer": {}, "raw_chars": 92,
  "finish_reason": "stop", "reasoning_tokens": 0, "completion_tokens": 81,
  "prompt_tokens": 597, "latency_s": 2.1, "error": null,
@@ -59,10 +59,10 @@ Producer: Roomwise `sweep`. Consumer: Roomwise reports, training, people.
 `t_start` and `t_end` exist so energy traces (Sinter `power-*.jsonl`) can
 be joined per case later.
 
-## 3. `roomwise.sweep-report/v1`
+## 3. `windtunnel.sweep-report/v1`
 
 ```json
-{"schema": "roomwise.sweep-report/v1",
+{"schema": "windtunnel.sweep-report/v1",
  "manifest_sha256": "...", "model_fingerprint": {"...": "§8"},
  "settings": {
    "json:off:0": {
@@ -79,16 +79,16 @@ be joined per case later.
  "energy": null}
 ```
 
-`energy` is filled by the Roomwise energy join when Sinter traces are
+`energy` is filled by the Windtunnel energy join when Sinter traces are
 supplied: per setting and family, `gpu_wh`, `gco2e`, `gco2e_per_correct`,
 `grid_factor_kg_per_kwh`, `scope: "gpu_only"`.
 
-## 4. `roomwise.room-policy/v1`
+## 4. `windtunnel.room-policy/v1`
 
-Producer: Roomwise `policy`. Consumer: minder `minder-op room apply`.
+Producer: Windtunnel `policy`. Consumer: minder `minder-op room apply`.
 
 ```json
-{"schema": "roomwise.room-policy/v1",
+{"schema": "windtunnel.room-policy/v1",
  "generated_at": "ISO-8601", "source_report_sha256": "...",
  "model_fingerprint": {"...": "§8"},
  "rules": [
@@ -123,12 +123,12 @@ Producer: Roomwise `policy`. Consumer: minder `minder-op room apply`.
   (for example thinking off in automatic mode). minder refuses them unless
   the operator passes the matching opt-in.
 
-## 5. `roomwise.laya-dataset/v1` (JSONL)
+## 5. `windtunnel.laya-dataset/v1` (JSONL)
 
-Producer: Roomwise `labels export`. Consumer: Roomwise training.
+Producer: Windtunnel `labels export`. Consumer: Windtunnel training.
 
 ```json
-{"schema": "roomwise.laya-dataset/v1",
+{"schema": "windtunnel.laya-dataset/v1",
  "row_id": "...", "case_id": "finance-8-00004",
  "suite": "domain-core-v1", "seed": 8, "family": "finance/npv",
  "domain": "business_rules|coding|research",
@@ -145,12 +145,12 @@ Producer: Roomwise `labels export`. Consumer: Roomwise training.
 `judge` rows exist only with maintainer approval and are excluded from
 success measures by default.
 
-## 6. `roomwise.laya-calibration/v1`
+## 6. `windtunnel.laya-calibration/v1`
 
-Producer: Roomwise `train calibrate`. Consumer: minder's Laya provider.
+Producer: Windtunnel `train calibrate`. Consumer: minder's Laya provider.
 
 ```json
-{"schema": "roomwise.laya-calibration/v1",
+{"schema": "windtunnel.laya-calibration/v1",
  "laya_checkpoint": {"name": "...", "sha256": "..."},
  "dataset_sha256": "...",
  "temperatures": [
@@ -165,12 +165,12 @@ temperature only when the checkpoint sha256 matches the loaded checkpoint
 and the request's domain is known; otherwise it ignores the file and logs
 why.
 
-## 7. `roomwise.laya-checkpoint/v1`
+## 7. `windtunnel.laya-checkpoint/v1`
 
-Producer: Roomwise `train finetune`. Consumer: minder's Laya provider.
+Producer: Windtunnel `train finetune`. Consumer: minder's Laya provider.
 
 ```json
-{"schema": "roomwise.laya-checkpoint/v1",
+{"schema": "windtunnel.laya-checkpoint/v1",
  "path": "/home/.../laya-ft-2026-10-20", "sha256": "...",
  "base": {"name": "...", "license": "Apache-2.0"},
  "dataset_sha256": "...",
@@ -197,12 +197,12 @@ Two fingerprints match when `weights_path` (or its sha256 if recorded),
 as a different model, because it changes thinking defaults (the
 replication's `xhigh` incident).
 
-## 9. `roomwise.rulebook-provenance/v1`
+## 9. `windtunnel.rulebook-provenance/v1`
 
-Producer: Roomwise `rules --json`. Consumer: minder console (optional).
+Producer: Windtunnel `rules --json`. Consumer: minder console (optional).
 
 ```json
-{"schema": "roomwise.rulebook-provenance/v1",
+{"schema": "windtunnel.rulebook-provenance/v1",
  "rows": [{"rule": "sg_carbon_tax.rate", "verification": "primary",
            "verified_on": "2026-09-30", "source": "..."}]}
 ```
@@ -214,19 +214,19 @@ rules, so the validator refuses it.
 
 ## 10. Read-only from minder: `model_caps.json`
 
-Owned and versioned by minder. Roomwise may read it (path given by the
+Owned and versioned by minder. Windtunnel may read it (path given by the
 user) to skip its own preflight, using only: `thinking.mechanism`,
 `effort_supported`, `effort_channel`, `effort_levels`,
 `thinking.thinking_budget_supported`, `thinking.thinking_budget_enforced`.
-If absent, Roomwise runs its own preflight.
+If absent, Windtunnel runs its own preflight.
 
 ## 11. minder benchmark report envelope (owned by minder)
 
-Roomwise `score` reports keep minder's benchmark report envelope
+Windtunnel `score` reports keep minder's benchmark report envelope
 (`report_version` 1 or 2, `suite_id`, `suite_fingerprint`, `generated_at`,
 `kind`, `runs`, `metrics`), so `minder-op benchmark compare` reads them.
-Roomwise does not import minder's validator. Instead,
-`roomwise/fixtures/minder-benchmark-report.json` is a report generated by
-this code and accepted by minder's `validate_report`; Roomwise tests check
+Windtunnel does not import minder's validator. Instead,
+`windtunnel/fixtures/minder-benchmark-report.json` is a report generated by
+this code and accepted by minder's `validate_report`; Windtunnel tests check
 every report against its shape. When minder changes its envelope, minder
 regenerates the fixture and copies it here in the same release (rule 4).

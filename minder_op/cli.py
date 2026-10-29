@@ -66,7 +66,7 @@ def build_parser():
     sub.add_parser("status", help="one screen: schema, counts, flags")
     sub.add_parser("flags", help="show MINDER_* decision flags (read-only")
     room = sub.add_parser("room", help=(
-        "room runtime (issue #46): apply a roomwise.room-policy/v1 file "
+        "room runtime (issue #46): apply a windtunnel.room-policy/v1 file "
         "to difficulty bands"))
     room_sub = room.add_subparsers(dest="subcommand")
     room_ap = room_sub.add_parser("apply", help=(

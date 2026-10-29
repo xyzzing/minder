@@ -80,14 +80,14 @@ cp -R "$SRC/minder_op" "$SHARE/"
 cp -R "$SRC/minder_web" "$SHARE/"
 cp -R "$SRC/minder_trace" "$SHARE/"
 cp -R "$SRC/skills" "$SHARE/"
-# business-rule evals and their rulebook live in the Roomwise project
+# business-rule evals and their rulebook live in the Windtunnel project
 # now (issue #44); nothing to stage, and the console's provenance table
 # is opt-in via rulebook_provenance_path. Informational, never a failure.
 if command -v python3 >/dev/null 2>&1 \
-  && python3 -c 'import roomwise' >/dev/null 2>&1; then
-  say "Roomwise detected: point rulebook_provenance_path at its rules --json output"
+  && python3 -c 'import windtunnel' >/dev/null 2>&1; then
+  say "Windtunnel detected: point rulebook_provenance_path at its rules --json output"
 else
-  say "business-rule evals moved to Roomwise (not installed here); /domains shows their provenance only when configured"
+  say "business-rule evals moved to Windtunnel (not installed here); /domains shows their provenance only when configured"
 fi
 cp -R "$SRC/benchmarks" "$SHARE/"
 chmod +x "$SHARE/proxy.py" "$SHARE/hook.py" "$SHARE/frontier.py" \

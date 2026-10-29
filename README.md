@@ -338,7 +338,7 @@ minder-op engine switch strata --yes
 ### Room policies
 
 A room policy says how much room to think each task difficulty should
-get, measured by the separate Roomwise project (a sweep over the graded
+get, measured by the separate Windtunnel project (a sweep over the graded
 suites). `minder-op room apply --policy room-policy.json` validates the
 file, checks the model fingerprint against the live engine, and shows
 the `difficulty_bands` diff it would write; `--write` backs up the
@@ -416,10 +416,10 @@ document extraction, and metamorphic consistency (the same question in
 a different costume must get the same answer).
 
 The generators, grader and rule provenance for this suite live in a
-separate extraction project (Roomwise), not in this repository; minder
+separate extraction project (Windtunnel), not in this repository; minder
 keeps only the suites that test minder itself (coding, routing,
 difficulty). The console's `/domains` page still renders the rule
-provenance table when `rulebook_provenance_path` points at Roomwise's
+provenance table when `rulebook_provenance_path` points at Windtunnel's
 `rules --json` output, and shows "not available" otherwise.
 
 ## Use the pieces without the runtime
