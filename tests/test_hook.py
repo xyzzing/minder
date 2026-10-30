@@ -444,3 +444,82 @@ def test_trace_keeps_the_full_session_id(tmp_path):
     assert lines, "hook trace was not written"
     rec = json.loads(lines[-1])
     assert rec["session"] == long_id
+
+
+# --- fail-closed option (issue #66): the outermost guard ------------------
+#
+# MINDER_HOOK_FAIL_MODE=closed flips the outermost guard: an uncaught
+# exception escaping main() blocks the tool call instead of allowing it.
+# The fault is injected from the test side so the real process boundary
+# stays under test: sitecustomize patches minder.session_key, whose call
+# in main() sits outside every inner try, so the exception reaches the
+# guard exactly the way a real one would.
+
+FAIL_CLOSED_EVENT = {"session_id": "fc-1", "hook_event_name": "PostToolUse",
+                     "tool_name": "Edit",
+                     "tool_input": {"file_path": "/x/fc.py"},
+                     "tool_response": "old_string not found"}
+
+
+def _crash_site(tmp_path):
+    site = tmp_path / "crash-site"
+    site.mkdir(exist_ok=True)
+    (site / "sitecustomize.py").write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(Path(HOOK).parent)!r})\n"
+        "import minder\n"
+        "def _forced(ev):\n"
+        "    raise RuntimeError('forced for fail-closed test')\n"
+        "minder.session_key = _forced\n")
+    return site
+
+
+# CHARACTERIZATION: current Law #6 behavior; must keep holding in open mode.
+def test_fail_mode_open_crash_exits_zero(tmp_path):
+    for transport in ("dsh", "zcode"):
+        proc = run_hook(FAIL_CLOSED_EVENT, transport, tmp_path,
+                        env_extra={"PYTHONPATH": str(_crash_site(tmp_path))})
+        assert proc.returncode == 0, (transport, proc.stderr)
+        assert proc.stdout == "" and proc.stderr == "", transport
+
+
+def test_fail_mode_closed_crash_blocks_dsh(tmp_path):
+    proc = run_hook(FAIL_CLOSED_EVENT, "dsh", tmp_path,
+                    env_extra={"PYTHONPATH": str(_crash_site(tmp_path)),
+                               "MINDER_HOOK_FAIL_MODE": "closed"})
+    assert proc.returncode == 2, (proc.returncode, proc.stderr)
+    assert proc.stdout == ""
+    assert proc.stderr.startswith("[minder] hook failure (fail-closed)")
+    assert "RuntimeError" in proc.stderr  # the digest names the failure
+    assert "forced for fail-closed test" in proc.stderr
+
+
+def test_fail_mode_closed_crash_blocks_zcode(tmp_path):
+    proc = run_hook(FAIL_CLOSED_EVENT, "zcode", tmp_path,
+                    env_extra={"PYTHONPATH": str(_crash_site(tmp_path)),
+                               "MINDER_HOOK_FAIL_MODE": "closed"})
+    assert proc.returncode == 0
+    directive = json.loads(proc.stdout)
+    assert directive["decision"] == "block"
+    reason = directive["reason"]
+    assert reason.startswith("[minder] hook failure (fail-closed)")
+    assert "RuntimeError" in reason
+    assert "forced for fail-closed test" in reason
+
+
+def test_fail_mode_unknown_value_reads_as_open(tmp_path):
+    proc = run_hook(FAIL_CLOSED_EVENT, "dsh", tmp_path,
+                    env_extra={"PYTHONPATH": str(_crash_site(tmp_path)),
+                               "MINDER_HOOK_FAIL_MODE": "clozd"})
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "" and proc.stderr == ""
+
+
+def test_fail_mode_closed_clean_event_unchanged(tmp_path):
+    """closed only changes the crash path: a clean run stays silent and
+    lets the tool result through, exactly as in open mode."""
+    proc = run_hook(dict(FAIL_EVENT, tool_response="patched cleanly"),
+                    "dsh", tmp_path,
+                    env_extra={"MINDER_HOOK_FAIL_MODE": "closed"})
+    assert proc.returncode == 0
+    assert proc.stdout == "" and proc.stderr == ""

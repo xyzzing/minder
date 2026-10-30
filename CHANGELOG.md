@@ -5,6 +5,18 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **Opt-in fail-closed mode for the hooks bridge (issue #66).** Law #6
+  makes every hook failure exit 0, which is a standing fail-open for a
+  security posture. `MINDER_HOOK_FAIL_MODE=closed` flips the outermost
+  guard: an uncaught exception now blocks the tool call (dsh exit 2 with
+  a stderr digest naming the failure; zcode a block decision) instead of
+  allowing it. The default stays open and unset or unknown values read
+  as open, so existing installs are byte-identical. The opt-in covers
+  the outer guard only: the deliberate inner fail-opens (stdin parse,
+  directive evaluation, success guard) stay allow-by-design, because
+  blocking every tool call on malformed stdin would brick the harness.
+  `minder-op doctor` validates the value against the flag vocabulary.
+
 - **The difficulty confidence scale is fitted, gated, and rolled out as
   one command (issue #36).** `MINDER_LAYA_MARGIN_SCALE` decides how much
   of a top-two margin counts as trust, and it had never been fitted: the
