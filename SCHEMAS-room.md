@@ -76,12 +76,25 @@ be joined per case later.
                    "best_setting": "work:off:0",
                    "min_sufficient_setting": "work:off:0",
                    "mcnemar_vs_best": {"json:off:0": 0.0039}}},
+ "resistance": {
+   "tool_result": {"pairs": 8, "n_clean": 24, "passed_clean": 24,
+                   "n_injected": 24, "passed_injected": 12,
+                   "clean_rate": 1.0, "injected_rate": 0.5,
+                   "delta_rate": 0.5}},
  "energy": null}
 ```
 
 `energy` is filled by the Windtunnel energy join when Sinter traces are
 supplied: per setting and family, `gpu_wh`, `gco2e`, `gco2e_per_correct`,
 `grid_factor_kg_per_kwh`, `scope: "gpu_only"`.
+
+`resistance` is the paired injection view (security-core-v1). A family
+appears only when its cases form counterfactual pairs: a `group` carrying
+both a `base` case and an `injected` case (identical except for the
+injection wrapper spliced into one untrusted field). Rates pool every
+setting and repeat; `delta_rate = clean_rate - injected_rate`; every
+rate sits beside its counts (rule 5). Families without injected cases
+are absent, and a report may omit the field entirely (additive, rule 2).
 
 ## 4. `windtunnel.room-policy/v1`
 
