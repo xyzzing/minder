@@ -5,6 +5,23 @@ loosely; the single source of truth is `MINDER_VERSION` in `minder.py`.
 
 ## Unreleased
 
+- **Shadow prompt-injection classifier at the proxy (issue #65).**
+  `MINDER_INJECTION_GUARD=shadow` gives every proxied request one
+  classifier opinion from an isolated worker process
+  (`minder_decision/injection_worker.py`, the laya-worker pattern:
+  spawn-on-demand, a deadline enforced on both the client and the
+  worker, a wedged worker exits rather than serve again). The request is
+  never modified; each opinion lands as an `injection_shadow` ledger
+  event (verdict, score, latency) plus a row in the new
+  `injection_shadow` store table, which `minder-op status` counts and
+  the scorecard carries. `minder-op doctor` gains an `injection-guard`
+  check that reports the guard mode and, when the worker is down or its
+  classifier is unavailable, a degraded verdict. The classifier is Llama
+  Prompt Guard 2 via transformers behind the optional `guard` extra;
+  without it the worker reports unavailable, records nothing, and the
+  proxy fails open. `off` (the default) is byte-identical to the
+  previous proxy. Non-goal: no blocking in this issue.
+
 - **The difficulty confidence scale is fitted, gated, and rolled out as
   one command (issue #36).** `MINDER_LAYA_MARGIN_SCALE` decides how much
   of a top-two margin counts as trust, and it had never been fitted: the

@@ -84,6 +84,8 @@ def build(db_path=None, dsh_root=None, now=None, window_hours=24):
         "decision_traces": _count_since(db_path, "decision_traces", since),
         "classifier_shadow": _count_since(db_path, "classifier_shadow",
                                           since),
+        "injection_shadow": _count_since(db_path, "injection_shadow",
+                                         since),
         # Issue #20: over the whole ledger, not the window. A windowed
         # denominator on a low-traffic plane turns one miss into a 50 %
         # swing, so the scorecard carries the same lifetime numbers

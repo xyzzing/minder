@@ -40,9 +40,10 @@ def socket_path():
     return worker_socket_path()
 
 
-def log_path_for(path):
-    """The worker's log file, named off its socket path."""
-    return Path(path).with_name("laya-worker.log")
+def log_path_for(path, log_name=None):
+    """The worker's log file, named off its socket path. `log_name` is for
+    the other isolated worker (injection) sharing this format."""
+    return Path(path).with_name(log_name or "laya-worker.log")
 
 
 def worker_liveness(path):
@@ -62,14 +63,14 @@ def worker_liveness(path):
     return True
 
 
-def latest_log_line(path):
+def latest_log_line(path, log_name=None):
     """(line, epoch_seconds or None, stamped) for the last non-empty line
     of the worker log, or None when there is no log.
 
     `stamped` says whether the age came from the line itself or from the
     file's mtime, which is what lets a caller label an unstamped line as
     at-least-as-old rather than exactly that old."""
-    log = log_path_for(path)
+    log = log_path_for(path, log_name)
     try:
         lines = [ln for ln in log.read_text(errors="replace").splitlines()
                  if ln.strip()]

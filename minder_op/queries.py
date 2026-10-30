@@ -83,6 +83,18 @@ def _count(path, sql, params=()):
     return rows[0]["n"] if rows else 0
 
 
+def _count_if_table(path, sql):
+    """COUNT(*) as an int, or None when the table is missing (a store
+    that predates the migration). The same cannot-say distinction
+    retrieval_hit_rate draws: a silent 0 would read as evidence."""
+    try:
+        return _count(path, sql)
+    except DBError as exc:
+        if "missing an object" not in str(exc):
+            raise
+        return None
+
+
 def _one(path, sql, params=()):
     rows = _rows(path, sql, params)
     return rows[0] if rows else None
@@ -121,6 +133,8 @@ def status(path):
         "consults_by_helpfulness": by_helpfulness,
         "classifier_shadow_rows": count(
             "SELECT COUNT(*) AS n FROM classifier_shadow"),
+        "injection_shadow_rows": _count_if_table(
+            path, "SELECT COUNT(*) AS n FROM injection_shadow"),
         "decision_traces_rows": count(
             "SELECT COUNT(*) AS n FROM decision_traces"),
         "retrieval": retrieval_hit_rate(path),
