@@ -33,6 +33,10 @@ classifiers = [
 # and your harness. Keep these lists in sync with the repo layout.
 [project.optional-dependencies]
 web = ["fastapi>=0.110", "uvicorn>=0.27", "jinja2>=3.1"]
+# The injection guard worker's classifier (issue #65): imported only
+# inside minder_decision/injection_worker.py, guarded, never at runtime.
+# Install with: pip install --user "minder[guard]"
+guard = ["transformers>=4.44"]
 
 [project.scripts]
 minder-op = "minder_op.cli:main"
