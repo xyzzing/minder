@@ -94,7 +94,7 @@ import pytest
 
 SCHEMA_FILES = {
     "SCHEMAS-room.md":
-        "1e37d3920a27270723862c6bf6d7f7e26e4869247981a4db35f70da8401ad1cb",
+        "880f38255a5b215fae9f95976f2681c02c5773a35cf928ee5f7ddf9d876970cb",
     "tests/fixtures/schemas/room-policy.json":
         "29539971e68dece3b1652f162ba0e08f0c0145f6e75f4d4e045e95bb2eda60ca",
     "tests/fixtures/schemas/rulebook-provenance.json":
