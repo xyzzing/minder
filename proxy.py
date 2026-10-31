@@ -8,6 +8,9 @@ translation → upstream_model rewrite → byte-exact relay. Fail-open: any
 internal fault forwards the request unmodified (Law #2). Digest-marker
 escalation: a minder L1/L2 digest in the last 4 messages upgrades the request
 to think params for that request (stateless escalation channel).
+Shadow prompt-injection guard (issue #65): MINDER_INJECTION_GUARD=shadow
+gives every parsed request one classifier opinion from an isolated worker,
+records only, never modifies the request.
 """
 import glob
 import hashlib
@@ -25,6 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adapter
 import minder
+from minder_decision import injection as injection_guard
 from minder_decision import output_contracts
 from minder_decision import room
 from minder_decision import router as decision_router
@@ -1003,6 +1007,7 @@ class Handler(BaseHTTPRequestHandler):
                     first = json.dumps((req.get("messages") or [])[:1],
                                        default=str)
                     fp = "session:" + hashlib.md5(first.encode()).hexdigest()[:8]
+                    injection_guard.observe(req, fp)
                     err = apply_pipeline(req, fp,
                                          mode=self.headers.get("X-Minder-Mode"))
                     if err is not None:

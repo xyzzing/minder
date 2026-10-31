@@ -38,7 +38,7 @@ DEFERRED = ("deferred (8D/8E+): controlled local benchmark runner, web "
             "frontier_evals label sync")
 
 FLAG_VARS = ("MINDER_ASSIST", "MINDER_CLASSIFIER", "MINDER_DECISION",
-             "MINDER_SUCCESS_GUARD")
+             "MINDER_SUCCESS_GUARD", "MINDER_INJECTION_GUARD")
 # The wording for a number this store cannot produce (issue #20). Same
 # phrase the web console uses, so a read surface never answers "0" when
 # the honest answer is "no table to count".
@@ -719,6 +719,9 @@ def _cmd_status(path):
     for label, n in info["consults_by_helpfulness"].items():
         lines.append((f"consults[{label}]", n))
     lines += [("classifier_shadow_rows", info["classifier_shadow_rows"]),
+              ("injection_shadow_rows",
+               NOT_AVAILABLE if info["injection_shadow_rows"] is None
+               else info["injection_shadow_rows"]),
               ("decision_traces_rows", info["decision_traces_rows"])]
     lines += _retrieval_lines(info["retrieval"])
     for var in FLAG_VARS:
@@ -799,6 +802,8 @@ def _cmd_flags():
     print("MINDER_CLASSIFIER: unset | shadow   (Phase 5 log-only labels)")
     print("MINDER_DECISION:   unset | shadow   (Phase 5.5 assess loop,"
           " trace only)")
+    print("MINDER_INJECTION_GUARD: off | shadow  (proxy request scan,"
+          " records only)")
     print()
     print(DEFERRED)
     return EXIT_OK

@@ -268,8 +268,20 @@ environment-owned and read at hook start:
 MINDER_ASSIST=off | retrieve | decision_skill      # digest-level assistance
 MINDER_CLASSIFIER=shadow                           # log-only classifier labels
 MINDER_DECISION=shadow                             # log-only gateway traces
+MINDER_INJECTION_GUARD=off | shadow                # proxy request scan, records only
 MINDER_HOOK_FAIL_MODE=closed                       # hook crash blocks the call (default: open)
 ```
+
+The proxy's injection guard (MINDER_INJECTION_GUARD) is off by default.
+`shadow` gives every proxied request one prompt-injection opinion from an
+isolated worker process (`minder_decision/injection_worker.py`, spawned
+on demand with a per-request deadline on both sides); the request is
+never modified, and each opinion lands as an `injection_shadow` ledger
+event plus a row in the memory store, which `minder-op doctor` (guard
+mode, worker state) and `minder-op status` (`injection_shadow_rows`)
+read back. The classifier is Llama Prompt Guard 2 via transformers -
+`pip install --user "minder[guard]"` - and when it is not installed the
+worker reports unavailable, no opinion is recorded, and doctor says so.
 
 By default a hook failure never blocks a tool call. `MINDER_HOOK_FAIL_MODE=closed`
 opts the hook's outer guard into fail-closed: an uncaught exception blocks the

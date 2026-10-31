@@ -24,7 +24,7 @@ from minder_op import benchmark as bench
 from minder_op.ages import age_text as _age_text
 from minder_op import queries, router
 from minder_op import rollout, unit_upstream, room_checks
-from minder_op.worker import worker_check
+from minder_op.worker import worker_doctor_checks
 from minder_op.queries import DBError
 
 FLAG_VOCAB = {
@@ -37,6 +37,7 @@ FLAG_VOCAB = {
     # Only advisory/block enable the guard; "block" also pre-empts at PreToolUse.
     "MINDER_SUCCESS_GUARD": ("advisory", "block"),
     "MINDER_HOOK_FAIL_MODE": ("open", "closed"),
+    "MINDER_INJECTION_GUARD": ("off", "shadow"),
 }
 FRESH_SECS = 48 * 3600
 STALE_SECS = 7 * 86400
@@ -352,14 +353,12 @@ def run_checks(db_path, probe=True, now=None, proxy_config=None,
     except Exception as exc:  # never let a health check crash doctor
         add("engine", "info", f"engine registry unavailable: {exc}")
 
-    # The isolated laya decision worker (issue #7), judged in
-    # minder_op/worker.py: the log tail alone is not evidence of whether a
-    # worker is up (issue #32), and without this line the router's silence
-    # looked like a config problem (issue #28 diagnosed exactly that).
-    try:
-        add(*worker_check(now, probe_worker))
-    except Exception as exc:  # never let a health check crash doctor
-        add("laya-worker", "info", f"worker state unavailable: {exc}")
+    # The isolated workers (issues #7, #65), judged in minder_op/worker.py:
+    # the log tail alone is not evidence of whether a worker is up (issue
+    # #32), and without the laya line the router's silence looked like a
+    # config problem (issue #28 diagnosed exactly that).
+    for check in worker_doctor_checks(now, probe_worker):
+        add(*check)
 
     add(*router.router_check(proxy_config, events_ledger))
 
