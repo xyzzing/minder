@@ -49,3 +49,7 @@ docs/*
 *.egg-info/
 .audit/
 .coverage
+
+# session tempfile litter: python mkdtemp in cwd and git temp indexes
+/tmp*/
+/.tmpidx*
