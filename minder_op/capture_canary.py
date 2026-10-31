@@ -24,7 +24,9 @@ import adapter
 from minder_op import dsh_sessions
 from minder_op import router
 
-CANARY_PROMPT = "Reply with exactly: OK"
+CANARY_PROMPT = ("Use the subagent tool to delegate one trivial task: ask "
+                 "the subagent to reply with exactly OK. Then report its "
+                 "reply and finish. Do nothing else.")
 RUN_TIMEOUT_S = 240
 SETTLE_SECONDS = 90
 PROBE_TIMEOUT_S = 5
@@ -128,33 +130,52 @@ def _endpoint_surface(probe):
             "detail": "8390 and 8081 answering"}
 
 
-def _new_session(before_ids, session_dirs_fn, dsh_home):
+def _new_sessions(before_ids, session_dirs_fn, dsh_home):
+    """Every session created since the snapshot, newest first."""
     after = session_dirs_fn(dsh_home, cache=False)
     fresh = [e for e in after if e.get("session_id")
              and e["session_id"] not in before_ids]
-    if not fresh:
-        return None
     fresh.sort(key=lambda e: e.get("mtime") or 0, reverse=True)
-    return fresh[0]["session_id"]
+    return [e["session_id"] for e in fresh]
 
 
-def _ledger_has_session(ledger_path, offset, session_id):
-    """A schema-shaped record whose task names THIS session, past offset."""
+def _ledger_records(ledger_path, offset):
+    """Schema-shaped records appended past offset."""
     try:
         with open(ledger_path, "rb") as fh:
             fh.seek(offset)
             tail = fh.read()
     except OSError:
-        return False
+        return
     for line in tail.splitlines():
         try:
             record = json.loads(line)
         except ValueError:
             continue
-        if "ts" not in record or "event" not in record:
+        if "ts" in record and "event" in record:
+            yield record
+
+
+def _ledger_has_session(ledger_path, offset, session_id):
+    for record in _ledger_records(ledger_path, offset):
+        if session_id in str(record.get("task") or ""):
+            return True
+    return False
+
+
+def _ledger_has_delegation(ledger_path, offset, new_ids):
+    """A subagent lifecycle record naming one of the run's new sessions.
+
+    The delegation plugin stamps child_session_id; the task field carries
+    the child's session either way, so both are accepted. In-process
+    children are real dsh sessions, so the session-dirs snapshot anchors
+    the attribution the same way it does for the main run."""
+    for record in _ledger_records(ledger_path, offset):
+        if not str(record.get("event") or "").startswith("subagent_"):
             continue
-        task = str(record.get("task") or "")
-        if session_id in task:
+        child = str(record.get("child_session_id") or "")
+        if child in new_ids or any(n in str(record.get("task") or "")
+                                   for n in new_ids):
             return True
     return False
 
@@ -174,22 +195,33 @@ def _capture_surface(runner, session_dirs_fn, dsh_home, ledger_path,
         note = (proc.stderr or "")[-200:]
     except (OSError, subprocess.SubprocessError) as exc:
         failed, note = True, str(exc)[-200:]
-    session_id = _new_session(before_ids, session_dirs_fn, dsh_home)
-    if session_id is None:
+    new_ids = _new_sessions(before_ids, session_dirs_fn, dsh_home)
+    if not new_ids:
         return {"id": "capture", "status": "fail",
                 "detail": f"dsh rc={proc.returncode if failed else '?'} {note}",
                 "reason": "capture_no_session"}
+    main_id = new_ids[0]
     deadline = time.time() + max(0.0, settle_seconds)
     while True:
-        if _ledger_has_session(ledger_path, offset, session_id):
+        main_ok = _ledger_has_session(ledger_path, offset, main_id)
+        delegation_ok = _ledger_has_delegation(ledger_path, offset,
+                                               set(new_ids))
+        if main_ok and delegation_ok:
             return {"id": "capture", "status": "ok",
-                    "detail": f"session {session_id} persisted"}
+                    "detail": f"session {main_id} persisted; delegation "
+                              f"record persisted for {len(new_ids) - 1} "
+                              "child session(s)"}
         if time.time() >= deadline:
             break
         time.sleep(1.0)
+    if not main_ok:
+        return {"id": "capture", "status": "fail",
+                "detail": f"session {main_id}: no sink record in window",
+                "reason": "capture_hooks_not_persisted"}
     return {"id": "capture", "status": "fail",
-            "detail": f"session {session_id}: no sink record in window",
-            "reason": "capture_hooks_not_persisted"}
+            "detail": f"session {main_id}: hooks persisted but no subagent "
+                      "lifecycle record in window",
+            "reason": "capture_no_delegation_record"}
 
 
 def run_canary(dsh_home=None, profile_manifest=None, ledger_path=None,

@@ -25,7 +25,7 @@ class FakeEnv:
 
     def __init__(self, tmp_path, sessions_before, sessions_after,
                  ledger_lines=(), dsh_version="0.2.1-rc.2", bridge_pin=None,
-                 dsh_fails=False, persist=True):
+                 dsh_fails=False, persist=True, delegate=True):
         self.tmp = tmp_path
         self.ledger = tmp_path / "events.jsonl"
         self.ledger.write_text("".join(line + "\n" for line in ledger_lines))
@@ -36,6 +36,7 @@ class FakeEnv:
         self.dsh_version = dsh_version
         self.dsh_fails = dsh_fails
         self.persist = persist
+        self.delegate = delegate
         self.calls = []
 
         def session_dirs(root=None, cache=True):
@@ -47,8 +48,13 @@ class FakeEnv:
             if dsh_fails and cmd[1:2] == ["headless"]:
                 return _Result(1, "", "boot failed")
             if persist and cmd[1:2] == ["headless"]:
-                self.ledger.write_text(self.ledger.read_text()
-                                       + _ledger_line("newsess") + "\n")
+                text = self.ledger.read_text() + _ledger_line("newsess") + "\n"
+                if delegate:
+                    text += json.dumps({
+                        "ts": 1001.0, "task": "session-childsess",
+                        "event": "subagent_end",
+                        "child_session_id": "childsess"}) + "\n"
+                self.ledger.write_text(text)
             return _Result(0, f"{dsh_version}\n", "")
 
         def probe(url, timeout=None):
@@ -86,7 +92,8 @@ def _surface(verdict, surface_id):
 
 def test_all_green_writes_fingerprint(tmp_path):
     env = FakeEnv(tmp_path, [_entry("old", 1)], [_entry("old", 1),
-                                                _entry("newsess", 2)],
+                                                _entry("newsess", 2),
+                                                _entry("childsess", 3)],
                   bridge_pin="0.2.1-rc.5")
     verdict = env.run()
     assert verdict["verdict"] == "green"
@@ -108,7 +115,8 @@ def test_hooks_fired_but_not_persisted_is_red(tmp_path):
     # The session log says hooks fired; the sink gained nothing. That is
     # capture loss, the exact shape the 0.2.x bridge denial hid.
     env = FakeEnv(tmp_path, [_entry("old", 1)], [_entry("old", 1),
-                                                _entry("newsess", 2)],
+                                                _entry("newsess", 2),
+                                                _entry("childsess", 3)],
                   persist=False)
     verdict = env.run()
     assert verdict["verdict"] == "red"
@@ -119,7 +127,8 @@ def test_foreign_session_record_never_satisfies_capture(tmp_path):
     # A record from another transport (zcode) sits in the ledger already;
     # the canary session produced none. Freshness alone would false-green.
     env = FakeEnv(tmp_path, [_entry("old", 1)], [_entry("old", 1),
-                                                _entry("newsess", 2)],
+                                                _entry("newsess", 2),
+                                                _entry("childsess", 3)],
                   ledger_lines=[_ledger_line("zcode-session", 9999.0)],
                   persist=False)
     verdict = env.run()
@@ -128,7 +137,8 @@ def test_foreign_session_record_never_satisfies_capture(tmp_path):
 
 def test_drift_with_green_capture_rebaselines(tmp_path):
     env = FakeEnv(tmp_path, [_entry("old", 1)], [_entry("old", 1),
-                                                _entry("newsess", 2)],
+                                                _entry("newsess", 2),
+                                                _entry("childsess", 3)],
                   dsh_version="0.2.2", bridge_pin="0.2.1-rc.5")
     verdict = env.run({"dsh_version": "0.2.1-rc.2",
                        "bridge_pin": "0.2.1-rc.5", "recorded_at": 1})
@@ -151,7 +161,8 @@ def test_drift_with_red_capture_names_both(tmp_path):
 
 def test_first_run_baselines_without_drift_alarm(tmp_path):
     env = FakeEnv(tmp_path, [_entry("old", 1)], [_entry("old", 1),
-                                                _entry("newsess", 2)],
+                                                _entry("newsess", 2),
+                                                _entry("childsess", 3)],
                   bridge_pin="0.2.1-rc.5")
     verdict = env.run()
     assert verdict["verdict"] == "green"
@@ -160,7 +171,8 @@ def test_first_run_baselines_without_drift_alarm(tmp_path):
 
 def test_endpoint_down_is_red(tmp_path):
     env = FakeEnv(tmp_path, [_entry("old", 1)], [_entry("old", 1),
-                                                _entry("newsess", 2)],
+                                                _entry("newsess", 2),
+                                                _entry("childsess", 3)],
                   bridge_pin="0.2.1-rc.5")
     env.probe = lambda url, timeout=None: "8390" in url
     verdict = env.run()
@@ -170,7 +182,33 @@ def test_endpoint_down_is_red(tmp_path):
 
 def test_missing_bridge_pin_is_reported_not_crash(tmp_path):
     env = FakeEnv(tmp_path, [_entry("old", 1)], [_entry("old", 1),
-                                                _entry("newsess", 2)],
+                                                _entry("newsess", 2),
+                                                _entry("childsess", 3)],
                   bridge_pin=None)
     verdict = env.run()
     assert _surface(verdict, "drift")["status"] == "warn"
+
+
+def test_delegation_record_satisfies_second_assertion(tmp_path):
+    # #72 slice 1: the canary also asserts a subagent lifecycle record for
+    # the run's child session, written by the delegation plugin.
+    env = FakeEnv(tmp_path, [_entry("old", 1)],
+                  [_entry("old", 1), _entry("newsess", 2),
+                   _entry("childsess", 3)],
+                  bridge_pin="0.2.1-rc.5")
+    verdict = env.run()
+    assert verdict["verdict"] == "green"
+    capture = _surface(verdict, "capture")
+    assert capture["status"] == "ok"
+    assert "delegation" in capture["detail"]
+
+
+def test_missing_delegation_record_is_red(tmp_path):
+    # Delegation happened (a child session exists) but no subagent record
+    # reached the ledger - the pre-plugin state, or a broken plugin.
+    env = FakeEnv(tmp_path, [_entry("old", 1)],
+                  [_entry("old", 1), _entry("newsess", 2)],
+                  bridge_pin="0.2.1-rc.5", delegate=False)
+    verdict = env.run()
+    assert verdict["verdict"] == "red"
+    assert _surface(verdict, "capture")["reason"] == "capture_no_delegation_record"
