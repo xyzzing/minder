@@ -228,3 +228,18 @@ def test_unattributed_delegation_is_red(tmp_path):
     verdict = env.run()
     assert verdict["verdict"] == "red"
     assert _surface(verdict, "capture")["reason"] == "capture_delegation_unattributed"
+
+
+def test_dsh_missing_is_red_not_crash(tmp_path):
+    # Under systemd, dsh may be off PATH: the runner raises instead of
+    # returning a result. The capture surface must report a named fail,
+    # never crash - the watchdog cannot itself be the crasher.
+    env = FakeEnv(tmp_path, [_entry("old", 1)], [_entry("old", 1)],
+                  bridge_pin="0.2.1-rc.5")
+    def missing(_cmd, timeout=None):
+        raise FileNotFoundError("dsh not found")
+    env.runner = missing
+    verdict = env.run()
+    assert verdict["verdict"] == "red"
+    assert _surface(verdict, "capture")["reason"] == "capture_no_session"
+    assert "dsh not found" in _surface(verdict, "capture")["detail"]

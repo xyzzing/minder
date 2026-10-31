@@ -192,14 +192,15 @@ def _capture_surface(runner, session_dirs_fn, dsh_home, ledger_path,
     try:
         proc = runner(["dsh", "headless", CANARY_PROMPT],
                       timeout=RUN_TIMEOUT_S)
-        failed = proc.returncode != 0
         note = (proc.stderr or "")[-200:]
+        rc_note = f"dsh rc={proc.returncode}"
     except (OSError, subprocess.SubprocessError) as exc:
-        failed, note = True, str(exc)[-200:]
+        note = str(exc)[-200:]
+        rc_note = "dsh unreachable"
     new_ids = _new_sessions(before_ids, session_dirs_fn, dsh_home)
     if not new_ids:
         return {"id": "capture", "status": "fail",
-                "detail": f"dsh rc={proc.returncode if failed else '?'} {note}",
+                "detail": f"{rc_note} {note}",
                 "reason": "capture_no_session"}
     main_id = new_ids[0]
     deadline = time.time() + max(0.0, settle_seconds)

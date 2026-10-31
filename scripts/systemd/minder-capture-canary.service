@@ -1,0 +1,7 @@
+[Unit]
+Description=minder capture canary - prove the pipeline still records (issue #73)
+
+[Service]
+Environment=PATH=%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Type=oneshot
+ExecStart=%h/projects/minder/scripts/minder-capture-canary.sh
