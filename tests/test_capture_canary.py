@@ -25,7 +25,8 @@ class FakeEnv:
 
     def __init__(self, tmp_path, sessions_before, sessions_after,
                  ledger_lines=(), dsh_version="0.2.1-rc.2", bridge_pin=None,
-                 dsh_fails=False, persist=True, delegate=True):
+                 dsh_fails=False, persist=True, delegate=True,
+                 unattributed=False):
         self.tmp = tmp_path
         self.ledger = tmp_path / "events.jsonl"
         self.ledger.write_text("".join(line + "\n" for line in ledger_lines))
@@ -50,10 +51,12 @@ class FakeEnv:
             if persist and cmd[1:2] == ["headless"]:
                 text = self.ledger.read_text() + _ledger_line("newsess") + "\n"
                 if delegate:
-                    text += json.dumps({
-                        "ts": 1001.0, "task": "session-childsess",
-                        "event": "subagent_end",
-                        "child_session_id": "childsess"}) + "\n"
+                    record = {"ts": 1001.0, "task": "session-childsess",
+                              "event": "subagent_end",
+                              "child_session_id": "childsess"}
+                    if not unattributed:
+                        record["parent_session_id"] = "newsess"
+                    text += json.dumps(record) + "\n"
                 self.ledger.write_text(text)
             return _Result(0, f"{dsh_version}\n", "")
 
@@ -212,3 +215,16 @@ def test_missing_delegation_record_is_red(tmp_path):
     verdict = env.run()
     assert verdict["verdict"] == "red"
     assert _surface(verdict, "capture")["reason"] == "capture_no_delegation_record"
+
+
+def test_unattributed_delegation_is_red(tmp_path):
+    # Slice 2: a delegation record without a parent session id does not
+    # close the attribution loop - the trail still cannot say who
+    # delegated.
+    env = FakeEnv(tmp_path, [_entry("old", 1)],
+                  [_entry("old", 1), _entry("newsess", 2),
+                   _entry("childsess", 3)],
+                  bridge_pin="0.2.1-rc.5", unattributed=True)
+    verdict = env.run()
+    assert verdict["verdict"] == "red"
+    assert _surface(verdict, "capture")["reason"] == "capture_delegation_unattributed"

@@ -163,8 +163,9 @@ def _ledger_has_session(ledger_path, offset, session_id):
     return False
 
 
-def _ledger_has_delegation(ledger_path, offset, new_ids):
-    """A subagent lifecycle record naming one of the run's new sessions.
+def _ledger_delegation_record(ledger_path, offset, new_ids):
+    """The first subagent lifecycle record naming one of the run's new
+    sessions, or None.
 
     The delegation plugin stamps child_session_id; the task field carries
     the child's session either way, so both are accepted. In-process
@@ -176,8 +177,8 @@ def _ledger_has_delegation(ledger_path, offset, new_ids):
         child = str(record.get("child_session_id") or "")
         if child in new_ids or any(n in str(record.get("task") or "")
                                    for n in new_ids):
-            return True
-    return False
+            return record
+    return None
 
 
 def _capture_surface(runner, session_dirs_fn, dsh_home, ledger_path,
@@ -204,13 +205,14 @@ def _capture_surface(runner, session_dirs_fn, dsh_home, ledger_path,
     deadline = time.time() + max(0.0, settle_seconds)
     while True:
         main_ok = _ledger_has_session(ledger_path, offset, main_id)
-        delegation_ok = _ledger_has_delegation(ledger_path, offset,
-                                               set(new_ids))
-        if main_ok and delegation_ok:
+        record = _ledger_delegation_record(ledger_path, offset, set(new_ids))
+        attributed = record is not None and str(
+            record.get("parent_session_id") or "") in set(new_ids)
+        if main_ok and record is not None and attributed:
             return {"id": "capture", "status": "ok",
                     "detail": f"session {main_id} persisted; delegation "
-                              f"record persisted for {len(new_ids) - 1} "
-                              "child session(s)"}
+                              f"record persisted and attributed for "
+                              f"{len(new_ids) - 1} child session(s)"}
         if time.time() >= deadline:
             break
         time.sleep(1.0)
@@ -218,10 +220,15 @@ def _capture_surface(runner, session_dirs_fn, dsh_home, ledger_path,
         return {"id": "capture", "status": "fail",
                 "detail": f"session {main_id}: no sink record in window",
                 "reason": "capture_hooks_not_persisted"}
+    if record is None:
+        return {"id": "capture", "status": "fail",
+                "detail": f"session {main_id}: hooks persisted but no subagent "
+                          "lifecycle record in window",
+                "reason": "capture_no_delegation_record"}
     return {"id": "capture", "status": "fail",
-            "detail": f"session {main_id}: hooks persisted but no subagent "
-                      "lifecycle record in window",
-            "reason": "capture_no_delegation_record"}
+            "detail": f"delegation record for {record.get('child_session_id')} "
+                      "carries no parent_session_id within the run",
+            "reason": "capture_delegation_unattributed"}
 
 
 def run_canary(dsh_home=None, profile_manifest=None, ledger_path=None,
