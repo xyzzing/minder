@@ -434,11 +434,19 @@ verified lesson keeps the consult's `trace_id` in its verification. A
 candidate whose episode has no `verification` event is still refused with
 `rejected:no-verified-tests`.
 - All flags (`MINDER_ASSIST`, `MINDER_CLASSIFIER`, `MINDER_DECISION`,
-`MINDER_SUCCESS_GUARD`, `MINDER_TRACE_REVIEW`)
+`MINDER_SUCCESS_GUARD`, `MINDER_TRACE_REVIEW`, `MINDER_HOOK_FAIL_MODE`)
 are environment/systemd owned. Change them there and restart the hook;
 the CLI cannot persist flags. `MINDER_DECISION` shadow debounce is
 DB-backed (session + failure_key, 5s window) — visible in
 `decisions ls`.
+- `MINDER_HOOK_FAIL_MODE=closed` (default `open`) opts the hook's outer
+  guard into fail-closed: an uncaught exception blocks the tool call
+  (dsh exit 2 with a digest naming the failure; zcode a block decision)
+  instead of exiting 0. It covers the outer guard only - the deliberate
+  inner fail-opens (malformed stdin, directive failures) still allow the
+  call, because blocking every tool call on malformed stdin would brick
+  the harness. `minder-op doctor` checks the value against the flag
+  vocabulary, so a typo reads as a fail, not as silence.
 - Writes go through the existing memory APIs only:
 `invalidate_lesson`, `promote_lesson` (still requires tests_passed),
 `skills.close_gap`. No `SKILLS.md`, no auto skill apply, no DB-edited

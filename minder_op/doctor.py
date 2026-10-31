@@ -34,9 +34,9 @@ FLAG_VOCAB = {
     # "laya" is the production value (the real model) - omitting it made a
     # correct install report as a typo.
     "MINDER_DECISION": ("shadow", "fake", "laya"),
-    # Both values enable the guard; "off" (or anything else) records
-    # nothing. "block" additionally pre-empts at PreToolUse.
+    # Only advisory/block enable the guard; "block" also pre-empts at PreToolUse.
     "MINDER_SUCCESS_GUARD": ("advisory", "block"),
+    "MINDER_HOOK_FAIL_MODE": ("open", "closed"),
     "MINDER_INJECTION_GUARD": ("off", "shadow"),
 }
 FRESH_SECS = 48 * 3600

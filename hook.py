@@ -14,6 +14,15 @@ only) PreToolUse for pre-emptive stops.
 
 Detection never blocks the hot path (Law #6): every failure mode exits 0 and
 lets the tool result through untouched.
+
+MINDER_HOOK_FAIL_MODE (unset or open = default; closed is the only other
+value) opts the outer guard into fail-closed: an uncaught exception escaping
+main() then blocks the tool call (dsh: exit 2 with a stderr digest naming
+the failure; zcode: {"decision": "block"} on stdout) instead of allowing
+it. Scope: the opt-in covers the outer guard only. The deliberate inner
+detection fail-opens (stdin parse, directive evaluation, success guard) stay
+allow-by-design even in closed mode, because blocking every tool call on
+malformed stdin would brick the harness (availability inversion).
 """
 import argparse
 import json
@@ -26,6 +35,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import minder
 import reflex
+from minder_core.identity import redact
 try:
     from minder_memory import from_hook as memory_from_hook
     from minder_memory import policy as memory_policy
@@ -37,6 +47,8 @@ except Exception:  # memory is optional; the watchdog never depends on it
 
 FRONTIER_TIMEOUT = int(os.environ.get("MINDER_FRONTIER_TIMEOUT", "60"))
 DEFAULT_HOOK_BUDGET_MS = 750
+TRANSPORTS = ("zcode", "dsh")
+FAIL_CLOSED_MARKER = "[minder] hook failure (fail-closed)"
 
 
 def _sink_enabled():
@@ -305,9 +317,17 @@ def emit_context(event_name, text, transport):
     return 0
 
 
+def fail_closed_digest(exc):
+    """Block reason for the fail-closed guard (MINDER_HOOK_FAIL_MODE=closed):
+    names the failure so the model sees why its call was stopped. Redacted
+    and bounded - an exception message can echo event-derived text."""
+    detail = redact(f"{type(exc).__name__}: {exc}")[:400]
+    return f"{FAIL_CLOSED_MARKER}: {detail}"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--transport", choices=["zcode", "dsh"], default="zcode")
+    ap.add_argument("--transport", choices=TRANSPORTS, default="zcode")
     ap.add_argument("--session-start", action="store_true")
     ap.add_argument("--pre-tool", action="store_true")
     args = ap.parse_args(argv)
@@ -521,5 +541,14 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception:
-        sys.exit(0)
+    except Exception as exc:
+        # Law #6 default: allow. closed blocks instead (module docstring).
+        if (os.environ.get("MINDER_HOOK_FAIL_MODE") or "").lower() != "closed":
+            sys.exit(0)
+        ap = argparse.ArgumentParser(add_help=False)
+        ap.add_argument("--transport", choices=TRANSPORTS, default="zcode")
+        try:
+            transport = ap.parse_known_args()[0].transport
+        except SystemExit:  # malformed argv: the hook's own default
+            transport = "zcode"
+        sys.exit(emit(fail_closed_digest(exc), transport))

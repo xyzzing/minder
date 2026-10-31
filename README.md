@@ -269,6 +269,7 @@ MINDER_ASSIST=off | retrieve | decision_skill      # digest-level assistance
 MINDER_CLASSIFIER=shadow                           # log-only classifier labels
 MINDER_DECISION=shadow                             # log-only gateway traces
 MINDER_INJECTION_GUARD=off | shadow                # proxy request scan, records only
+MINDER_HOOK_FAIL_MODE=closed                       # hook crash blocks the call (default: open)
 ```
 
 The proxy's injection guard (MINDER_INJECTION_GUARD) is off by default.
@@ -281,6 +282,13 @@ mode, worker state) and `minder-op status` (`injection_shadow_rows`)
 read back. The classifier is Llama Prompt Guard 2 via transformers -
 `pip install --user "minder[guard]"` - and when it is not installed the
 worker reports unavailable, no opinion is recorded, and doctor says so.
+
+By default a hook failure never blocks a tool call. `MINDER_HOOK_FAIL_MODE=closed`
+opts the hook's outer guard into fail-closed: an uncaught exception blocks the
+call (dsh exit 2 with a digest naming the failure, zcode a block decision). It
+covers that guard only; the deliberate inner fail-opens (malformed stdin,
+directive failures) still allow the call, because blocking every tool call on
+malformed input would brick the harness.
 
 Second-opinion consults run through the bundled `frontier.py` runner or
 your own via `--frontier-cmd`. Bring your own API key; minder never
