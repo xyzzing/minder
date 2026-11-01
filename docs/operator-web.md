@@ -4,6 +4,13 @@ Local-only, read-only operator console. It reuses the `minder_op`
 query/summary layer — no SQL or policy logic lives in the web package,
 and there are no write endpoints.
 
+The console documented here is the shipped generation. The target
+information architecture, screen specifications and state language for
+the next console generation are the design authority at
+`docs/design/PRD-work-console.md` (owner-local, with the Stage 0 audit
+record beside it; issue #76). Migration proceeds route by route; this
+page keeps documenting what is reachable today.
+
 ## Two readers, one page (issue #12)
 
 Every page leads with a plain-language answer line composed from the
@@ -97,7 +104,10 @@ curl -sS http://127.0.0.1:8765/healthz
 | `/gaps` | open skill gaps |
 | `/consults`, `/consults/{id}` | frontier consult labels (`frontier_evals`, never the legacy 003 integer); hashes only, no raw prompt/response text |
 | `/decisions` | shadow decision traces: model recommendation vs policy decision |
+| `/difficulty` | difficulty-routing ledger, read from the proxy events file rather than the database: routed / skipped / shadow with reason, band, effort, budget and guardrail columns |
+| `/skills` | installed-skill inventory: name, description, triggers, risk, body presence, index state |
 | `/benchmarks` | suite manifests + pinned baselines; verdicts come from `minder-op benchmark compare` |
+| `/domains` | domain profile, benchmark suites with baseline verdicts, knowledge provenance, routing |
 | `/traces` | stored trace reviews: session, highest severity, finding counts, rubric and evaluator version |
 | `/traces/{review_id}` | one review: findings (severity, rule, cited dsh event `seq`s, redacted excerpts, suggested fix), the summary counts, and the human feedback with its confirm/reject verdicts |
 | `/engine` | the engine registry: active engine, upstream, systemd unit and unit health. The switch cell is a link, not a form |
