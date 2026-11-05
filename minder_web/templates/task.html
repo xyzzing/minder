@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ S.tasks.title }} <small>{{ S.tasks.gloss }}</small></h1>
+<p class="crumb">task <code>{{ task_id }}</code></p>
+{% if wo %}
+  <table class="kv">
+    <caption>{{ S.tasks.kv_caption }}</caption>
+    <tbody>
+      <tr><th scope="row">{{ S.tasks.col_wo }}</th><td>{{ wo.wo_id }}</td></tr>
+      <tr><th scope="row">{{ S.tasks.col_revision }}</th><td>{{ wo.revision }}</td></tr>
+      <tr><th scope="row">{{ S.tasks.col_task }}</th><td>{{ wo.task }}</td></tr>
+      <tr><th scope="row">{{ S.tasks.col_criterion }}</th><td>{{ wo.acceptance_criterion }}</td></tr>
+      <tr><th scope="row">{{ S.tasks.col_family }}</th><td>{{ wo.room_family }}</td></tr>
+      <tr><th scope="row">{{ S.tasks.col_kind }}</th><td>{{ wo.kind or S.common.na }}</td></tr>
+      <tr><th scope="row">{{ S.tasks.col_version }}</th><td>{{ wo.contract_version }}</td></tr>
+      <tr><th scope="row">{{ S.tasks.col_declared }}</th><td>{{ wo.declared_at | human_date }}</td></tr>
+      <tr><th scope="row">{{ S.tasks.col_status }}</th><td>{{ S.tasks.status_open if not wo.closed_at else S.tasks.status_closed }}</td></tr>
+    </tbody>
+  </table>
+  <p class="note">{{ S.tasks.grading_note }}</p>
+{% else %}
+  <p class="note">{{ S.tasks.not_declared }}</p>
+{% endif %}
+{% endblock %}

@@ -149,6 +149,29 @@ def build_parser():
     tk_close.add_argument("--task", default="default")
     tk_close.add_argument("--reason", default="closed")
 
+    wo = sub.add_parser("wo", help="work-order contract at intake "
+                                   "(FR-O1, issue #84: the quality plan "
+                                   "and reward definition)")
+    wo_sub = wo.add_subparsers(dest="subcommand", required=True)
+    wo_dec = wo_sub.add_parser("declare")
+    wo_dec.add_argument("--task-id", required=True,
+                        help="the stable task key (id-stability rule: "
+                             "criterion and family are immutable while "
+                             "open)")
+    wo_dec.add_argument("--task", required=True,
+                        help="the work statement")
+    wo_dec.add_argument("--criterion", required=True,
+                        help="acceptance_criterion: done means ...")
+    wo_dec.add_argument("--family", required=True,
+                        help="room_family")
+    wo_dec.add_argument("--kind")
+    wo_dec.add_argument("--actor", default="operator")
+    wo_show = wo_sub.add_parser("show")
+    wo_show.add_argument("--task-id", default="default")
+    wo_close = wo_sub.add_parser("close")
+    wo_close.add_argument("--task-id", default="default")
+    wo_close.add_argument("--reason", default="closed")
+
     hu = sub.add_parser("human", help="human evidence events: record what "
                                       "a person stated (issue #22)")
     hu_sub = hu.add_subparsers(dest="subcommand", required=True)
@@ -600,6 +623,12 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_task_status(args, path)
     if command == "task" and sub == "close":
         return _cmd_task_close(args, path)
+    if command == "wo" and sub == "declare":
+        return _cmd_wo_declare(args, path)
+    if command == "wo" and sub == "show":
+        return _cmd_wo_show(args, path)
+    if command == "wo" and sub == "close":
+        return _cmd_wo_close(args, path)
     if command == "families" and sub == "register":
         return _cmd_families_register(args, path)
     if command == "families" and sub == "trial":
@@ -1240,6 +1269,58 @@ def _cmd_task_close(args, path):
         print(f"error: {status}", file=sys.stderr)
         return EXIT_USAGE
     fmt.kv([("context_id", row["context_id"]),
+            ("status", status), ("reason", row["close_reason"])])
+    return EXIT_OK
+
+
+def _cmd_wo_declare(args, path):
+    from minder_memory import work_order
+    row, status = work_order.declare_work_order(
+        args.task, acceptance_criterion=args.criterion,
+        room_family=args.family, task_id=args.task_id, kind=args.kind,
+        actor=args.actor, db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("wo_id", row["wo_id"]),
+            ("task_id", row["task_id"]),
+            ("revision", row["revision"]),
+            ("contract_version", row["contract_version"]),
+            ("room_family", row["room_family"]),
+            ("status", status),
+            ("declared_at", row["declared_at"])])
+    print("attempt grading against the criterion is a later slice; the"
+          " contract is recorded, nothing grades it yet")
+    return EXIT_OK
+
+
+def _cmd_wo_show(args, path):
+    from minder_memory import work_order
+    row = work_order.get_work_order(task_id=args.task_id, db_path=path)
+    if row is None:
+        print("(none)")
+        return EXIT_OK
+    fmt.kv([("wo_id", row["wo_id"]),
+            ("task_id", row["task_id"]),
+            ("revision", row["revision"]),
+            ("task", row["task"]),
+            ("acceptance_criterion", row["acceptance_criterion"]),
+            ("room_family", row["room_family"]),
+            ("contract_version", row["contract_version"]),
+            ("declared_at", row["declared_at"]),
+            ("closed_at", row["closed_at"] or "(open)")])
+    return EXIT_OK
+
+
+def _cmd_wo_close(args, path):
+    from minder_memory import work_order
+    row, status = work_order.close_work_order(task_id=args.task_id,
+                                              reason=args.reason,
+                                              db_path=path)
+    if row is None:
+        print(f"error: {status}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("wo_id", row["wo_id"]),
             ("status", status), ("reason", row["close_reason"])])
     return EXIT_OK
 

@@ -144,3 +144,29 @@ DIFFICULTY = {
 
 PAGES = {"domains": DOMAINS, "sessions": SESSIONS,
          "difficulty": DIFFICULTY}
+
+TASKS = {
+    "title": "task",
+    "gloss": "(the work-order contract minder recorded at intake)",
+    "not_declared": "The work-order contract is <strong>not declared</strong>"
+                    " for this task id - declare it with"
+                    " <code>minder-op wo declare</code>; nothing is"
+                    " fabricated here.",
+    "kv_caption": "the work-order contract as recorded",
+    "col_wo": "work order",
+    "col_revision": "revision",
+    "col_task": "task",
+    "col_criterion": "acceptance criterion",
+    "col_family": "room family",
+    "col_kind": "kind",
+    "col_version": "contract version",
+    "col_declared": "declared",
+    "col_status": "status",
+    "status_open": "open",
+    "status_closed": "closed",
+    "grading_note": "attempt grading against the criterion is a later"
+                    " slice: the contract is recorded, nothing grades it"
+                    " yet.",
+}
+
+PAGES = {**PAGES, "tasks": TASKS}
