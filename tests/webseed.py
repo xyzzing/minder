@@ -144,3 +144,18 @@ def add_decision(dbp, decision_id="dt1",
           " '[\"inspect\"]', 'inspect', 'inspect', '', '', 0.9,"
           " 'runtime_error', 0.0, 'null', '', 1.0)",
           (decision_id, TS, failure_key))
+
+
+def add_work_order(dbp, task_id="t-1041", revision=1,
+                   task="Reconcile the Q3 member ledger.",
+                   criterion="All 5 configured comparisons match.",
+                   family="finance/reconciliation",
+                   contract_version="windtunnel.work-order/v1",
+                   wo_id="wo1", declared=TS, closed=None):
+    _ins(dbp, "INSERT INTO work_orders (wo_id, task_id, revision, task,"
+          " acceptance_criterion, room_family, kind, contract_version,"
+          " actor, declared_at, closed_at, close_reason)"
+          " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          (wo_id, task_id, revision, task, criterion, family,
+           "ledger_reconciliation", contract_version, "operator",
+           declared, closed, None))

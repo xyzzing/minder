@@ -214,6 +214,17 @@ def gaps_page(db_path):
     return {"rows": safe, "actions": page_actions.gap_actions(safe)}
 
 
+def task_page(db_path, task_id):
+    """The work-order contract view (FR-O1, issue #84). A task with no
+    work order renders as an honest empty state: the model carries
+    wo=None and the template says not declared - never a fabricated
+    contract, never a zero that reads as a recorded one."""
+    wo = _try(queries.work_order_for_task, db_path, task_id, default=None)
+    return {"task_id": task_id,
+            "wo": _safe_row(wo, ("task", "acceptance_criterion"))
+            if wo else None}
+
+
 def consults_page(db_path, limit=DEFAULT_LIMIT):
     rows = _try(queries.consults, db_path,
                 limit=_bounded_limit(limit), default=[]) or []

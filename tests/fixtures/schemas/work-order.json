@@ -1,0 +1,9 @@
+{
+  "acceptance_criterion": "All 5 configured comparisons return matching totals; every discrepancy names its source line and amount.",
+  "declared_at": "2026-11-06T09:00:00+08:00",
+  "id": "wo-2026-0001",
+  "kind": "ledger_reconciliation",
+  "room_family": "finance/reconciliation",
+  "schema": "windtunnel.work-order/v1",
+  "task": "Reconcile the Q3 member ledger against the bank statement and report every discrepancy with its source line."
+}

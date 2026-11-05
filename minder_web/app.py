@@ -109,6 +109,13 @@ def episode(request: Request, episode_id: str):
     return render(request, "episode", detail)
 
 
+@app.get("/tasks/{task_id}")
+def task(request: Request, task_id: str):
+    # The work-order contract view (FR-O1, issue #84): an unknown task is
+    # an honest empty state, never a 404 and never a fabricated contract.
+    return render(request, "task", services.task_page(_db_path(), task_id))
+
+
 @app.get("/lessons")
 def lessons(request: Request, status: str | None = None,
             limit: int = services.DEFAULT_LIMIT):

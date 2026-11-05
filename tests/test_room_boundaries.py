@@ -94,13 +94,15 @@ import pytest
 
 SCHEMA_FILES = {
     "SCHEMAS-room.md":
-        "880f38255a5b215fae9f95976f2681c02c5773a35cf928ee5f7ddf9d876970cb",
+        "0ac1cebd3398a677a65abc4dd038447df6c28fe12d31b9efe6faec2c0b7683d5",
     "tests/fixtures/schemas/room-policy.json":
         "29539971e68dece3b1652f162ba0e08f0c0145f6e75f4d4e045e95bb2eda60ca",
     "tests/fixtures/schemas/rulebook-provenance.json":
         "6a49f0a52634d6b81d6d174291cb930c485c3be55351a89ad526ed16f045e950",
     "tests/fixtures/schemas/minder-benchmark-report.json":
         "7213b47945b479425c0cca30bc23abca4efc2071ef277bdbe4383d78be70de8a",
+    "tests/fixtures/schemas/work-order.json":
+        "1c4a3772621be518f0acf76cc6d311ab2005b4e144883ccbb86121fff9435f20",
 }
 
 
