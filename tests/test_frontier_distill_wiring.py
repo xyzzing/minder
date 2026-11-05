@@ -7,6 +7,7 @@ lesson queue stayed empty forever. These tests drive the two production
 seams - `frontier.py`'s trace hook and the hook's episode close - and assert
 on persisted rows.
 """
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 import json
 import sqlite3
 
@@ -24,7 +25,7 @@ SECRET = "sk-proj-supersecret1234567890"
 REPO = "/repo"
 CMD = "pytest tests/test_supplier.py"
 FAIL_OUT = ("FAILED tests/test_supplier.py::test_lookup - "
-            "KeyError: 'supplier_id'")
+            "KeyError: 'supplier_id'\n[exit code: 2]")
 PASS_OUT = "7 passed in 0.31s"
 KEY = "bash|keyerror|supplier_id|tests/test_supplier.py"
 

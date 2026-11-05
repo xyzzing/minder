@@ -27,8 +27,8 @@ def record_event(event, db_path=None):
             _db.write(conn, "INSERT INTO events (event_id, ts, event_type,"
                       " session_id, task_id, repo, repo_version, tool,"
                       " failure_key, action_fingerprint, payload_json,"
-                      " redaction_status)"
-                      " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      " evidence, redaction_status)"
+                      " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                       (eid, event.get("ts") or _now(),
                        event.get("event_type") or "tool_failure",
                        event.get("session_id"), event.get("task_id"),
@@ -36,6 +36,7 @@ def record_event(event, db_path=None):
                        event.get("tool"), event.get("failure_key"),
                        event.get("action_fingerprint"),
                        event.get("payload_json") or "{}",
+                       event.get("evidence"),
                        event.get("redaction_status") or "redacted"))
             return eid, "ok"
         finally:
@@ -76,8 +77,8 @@ def add_attempt(episode_id, event, db_path=None):
             _db.write(conn, "INSERT INTO events (event_id, ts, event_type,"
                       " session_id, task_id, repo, repo_version, tool,"
                       " failure_key, action_fingerprint, payload_json,"
-                      " redaction_status)"
-                      " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      " evidence, redaction_status)"
+                      " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                       (eid, event.get("ts") or _now(),
                        event.get("event_type") or "tool_failure",
                        event.get("session_id"), event.get("task_id"),
@@ -85,6 +86,7 @@ def add_attempt(episode_id, event, db_path=None):
                        event.get("tool"), event.get("failure_key"),
                        event.get("action_fingerprint"),
                        event.get("payload_json") or "{}",
+                       event.get("evidence"),
                        event.get("redaction_status") or "redacted"))
             _db.write(conn, "INSERT INTO episode_events (episode_id,"
                       " event_id, seq) VALUES (?, ?, ?)",

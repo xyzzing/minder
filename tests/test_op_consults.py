@@ -5,6 +5,7 @@ read as a classified label. The decisions listing is checked against a
 real in-process shadow evaluate (never through hook.py), and the digest
 identity assertion from Phase 5.5 is re-checked here.
 """
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 
 from minder_memory import (db as _db, from_hook, frontier_traces,
                     policy as memory_policy)
@@ -13,7 +14,7 @@ from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 HOOK_EVENT = {"session_id": "s-op", "hook_event_name": "PostToolUse",
               "tool_name": "Edit",
               "tool_input": {"file_path": "/repo/app/supplier.py"},
-              "tool_response": "KeyError: 'supplier_id'"}
+              "tool_response": "KeyError: 'supplier_id'\n[exit code: 1]"}
 
 
 def test_consults_ls_uses_frontier_evals_labels(tmp_path, capsys):

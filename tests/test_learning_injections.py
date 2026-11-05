@@ -9,6 +9,7 @@ The seam is policy.evaluate(): the same entry point hook.py calls, so the
 assertion is on persisted rows plus the digest text that reached the
 agent, not on an internal helper.
 """
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 import json
 
 from minder_memory import (canonicalise as canon, db as _db, from_hook,
@@ -296,7 +297,7 @@ def _skill_failure(session="s-13g"):
     return {"session_id": session, "hook_event_name": "PostToolUse",
             "tool_name": "Bash", "repo": REPO,
             "tool_input": {"command": "python3 app.py"},
-            "tool_response": "FileNotFoundError: [Errno 2] config.toml"}
+            "tool_response": "FileNotFoundError: [Errno 2] config.toml\n[exit code: 2]"}
 
 
 def test_skill_section_injection_records_the_skill_name(tmp_path,
@@ -479,7 +480,7 @@ def test_the_skill_row_is_written_by_the_injection_call_itself(tmp_path,
     ev = {"session_id": "s-13-carrier", "hook_event_name": "PostToolUse",
           "tool_name": "Bash", "repo": REPO,
           "tool_input": {"command": "python3 app.py"},
-          "tool_response": "FileNotFoundError: [Errno 2] config.toml"}
+          "tool_response": "FileNotFoundError: [Errno 2] config.toml\n[exit code: 2]"}
     for _ in range(3):
         from_hook.record(ev, db_path=dbp)
 

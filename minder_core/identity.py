@@ -32,7 +32,7 @@ _LINE_SUFFIX_RE = re.compile(r":\d+(?::\d+)?$")
 
 _FAMILY_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception))\b",
                         re.IGNORECASE)
-_EXIT_RE = re.compile(r"\bexit(?:ed with(?: code)?| code)? (\d+)\b",
+_EXIT_RE = re.compile(r"\bexit(?:ed with(?: code)?| code)?:? (\d+)\b",
                       re.IGNORECASE)
 _NODEID_RE = re.compile(r"\b[\w./-]+\.(?:py|ts|js|go|rs)::[\w/\[\]-]+",
                         re.IGNORECASE)

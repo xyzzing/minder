@@ -19,7 +19,7 @@ def raw_event(**kw):
     base = {"session_id": "guard-s1", "hook_event_name": "PostToolUse",
             "tool_name": "Bash",
             "tool_input": {"command": "make lint"},
-            "tool_response": "process failed: exit code 2"}
+            "tool_response": "process failed\n[exit code: 2]"}
     base.update(kw)
     return base
 
@@ -27,6 +27,7 @@ def raw_event(**kw):
 def seed_attempts(dbp, n=2, **overrides):
     """Record n identical failure attempts exactly the way PR 5's hook
     writer will: canonicalise, then store."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
     key = None
     for _ in range(n):
         e = policy._as_event(raw_event())
@@ -78,7 +79,7 @@ def test_digest_marker_compatible_with_turnstile(tmp_path):
     assert out["digest"].startswith(minder.DIGEST_MARKERS[1])
     # excerpt wording is noise (like warden float masking): same failure
     # shape + same action + no hypothesis → still a verbatim repeat
-    noisy = raw_event(tool_response="process failed: exit code 2 "
+    noisy = raw_event(tool_response="process failed\n[exit code: 2] "
                                      "(took 41.7s this time)")
     again = policy.evaluate(noisy, db_path=dbp)
     assert again and again["action"] == "block_duplicate"
@@ -143,7 +144,7 @@ def keyerror_event(**kw):
     base = {"session_id": "guard-p25", "hook_event_name": "PostToolUse",
             "tool_name": "Edit",
             "tool_input": {"file_path": "app/supplier.py"},
-            "tool_response": "KeyError: 'supplier_id' while mapping rows",
+            "tool_response": "Error: KeyError: 'supplier_id' while mapping rows",
             "repo": "/repo"}
     base.update(kw)
     return base

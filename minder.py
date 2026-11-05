@@ -249,10 +249,55 @@ def tool_key(tool, args):
 def is_failure(text, extra=None):
     """Not a clean success. A decline matches too, because the harness
     writes `Error: ` on it — use `classify_outcome` when the difference
-    between an operator decision and a broken command matters."""
+    between an operator decision and a broken command matters.
+
+    Content-word matching reads the whole response, so this also fires on
+    a successful read whose file content quotes an error word (issue #79).
+    Capture paths that can should prefer `failure_evidence`, which weighs
+    structured status before content."""
     t = str(text).lower()
     signs = FAIL_SIGNS + tuple(extra or ())
     return any(s in t for s in signs)
+
+
+# The harness's own shell-result marker (`[exit code: N]`, optionally
+# `[status: <word>, exit code: N]`) — see dsh's parseExitStatus. Capture
+# reads the marker only when it closes the response: file content and log
+# excerpts quote exit codes mid-text, and only the harness appends one at
+# the very end (issue #79).
+_EXIT_MARKER_RE = re.compile(r"\[(?:[A-Za-z ]+: [^]]*, )*exit code: (\d+)\]")
+
+
+def tail_exit_code(text):
+    """The exit code of the harness marker that closes the response, or
+    None when the response carries no marker. Tail-anchored on purpose —
+    see the regex note above."""
+    lines = [ln for ln in str(text or "").rstrip().splitlines()
+             if ln.strip()]
+    if not lines:
+        return None
+    m = _EXIT_MARKER_RE.search(lines[-1])
+    return int(m.group(1)) if m else None
+
+
+def failure_evidence(text):
+    """(failed, evidence_kind) with structured status before content words
+    (issue #79). Precedence: the tail exit marker, the harness error
+    envelope, a traceback, then nothing — a response with none of those is
+    a success even when its content quotes error words, which is what a
+    file read or a grep of failing source looks like. The evidence kind is
+    the why: status-marker, error-envelope, traceback, none. A decline
+    keeps is_failure's reading (the envelope matches; use classify_outcome
+    when the difference matters)."""
+    t = str(text or "")
+    code = tail_exit_code(t)
+    if code is not None:
+        return code != 0, "status-marker"
+    if t.lstrip().lower().startswith(("error: ",)):
+        return True, "error-envelope"
+    if "traceback (most recent call last)" in t.lower():
+        return True, "traceback"
+    return False, "none"
 
 
 def classify_outcome(text, extra=None):
