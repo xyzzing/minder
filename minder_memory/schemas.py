@@ -32,6 +32,9 @@ class AgentToolEvent:
     #                           canonicalise.canonical_args)
     file_path: str = ""
     error_excerpt: str = ""
+    evidence: str = ""        # why a failure is one: status-flag |
+    #                           status-marker | error-envelope | traceback |
+    #                           content-sign | none (issue #79)
     content_hash: str = ""    # optional: hash of content involved/changed
     hypothesis: str = ""      # optional: agent-stated hypothesis this attempt
     payload_json: str = "{}"  # full original payload (redacted), for evidence

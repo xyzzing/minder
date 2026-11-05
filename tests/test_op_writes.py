@@ -13,7 +13,7 @@ REPO = "/repo"
 KEY = "bash|keyerror|supplier_id|app/supplier.py"
 CMD = "pytest tests/test_supplier.py"
 FAIL_OUT = ("FAILED tests/test_supplier.py::test_lookup - "
-            "KeyError: 'supplier_id'")
+            "KeyError: 'supplier_id'\n[exit code: 2]")
 PASS_OUT = "7 passed in 0.31s"
 
 

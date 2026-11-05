@@ -13,7 +13,7 @@ SUBPROC_TIMEOUT = int(os.environ.get("MINDER_TEST_TIMEOUT", "60"))
 FAIL_EVENT = {"session_id": "mem-s1", "hook_event_name": "PostToolUse",
               "tool_name": "Bash",
               "tool_input": {"command": "pytest tests/test_supplier.py"},
-              "tool_response": "process failed: exit code 2",
+              "tool_response": "process failed\n[exit code: 2]",
               "repo": "/repo", "cwd": "/repo"}
 
 

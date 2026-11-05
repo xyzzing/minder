@@ -9,7 +9,7 @@ from minder_memory import (classifier, db as _db, from_hook, policy as memory_po
 REPO = "/repo"
 
 
-def hook_event(tool_response="KeyError: 'supplier_id'"):
+def hook_event(tool_response="KeyError: 'supplier_id'\n[exit code: 1]"):
     return {"session_id": "s-shadow", "hook_event_name": "PostToolUse",
             "tool_name": "Edit",
             "tool_input": {"file_path": "/repo/app/supplier.py"},

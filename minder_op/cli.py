@@ -455,6 +455,11 @@ def build_parser():
     gp_close.add_argument("id")
     gp_close.add_argument("--reason", required=True)
     gp_close.add_argument("--yes", action="store_true")
+    gp_retriage = gp_sub.add_parser(
+        "retriage", help="close gaps whose excerpt carries no structured "
+                         "failure signal (issue #79)")
+    gp_retriage.add_argument("--yes", action="store_true")
+    gp_retriage.add_argument("--dry-run", action="store_true")
 
     co = sub.add_parser("consults", help="L2 frontier consult traces")
     co_sub = co.add_subparsers(dest="subcommand", required=True)
@@ -674,6 +679,8 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_gaps_ls(args, path)
     if command == "gaps" and sub == "close":
         return _cmd_gaps_close(args, path)
+    if command == "gaps" and sub == "retriage":
+        return _cmd_gaps_retriage(args, path)
     if command == "consults" and sub == "ls":
         return _cmd_consults_ls(args, path)
     if command == "consults" and sub == "show":
@@ -1746,6 +1753,40 @@ def _cmd_gaps_close(args, path):
             ("gap_status", row["status"]),
             ("reason", fmt.safe(args.reason, 200))])
     return EXIT_OK
+
+
+def _cmd_gaps_retriage(args, path):
+    """Issue #79 acceptance 3: close the open gaps whose recorded excerpt
+    carries no structured failure signal under the capture layer's own
+    rules. --dry-run reports what would close without closing."""
+    from minder_memory import skills as memory_skills
+    if not args.dry_run and _refuse_without_yes(
+            args, "gaps retriage (closes capture-artifact gaps)"):
+        return EXIT_USAGE
+    if args.dry_run:
+        summary = _retriage_dry_run(path)
+        mode = "would close"
+    else:
+        summary = memory_skills.retriage_artifacts(db_path=path)
+        mode = "closed"
+    fmt.kv([("mode", "dry-run" if args.dry_run else "applied"),
+            (mode, summary["closed"]),
+            ("kept_structured_evidence", summary["kept"]),
+            ("already_closed", summary.get("already_closed", 0))])
+    return EXIT_OK
+
+
+def _retriage_dry_run(path):
+    """Same rule as retriage_artifacts, nothing written."""
+    import minder
+    counts = {"closed": 0, "kept": 0, "already_closed": 0}
+    for row in queries.open_gap_excerpts(path):
+        failed, _ = minder.failure_evidence(row["sample_error"] or "")
+        if failed:
+            counts["kept"] += 1
+        else:
+            counts["closed"] += 1
+    return counts
 
 
 def main(argv=None):

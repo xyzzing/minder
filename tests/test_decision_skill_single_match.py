@@ -99,7 +99,7 @@ def test_multi_match_keeps_full_confidence_floor(tmp_path, monkeypatch):
     # Matches both diagnose-build-environment (pnpm) and
     # diagnose-environment (ModuleNotFoundError) deterministically.
     ev = hook_event("ModuleNotFoundError: No module named 'pnpm' "
-                    "(pnpm-lock.yaml)")
+                    "(pnpm-lock.yaml)\n[exit code: 1]")
     fkey = fkey_of(ev)
     fixtures = {fkey: _spec(fkey, applies=0.9, confidence=0.2)}
     dbp = tmp_path / "m.sqlite"
@@ -119,7 +119,7 @@ def test_multi_match_attaches_when_confident(tmp_path, monkeypatch):
     (decide_skill) still lets the gateway attach."""
     memory_policy._DECISION_DEBOUNCE.clear()
     ev = hook_event("ModuleNotFoundError: No module named 'pnpm' "
-                    "(pnpm-lock.yaml)")
+                    "(pnpm-lock.yaml)\n[exit code: 1]")
     fkey = fkey_of(ev)
     fixtures = {fkey: _spec(fkey, applies=0.9, confidence=0.9)}
     dbp = tmp_path / "m.sqlite"
@@ -138,7 +138,7 @@ def test_no_match_keeps_full_confidence_floor(tmp_path, monkeypatch):
     """No deterministic trigger match: the shortcut does not apply and
     the model's low choice confidence blocks the gateway."""
     memory_policy._DECISION_DEBOUNCE.clear()
-    ev = hook_event("ZeroDivisionError: division by zero")
+    ev = hook_event("ZeroDivisionError: division by zero\n[exit code: 1]")
     fkey = fkey_of(ev)
     fixtures = {fkey: {"failure_kind": "code_logic",
                        "needs_new_evidence": 0.1,

@@ -363,7 +363,7 @@ def test_decline_does_not_open_the_memory_policy_pass(tmp_path, monkeypatch):
     import hook
     fresh_state(tmp_path, monkeypatch)
     assert hook._policy_wanted(ev("exit_plan_mode", DISMISSED), {}) is False
-    assert hook._policy_wanted(ev("bash", "boom\nexit code 1"), {}) is True
+    assert hook._policy_wanted(ev("bash", "boom\n[exit code: 1]"), {}) is True
     assert hook._policy_wanted(ev("bash", "all good"), {}) is False
 
 

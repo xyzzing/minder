@@ -13,7 +13,7 @@ from minder_op.cli import EXIT_OK, EXIT_USAGE, main
 HOOK_EVENT = {"session_id": "s-op", "hook_event_name": "PostToolUse",
               "tool_name": "Edit",
               "tool_input": {"file_path": "/repo/app/supplier.py"},
-              "tool_response": "KeyError: 'supplier_id'"}
+              "tool_response": "KeyError: 'supplier_id'\n[exit code: 1]"}
 
 
 def test_consults_ls_uses_frontier_evals_labels(tmp_path, capsys):

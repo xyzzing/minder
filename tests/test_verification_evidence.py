@@ -10,7 +10,7 @@ from minder_memory import from_hook, lessons, retrieval, store
 
 REPO = "/repo"
 FAIL_RESPONSE = ("FAILED tests/test_supplier.py::test_lookup - "
-                 "KeyError: 'supplier_id'")
+                 "KeyError: 'supplier_id'\n[exit code: 2]")
 
 pytest_event = {
     "session_id": "ver-s1", "hook_event_name": "PostToolUse",

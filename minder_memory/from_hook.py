@@ -17,19 +17,34 @@ from . import store
 
 def to_event(hook_ev, cfg=None):
     """Raw hook payload (or canonical event) → canonical memory event dict.
-    Failure classification uses the Warden's own is_failure signs so memory
-    and ladder never disagree about what a failure is."""
+    Failure classification weighs structured status before content words
+    (`minder.failure_evidence`, issue #79): the response dict's own status
+    flag (zcode), then the tail exit marker (dsh), the error envelope, a
+    traceback — and a response with none of those is a success even when
+    its content quotes error words. The evidence kind rides the event so
+    gap rows and triage can filter on status, not content."""
     if not isinstance(hook_ev, dict):
         return {}
     if hook_ev.get("event_type"):
         return dict(hook_ev)
     resp = hook_ev.get("tool_response", "")
     text = resp if isinstance(resp, str) else json.dumps(resp, default=str)
+    if isinstance(resp, dict) and resp.get("is_error") is not None:
+        failed, evidence = resp["is_error"] is True, "status-flag"
+    else:
+        failed, evidence = minder.failure_evidence(text)
+    if not failed:
+        # Profile-declared content signs stay honored as an opt-in layer
+        # after structured status: they name failure words the profile
+        # knows, checked on their own so the built-in content signs do
+        # not resurrect (issue #79).
+        cfg = cfg if cfg is not None else minder.cfg()
+        t = text.lower()
+        if any(s in t for s in tuple(cfg.get("fail_signs_extra") or ())):
+            failed, evidence = True, "content-sign"
     args = hook_ev.get("tool_input") or {}
     if not isinstance(args, dict):
         args = {}
-    cfg = cfg if cfg is not None else minder.cfg()
-    failed = minder.is_failure(text, cfg.get("fail_signs_extra"))
     return {
         "event_type": "tool_failure" if failed else "tool_success",
         "tool": hook_ev.get("tool_name") or "",
@@ -40,6 +55,7 @@ def to_event(hook_ev, cfg=None):
         "args_json": json.dumps(canon_redact_args(args)),
         "file_path": str(args.get("file_path", "") or args.get("path", "")),
         "error_excerpt": text,
+        "evidence": evidence,
         "content_hash": str(hook_ev.get("content_hash") or ""),
         "hypothesis": str(hook_ev.get("hypothesis") or ""),
         "payload_json": json.dumps(_redacted_payload(hook_ev)),

@@ -19,7 +19,7 @@ def hook_event():
     return {"session_id": "s-eg", "hook_event_name": "PostToolUse",
             "tool_name": "Edit", "repo": REPO,
             "tool_input": {"file_path": "/repo/app/supplier.py"},
-            "tool_response": "KeyError: 'supplier_id'"}
+            "tool_response": "KeyError: 'supplier_id'\n[exit code: 1]"}
 
 
 def _unset(monkeypatch):
