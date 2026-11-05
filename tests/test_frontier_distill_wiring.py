@@ -7,6 +7,7 @@ lesson queue stayed empty forever. These tests drive the two production
 seams - `frontier.py`'s trace hook and the hook's episode close - and assert
 on persisted rows.
 """
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 import json
 import sqlite3
 

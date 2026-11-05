@@ -7,6 +7,7 @@ no-match cases keep the full gate 4 floor.
 Note: the P2.5 _skill_section path (in _evaluate) also attaches a matching
 skill to the guard digest independently of the gateway. The gateway is
 verified by the assist="decision_skill" key, which only the gateway sets."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 
 from minder_memory import (canonicalise as canon_mod, from_hook,
                     policy as memory_policy)

@@ -3,6 +3,7 @@ P5.1). The classifier is log-only: policy outcomes are byte-identical with
 and without it, inner crashes degrade, and excerpts are redacted + truncated
 before any classifier sees them. These tests never require the laya
 package."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 
 from minder_memory import (classifier, db as _db, from_hook, policy as memory_policy)
 

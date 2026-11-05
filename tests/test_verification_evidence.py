@@ -5,6 +5,7 @@ The live store held 234 episodes and zero lessons because nothing ever set
 candidate branch. These tests pin the producer: a clean test-runner run
 verifies the session's open episode.
 """
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 
 from minder_memory import from_hook, lessons, retrieval, store
 

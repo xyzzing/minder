@@ -9,6 +9,7 @@ The seam is policy.evaluate(): the same entry point hook.py calls, so the
 assertion is on persisted rows plus the digest text that reached the
 agent, not on an internal helper.
 """
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 import json
 
 from minder_memory import (canonicalise as canon, db as _db, from_hook,

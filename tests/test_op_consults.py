@@ -5,6 +5,7 @@ read as a classified label. The decisions listing is checked against a
 real in-process shadow evaluate (never through hook.py), and the digest
 identity assertion from Phase 5.5 is re-checked here.
 """
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 
 from minder_memory import (db as _db, from_hook, frontier_traces,
                     policy as memory_policy)

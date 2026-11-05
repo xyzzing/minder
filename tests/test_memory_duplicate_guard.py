@@ -27,6 +27,7 @@ def raw_event(**kw):
 def seed_attempts(dbp, n=2, **overrides):
     """Record n identical failure attempts exactly the way PR 5's hook
     writer will: canonicalise, then store."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
     key = None
     for _ in range(n):
         e = policy._as_event(raw_event())

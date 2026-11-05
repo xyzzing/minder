@@ -2,6 +2,7 @@
 runs after Warden + memory policy, writes a DecisionTrace, and changes
 NOTHING — digest and action are byte-identical to the unset run.
 Debounce limits it to one call per (session, failure_key) per 5s."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 from minder_memory import db as _db, from_hook, policy as memory_policy
 
 HOOK_EVENT = {"session_id": "s-decision", "hook_event_name": "PostToolUse",

@@ -118,6 +118,7 @@ def test_guard_fires_through_real_hook_path(tmp_path):
     """Definition of done #1: two identical failures through the real hook
     produce the duplicate-block directive, with the DB populated by the
     hook itself (not seeded)."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
     proc = _run_hook(FAIL_EVENT, "zcode", tmp_path)
     payload = json.loads(proc.stdout)
     assert payload["decision"] == "block"

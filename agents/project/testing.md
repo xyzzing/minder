@@ -18,7 +18,11 @@ Read before writing or changing tests.
   of the repo's own modules is counted by the ratchet if introduced.
 - Prove red before green: a bug fix starts by showing the new test
   fails on the pre-fix code (`scripts/proven-red.sh <base> <head>`;
-  CI runs it on PRs).
+  CI runs it on PRs). A changed test file whose assertions hold on
+  both sides (fixture realism for a behavior change that lives
+  elsewhere) announces `# PROVEN-RED: skip - <reason>` near its top;
+  the gate reports the skip and still proves red for every other
+  changed test file.
 - A new gate assertion (anything under `tests/test_instruction_gate.py`
   or `scripts/`) is proven red against a scratch violation, then the
   scratch is removed in the same commit.

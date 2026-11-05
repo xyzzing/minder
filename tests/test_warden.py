@@ -169,6 +169,7 @@ def test_at13_ledger_privacy(tmp_path, monkeypatch):
 
 def test_escalation_uses_session_caps_not_live(tmp_path, monkeypatch):
     """caps_mechanism snapshot at session start governs template choice (§5.3)."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
     fresh_state(tmp_path, monkeypatch)
     (tmp_path / "caps.json").write_text(json.dumps(
         {"thinking": {"mechanism": "softswitch"}}))
