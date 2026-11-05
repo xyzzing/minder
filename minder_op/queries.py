@@ -361,3 +361,12 @@ from minder_op.injections import (  # noqa: E402, F401
     lesson_injections, retrieval_hit_rate)
 from minder_op.lesson_queries import (  # noqa: E402, F401
     decision_counts, human_input_event, lesson, lesson_decisions, lessons)
+
+
+def work_order_for_task(path, task_id):
+    """The latest work order for a task (open preferred), or None
+    (FR-O1, issue #84)."""
+    return _one(path,
+                "SELECT * FROM work_orders WHERE task_id = ?"
+                " ORDER BY closed_at IS NOT NULL, declared_at DESC"
+                " LIMIT 1", (task_id,))

@@ -243,3 +243,27 @@ Windtunnel does not import minder's validator. Instead,
 this code and accepted by minder's `validate_report`; Windtunnel tests check
 every report against its shape. When minder changes its envelope, minder
 regenerates the fixture and copies it here in the same release (rule 4).
+
+## 12. `windtunnel.work-order/v1`
+
+Shape owned by Windtunnel (FR-W1); written by minder at task intake (its
+FR-O1 runtime) and consumed by Windtunnel grading and by people. The
+live-task variant of the room-case shape: `id` plays `case_id`'s role,
+`task` is the statement, `acceptance_criterion` is the expected/grading
+role, `room_family` is the family. Runtime state (revision, scope,
+supported actions) is minder's task resource, not this artifact: the id is
+stable across revisions, and a changed criterion or family is a new id.
+
+```json
+{"schema": "windtunnel.work-order/v1",
+ "id": "wo-2026-0001",
+ "task": "Reconcile the Q3 member ledger against the bank statement and report every discrepancy with its source line.",
+ "acceptance_criterion": "All 5 configured comparisons return matching totals; every discrepancy names its source line and amount.",
+ "room_family": "finance/reconciliation",
+ "kind": "ledger_reconciliation",
+ "declared_at": "2026-11-06T09:00:00+08:00"}
+```
+
+`acceptance_criterion` is a statement in v1; structured machine-checkable
+checks arrive additively (rule 2). `kind` and `declared_at` are optional.
+No `model_fingerprint`: a work order does not depend on a model (rule 7).
