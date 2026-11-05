@@ -162,7 +162,14 @@ def test_migrate_reports_the_versions_it_applied(tmp_path, capsys):
     assert f"schema_version : {HEAD}" in out
     assert "schema_before : 1" in out
     applied = out.split("schema_applied : ")[1].split(" schema_version")[0]
-    assert applied == ", ".join(f"v{v}" for v in range(2, HEAD + 1))
+    # Every migration FILE above the stamp must be reported applied, in
+    # order. Versions come from the files, not a range: a number can be
+    # reserved on a branch while its change lands elsewhere (019 is the
+    # work-order runtime's, issue #84), and the reporter must not claim
+    # - nor the test expect - a version that does not exist.
+    file_versions = sorted(int(p.name.split("_", 1)[0])
+                           for p in _db.MIGRATIONS_DIR.glob("*.sql"))
+    assert applied == ", ".join(f"v{v}" for v in file_versions if v >= 2)
     assert sqlite3.connect(str(dbp)).execute(
         "PRAGMA user_version").fetchone()[0] == HEAD
 
