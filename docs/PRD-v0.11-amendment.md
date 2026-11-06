@@ -55,6 +55,14 @@ comment).
   consulted + failing evidence as a work-order closing artifact.
 - FR-O7. Delegation capture (#71): headless subagent events reach the ledger
   (owner-prioritized P0).
+- FR-O8. Proactive intake (#89, observe-first): a gh notification poller feeds
+  a code-only intake gate (default deny, bots never explicit, stable reason
+  codes); observe mode records would_accept and dispatches nothing. Stage 2
+  binds admitted triggers to FR-O1 work orders and runs them in isolated
+  sessions with a verifier that overrides done; stage 3 surfaces pending
+  decisions in the FR-O5 approval inbox. Polling, not webhooks: no new inbound
+  trust boundary. Dispatched work publishes nothing until FR-S8 serve-mode
+  with tier-3 sign-off.
 
 ## Declared objective
 
