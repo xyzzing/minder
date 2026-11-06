@@ -85,6 +85,9 @@ def _head_share(tmp_path, monkeypatch):
     _install_share(tmp_path, monkeypatch, versions)
 
 
+# proven-red: allow-pass: assumption fix + future-hazard guard; both hold
+# on pre-change code by nature (numbering was contiguous and unique
+# there). The change's red is carried by the test_dispatch_* files.
 NUMBERS = sorted(int(p.name.split("_", 1)[0])
                  for p in _db.MIGRATIONS_DIR.glob("*.sql"))
 HEAD = NUMBERS[-1]
