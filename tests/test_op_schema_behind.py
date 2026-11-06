@@ -85,9 +85,20 @@ def _head_share(tmp_path, monkeypatch):
     _install_share(tmp_path, monkeypatch, versions)
 
 
-HEAD = max(int(p.name.split("_", 1)[0]) for p in _db.MIGRATIONS_DIR.glob("*.sql"))
+NUMBERS = sorted(int(p.name.split("_", 1)[0])
+                 for p in _db.MIGRATIONS_DIR.glob("*.sql"))
+HEAD = NUMBERS[-1]
 BELOW = HEAD - 2
 ABOVE = HEAD + 1
+
+
+def test_migration_numbers_are_unique():
+    """Two files sharing a number is a silent skip: after the first file
+    bumps user_version, the second's number no longer exceeds it and
+    db.migrate passes it over forever. Uniqueness is what keeps numbering
+    gaps (legal; a numbered migration can sit in another open PR) from
+    becoming collisions (silent data loss)."""
+    assert len(NUMBERS) == len(set(NUMBERS))
 
 
 def test_status_names_a_schema_behind_the_installed_share(tmp_path, capsys,
@@ -155,14 +166,18 @@ def test_doctor_warns_with_the_migrate_command(tmp_path, monkeypatch):
 def test_migrate_reports_the_versions_it_applied(tmp_path, capsys):
     """`migrate` is the missing write: it runs the runtime's own migration
     code and reports which versions it applied. The store below 002 is a
-    genuine gap, so the reported range is the interesting one."""
+    genuine gap, so the reported range is the interesting one. The expected
+    list is the shipped files' own numbers, not a synthesized contiguous
+    range: numbering may gap while a numbered migration sits in another
+    open PR (019 in #85 when this shipped as 020), and the honest claim
+    is exactly which files ran."""
     dbp = _stamped(tmp_path, 1)
     assert main(["--db", str(dbp), "migrate"]) == EXIT_OK
     out = " ".join(capsys.readouterr().out.split())
     assert f"schema_version : {HEAD}" in out
     assert "schema_before : 1" in out
     applied = out.split("schema_applied : ")[1].split(" schema_version")[0]
-    assert applied == ", ".join(f"v{v}" for v in range(2, HEAD + 1))
+    assert applied == ", ".join(f"v{v}" for v in NUMBERS if v > 1)
     assert sqlite3.connect(str(dbp)).execute(
         "PRAGMA user_version").fetchone()[0] == HEAD
 
