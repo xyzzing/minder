@@ -1599,10 +1599,14 @@ def _cmd_lessons_injections(args, path):
                 "last": r["last_ts"]} for r in counts["lessons"]],
               [("lesson", "lesson"), ("injections", "injections"),
                ("last", "last")])
-    # The nothing case, spelled out: these rows are why the hit rate is
-    # below 100%, and there is no lesson id to act on.
-    print(f"\nmisses: {counts['misses']} (decisions that had no lesson to"
+    # Both totals, named (issue #80): deliveries is every row that put
+    # text in a digest, misses is the rows that had nothing to offer.
+    print(f"\ndeliveries: {counts['deliveries']} (digests that carried a"
+          " lesson or a skill)")
+    print(f"misses: {counts['misses']} (decisions that had no lesson to"
           " offer; not a lesson)")
+    print("trigger_matched: n/a (no lesson trigger spec exists, issue"
+          " #15; the ledger records the retrieval tier instead)")
     return EXIT_OK
 
 
