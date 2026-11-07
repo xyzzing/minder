@@ -149,6 +149,22 @@ def build_parser():
     tk_close.add_argument("--task", default="default")
     tk_close.add_argument("--reason", default="closed")
 
+    ep = sub.add_parser("eval-pair", help="paired control-vs-treatment"
+                        " lesson ablation (issues #88 + windtunnel#16)")
+    ep_sub = ep.add_subparsers(dest="subcommand", required=True)
+    ep_run = ep_sub.add_parser("run")
+    ep_run.add_argument("--out", required=True,
+                        help="directory for the suite, stores and"
+                             " artifacts bundle")
+    ep_run.add_argument("--family", default="keyerror")
+    ep_run.add_argument("--cases", type=int, default=20)
+    ep_run.add_argument("--repeats", type=int, default=3)
+    ep_run.add_argument("--python",
+                        help="interpreter for the sandbox children"
+                             " (pin it under an appimage harness)")
+    ep_score = ep_sub.add_parser("score")
+    ep_score.add_argument("--out", required=True)
+
     hu = sub.add_parser("human", help="human evidence events: record what "
                                       "a person stated (issue #22)")
     hu_sub = hu.add_subparsers(dest="subcommand", required=True)
@@ -600,6 +616,10 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_task_status(args, path)
     if command == "task" and sub == "close":
         return _cmd_task_close(args, path)
+    if command == "eval-pair" and sub == "run":
+        return _cmd_eval_pair_run(args)
+    if command == "eval-pair" and sub == "score":
+        return _cmd_eval_pair_score(args)
     if command == "families" and sub == "register":
         return _cmd_families_register(args, path)
     if command == "families" and sub == "trial":
@@ -1241,6 +1261,43 @@ def _cmd_task_close(args, path):
         return EXIT_USAGE
     fmt.kv([("context_id", row["context_id"]),
             ("status", status), ("reason", row["close_reason"])])
+    return EXIT_OK
+
+
+def _cmd_eval_pair_run(args):
+    from minder_op import eval_pair
+    try:
+        bundle = eval_pair.run_pair(args.out, family=args.family,
+                                    cases=args.cases,
+                                    repeats=args.repeats,
+                                    python=args.python)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    fmt.kv([("suite_id", bundle["suite_id"]),
+            ("cases", bundle["cases"]),
+            ("repeats", bundle["repeats"]),
+            ("lesson_content_digest", bundle["lesson_content_digest"]),
+            ("control_verified",
+             sum(1 for e in bundle["control"]["entries"]
+                 if e["status"] == "verified")),
+            ("treatment_verified",
+             sum(1 for e in bundle["treatment"]["entries"]
+                 if e["status"] == "verified")),
+            ("artifacts", str(Path(args.out) /
+                              "eval-pair-artifacts.json"))])
+    print("next: minder-op eval-pair score --out " + args.out)
+    return EXIT_OK
+
+
+def _cmd_eval_pair_score(args):
+    from minder_op import eval_pair
+    try:
+        report = eval_pair.score(args.out)
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    print(json.dumps(report, indent=1, sort_keys=True))
     return EXIT_OK
 
 
