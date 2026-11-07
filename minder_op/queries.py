@@ -361,3 +361,11 @@ from minder_op.injections import (  # noqa: E402, F401
     lesson_injections, retrieval_hit_rate)
 from minder_op.lesson_queries import (  # noqa: E402, F401
     decision_counts, human_input_event, lesson, lesson_decisions, lessons)
+
+
+def eval_pair_ledger(path):
+    """The learning_injections rows for the eval-pair report, one arm
+    (issues #88 and windtunnel#16)."""
+    return _rows(path,
+                 "SELECT tier, digest_injected, assist_mode,"
+                 " chars_injected FROM learning_injections")
