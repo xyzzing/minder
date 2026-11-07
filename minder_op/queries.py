@@ -370,3 +370,9 @@ def work_order_for_task(path, task_id):
                 "SELECT * FROM work_orders WHERE task_id = ?"
                 " ORDER BY closed_at IS NOT NULL, declared_at DESC"
                 " LIMIT 1", (task_id,))
+def eval_pair_ledger(path):
+    """The learning_injections rows for the eval-pair report, one arm
+    (issues #88 and windtunnel#16)."""
+    return _rows(path,
+                 "SELECT tier, digest_injected, assist_mode,"
+                 " chars_injected FROM learning_injections")
