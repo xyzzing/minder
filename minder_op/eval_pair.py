@@ -243,9 +243,6 @@ def _seed_arm(db_path, with_lesson):
 
 def run_pair(out_dir, family=FAMILY, cases=CASES_DEFAULT,
              repeats=REPEATS_DEFAULT, python=None):
-    """...
-    """
-    import shutil
     """Generate the suite, seed both arms, run the pair, write the
     artifacts bundle. Returns the bundle dict."""
     from minder_op import benchmark, runner
