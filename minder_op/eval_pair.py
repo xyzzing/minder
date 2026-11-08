@@ -263,14 +263,18 @@ def run_pair(out_dir, family=FAMILY, cases=CASES_DEFAULT,
                                                 arm == "treatment")
 
     os.environ["MEWS_MINDER_ROOT"] = minder_root
-    # pin the interpreter: under an appimage harness sys.executable is
-    # not a python, and shutil.which("python3") resolves through the
-    # appimage's PATH to the same wrapper (both measured: children die
-    # with SIGTRAP / dbus-X11 errors). The honest interpreter is the
-    # system python, with sys.executable as the fallback for containers.
-    interpreter = python or (
-        "/usr/bin/python3" if Path("/usr/bin/python3").exists()
-        else sys.executable)
+    # Pin the interpreter: under an appimage harness sys.executable is
+    # the appimage binary, not a python (measured: children die with
+    # SIGTRAP / dbus-X11), and shutil.which("python3") resolves through
+    # the appimage's PATH to the same wrapper. Detect by name and fall
+    # to the system python. In CI sys.executable IS the honest
+    # interpreter (the env that has pytest) and must be kept - a bare
+    # /usr/bin/python3 there has no pytest and every sandbox run reads
+    # underverified (measured on the runner).
+    interpreter = python or sys.executable
+    if "python" not in os.path.basename(interpreter).lower():
+        fallback = "/usr/bin/python3"
+        interpreter = fallback if os.path.isfile(fallback) else interpreter
     drv = {"id": "scripted-lesson-producer",
            "argv": [interpreter, str(producer),
                     "{prompt_file}"],

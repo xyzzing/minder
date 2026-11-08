@@ -32,6 +32,7 @@ def record(payload, answer, providers=None, redaction_profile=None,
     """Store one trace for a completed consult. Returns trace_id or None."""
     try:
         trace_id = f"tr_{uuid.uuid4().hex[:12]}"
+        trace_id = f"tr_{uuid.uuid4().hex[:12]}"
         with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO frontier_traces (trace_id, ts, episode_id,"
@@ -110,6 +111,18 @@ def record_consult(payload, db_path=None):
                 if clean:
                     distilled_clean.append(clean)
         trace_id = f"tr_{uuid.uuid4().hex[:12]}"
+
+        # Supply diagnosis (minder#80): a consult recorded without an
+        # episode link can never be adopted - the join is
+        # `_OPEN_CONSULTS_SQL WHERE t.episode_id = ?` (frontier_link),
+        # and 17 of the first 19 traces were exactly such orphans. Say
+        # so in the ledger at record time, so the queue cannot
+        # silently fill with rows the distill path never reaches.
+        if not (payload.get("episode_id") or "").strip():
+            import minder
+            minder.log("consult-unlinked", "consult_unlinked",
+                       trace_id=trace_id,
+                       failure_key=payload.get("failure_key"))
         with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO frontier_traces (trace_id, ts, episode_id,"

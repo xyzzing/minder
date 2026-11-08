@@ -32,7 +32,7 @@ _TASK_RUNNERS = frozenset(("npm", "pnpm", "yarn", "npx", "make", "turbo",
                            "deno", "bun"))
 
 # wrappers that carry env or flags and then run another command
-_WRAPPERS = frozenset(("env", "time", "sudo", "tox"))
+_WRAPPERS = frozenset(("env", "time", "sudo", "tox", "timeout"))
 
 # wrapper flags whose value is the NEXT token, so it is not a command name
 _VALUE_FLAGS = frozenset(("-u", "--unset", "-v", "--var", "-S", "-b", "-C",
@@ -72,10 +72,15 @@ def _base(token):
 
 
 def _unwrap(toks):
-    """Step past env/time/sudo/tox and their flags to the real command."""
+    """Step past env/time/sudo/tox/timeout and their flags to the real
+    command."""
     if not toks or _base(toks[0]) not in _WRAPPERS:
         return toks
     j = 1
+    if _base(toks[0]) == "timeout" and len(toks) > 1 and \
+            re.match(r"^\d", toks[1]):
+        # GNU timeout's first argument is the duration ("240", "5m")
+        j = 2
     while j < len(toks):
         tok = toks[j]
         if tok == "--":
@@ -179,4 +184,15 @@ def run_is_clean(output, runner=None):
     if failed and int(failed.group(1)) > 0:
         return False
     passed = _PASSED_RE.search(text)
-    return bool(passed) and int(passed.group(1)) > 0
+    if passed and int(passed.group(1)) > 0:
+        return True
+    # unittest's success block states no passing count - "Ran N tests"
+    # with OK and no failing count is the positive evidence (supply
+    # diagnosis: 141 post-gap unittest-runner calls, 148/148 rejected
+    # on 10-24 without this).
+    if runner == "unittest" or re.search(
+            r"^Ran \d+ tests? in", text, re.MULTILINE):
+        if re.search(r"^OK(?:\s|$)", text, re.MULTILINE) and not re.search(
+                r"FAILED\s*\(", text, re.MULTILINE):
+            return True
+    return False
