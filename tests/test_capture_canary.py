@@ -7,6 +7,8 @@ ledger) must never satisfy the dsh capture assertion.
 """
 import json
 
+import pytest
+
 
 from minder_op import capture_canary
 
@@ -67,7 +69,7 @@ class FakeEnv:
         self.runner = runner
         self.probe = probe
 
-    def run(self, stored_fingerprint=None):
+    def run(self, stored_fingerprint=None, mode="full", now=None):
         if stored_fingerprint is not None:
             self.fingerprint.write_text(json.dumps(stored_fingerprint))
         return capture_canary.run_canary(
@@ -79,6 +81,8 @@ class FakeEnv:
             probe=self.probe,
             session_dirs_fn=self.session_dirs,
             settle_seconds=0.0,
+            now=now,
+            mode=mode,
         )
 
 
@@ -243,3 +247,82 @@ def test_dsh_missing_is_red_not_crash(tmp_path):
     assert verdict["verdict"] == "red"
     assert _surface(verdict, "capture")["reason"] == "capture_no_session"
     assert "dsh not found" in _surface(verdict, "capture")["detail"]
+
+
+def test_fast_mode_never_probes_endpoints_or_spawns_dsh(tmp_path):
+    # #94: the 30-minute timer must stay free of the inference stack. A
+    # fast pass may ask dsh for its version (that is the drift check) but
+    # must never run a headless session or touch the network.
+    env = FakeEnv(tmp_path, [], [], bridge_pin="0.2.1-rc.5")
+
+    def probe(_url, timeout=None):
+        raise AssertionError("fast mode must not probe endpoints")
+    env.probe = probe
+    verdict = env.run(mode="fast")
+    assert verdict["verdict"] == "green"
+    assert verdict["mode"] == "fast"
+    assert env.calls == [["dsh", "--version"]]
+    assert _surface(verdict, "freshness")["status"] == "ok"
+    assert "no dsh session activity" in _surface(verdict, "freshness")["detail"]
+
+
+def test_fast_mode_unrecorded_activity_is_red(tmp_path):
+    # A session the sink never saw is the silence the canary exists to
+    # catch - no synthetic run required.
+    env = FakeEnv(tmp_path, [_entry("s1", 500)], [_entry("s1", 500)],
+                  ledger_lines=[])
+    verdict = env.run(mode="fast", now=600)
+    assert verdict["verdict"] == "red"
+    assert _surface(verdict, "freshness")["reason"] == "capture_silent"
+
+
+def test_fast_mode_recorded_activity_is_green(tmp_path):
+    env = FakeEnv(tmp_path, [_entry("s1", 500)], [_entry("s1", 500)],
+                  ledger_lines=[_ledger_line("s1")])
+    verdict = env.run(mode="fast", now=600)
+    assert verdict["verdict"] == "green"
+    assert "all recorded" in _surface(verdict, "freshness")["detail"]
+
+
+def test_fast_mode_ignores_sessions_older_than_window(tmp_path):
+    env = FakeEnv(tmp_path, [_entry("old", 100)], [_entry("old", 100)],
+                  ledger_lines=[])
+    verdict = env.run(mode="fast", now=100 + 1801)
+    assert verdict["verdict"] == "green"
+    assert "no dsh session activity" in _surface(verdict, "freshness")["detail"]
+
+
+def test_fast_mode_never_rebaselines_drift(tmp_path):
+    # Only a green full pass may record a version change as known-good;
+    # a fast pass has no capture evidence to back it.
+    env = FakeEnv(tmp_path, [], [], dsh_version="0.2.1-rc.5",
+                  bridge_pin="0.2.1-rc.5")
+    stored = {"dsh_version": "0.2.1-rc.4", "bridge_pin": "0.2.1-rc.5"}
+    before = json.dumps(stored)
+    verdict = env.run(stored_fingerprint=stored, mode="fast")
+    assert verdict["verdict"] == "green"
+    assert _surface(verdict, "drift")["status"] == "warn"
+    assert verdict["rebaselined"] is False
+    assert verdict["fingerprint"] is None
+    assert env.fingerprint.read_text() == before
+
+
+def test_full_run_rebaselines_after_green(tmp_path):
+    env = FakeEnv(tmp_path, [_entry("old", 1)],
+                  [_entry("old", 1), _entry("newsess", 2),
+                   _entry("childsess", 3)],
+                  bridge_pin="0.2.1-rc.5")
+    stored = {"dsh_version": "0.2.1-rc.5", "bridge_pin": "0.2.1-rc.5"}
+    verdict = env.run(stored_fingerprint=stored, mode="full")
+    assert verdict["verdict"] == "green"
+    assert verdict["rebaselined"] is True
+    assert verdict["fingerprint"] == {
+        "dsh_version": "0.2.1-rc.2", "bridge_pin": "0.2.1-rc.5"}
+
+
+def test_unknown_mode_is_rejected(tmp_path):
+    # Mode is a CLI-boundary value; a typo must fail loudly, not choose a
+    # weaker check silently.
+    env = FakeEnv(tmp_path, [], [], bridge_pin="0.2.1-rc.5")
+    with pytest.raises(ValueError):
+        env.run(mode="bogus")

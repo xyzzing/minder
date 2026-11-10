@@ -1,16 +1,30 @@
 #!/usr/bin/env bash
-# minder-capture-canary: run the capture canary under systemd (issue #73).
-# Green: one journald line, exit 0. Red: desktop notification with the
-# reason codes, exit 1. --digest: fuller status line plus a normal-urgency
-# notification, for the 09:00 timer. No AI session is involved: the canary
-# is a deterministic command, and a watchdog must not share a failure
-# domain with an assistant session.
+# minder-capture-canary: run the capture canary under systemd (issues #73, #94).
+# --fast (the 30-minute timer) checks drift + freshness only: no network
+# probe, no dsh spawn, no model. --full (the daily off-peak E2E) adds the
+# endpoint probes and the live synthetic capture run, which needs the model
+# stack. Green: one journald line, exit 0. Red: desktop notification with
+# the reason codes, exit 1. --digest: fuller status line plus a
+# normal-urgency notification, for the 09:00 timer.
+#
+# The watchdog must not share a failure domain with an assistant session,
+# so the frequent pass stays model-free; only --full is allowed to boot dsh.
 set -u
 
 CANARY_DIR="${MINDER_CANARY_DIR:-$HOME/projects/minder}"
 cd "$CANARY_DIR" || exit 1
 
-report=$(env -u LD_LIBRARY_PATH timeout 500 python3 -m minder_op.capture_canary 2>/dev/null)
+mode=()
+digest=0
+for arg in "$@"; do
+    case "$arg" in
+        --fast|--full) mode+=("$arg") ;;
+        --digest) digest=1 ;;
+        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
+
+report=$(env -u LD_LIBRARY_PATH timeout 500 python3 -m minder_op.capture_canary "${mode[@]}" 2>/dev/null)
 if [ $? -ne 0 ] || [ -z "$report" ]; then
     notify-send -u critical "CAPTURE CANARY RED" \
         "canary crashed or produced no verdict - journalctl --user -u minder-capture-canary"
@@ -30,7 +44,7 @@ PYEOF
 )"
 
 if [ "$verdict" = "green" ]; then
-    if [ "${1:-}" = "--digest" ]; then
+    if [ "$digest" = "1" ]; then
         echo "daily digest: canary green ($summary)"
         notify-send -u normal "minder capture digest" "canary green: $summary"
     else
