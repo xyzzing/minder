@@ -522,6 +522,12 @@ slot in around it:
 - [awesome-dsh-plugin](https://github.com/xyzzing/awesome-dsh-plugin) -
   plugins for the DeepSeek Harness (dsh), including the hooks minder
   uses for first-class integration.
+- [cupola](https://github.com/xyzzing/cupola) - the serving cell above
+  the engine: certify-before-serve and work backpressure.
+- [windroos](https://github.com/xyzzing/windroos) - the repo agent:
+  captures lessons and charts from every run.
+- [mews](https://github.com/xyzzing/mews) (private) - the house of this
+  stack: contract-drift tripwires, full-loop shakedown, program map.
 
 ## Development
 
