@@ -1,0 +1,13 @@
+[Unit]
+Description=minder capture canary - full live probe: endpoints + synthetic capture (issue #94)
+
+[Service]
+Environment=PATH=%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Type=oneshot
+ExecStart=%h/projects/minder/scripts/minder-capture-canary.sh --full
+MemoryMax=2G
+CPUQuota=100%
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=600
+KillMode=control-group

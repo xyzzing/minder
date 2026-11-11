@@ -1,7 +1,13 @@
 [Unit]
-Description=minder capture canary - prove the pipeline still records (issue #73)
+Description=minder capture canary - cheap drift + freshness pass (issues #73, #94)
 
 [Service]
 Environment=PATH=%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
 Type=oneshot
-ExecStart=%h/projects/minder/scripts/minder-capture-canary.sh
+ExecStart=%h/projects/minder/scripts/minder-capture-canary.sh --fast
+MemoryMax=512M
+CPUQuota=25%
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=120
+KillMode=control-group

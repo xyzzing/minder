@@ -1,16 +1,20 @@
-"""The capture canary (#73): prove the pipeline still records.
+"""The capture canary (#73, #94): prove the pipeline still records.
 
 Silence is the failure mode: dsh can update, the plugin manager can deny
 the hooks bridge, and every component looks fine while minder goes blind.
-This module runs one synthetic delegation-shaped request through the live
-harness and asserts the sink received THAT session's records - not just
-any records, because another transport (zcode) writes the same ledger and
-would false-green a freshness check.
+Two modes share one verdict:
 
-Three surfaces, one verdict:
-- drift: dsh version + pinned bridge version vs the last green fingerprint
-- endpoints: proxy 8390 and strata 8081 answer
-- capture: a headless run's own session appears in the events ledger
+- --fast (the 30-minute timer): drift (dsh version + pinned bridge) and
+  freshness (every dsh session started in the window already has a sink
+  record). No network, no model, no dsh spawn, so the check cannot share
+  a failure domain with the inference stack.
+- --full (daily, off-peak): adds the endpoint probes and the live
+  synthetic delegation run, which needs the model to emit a subagent
+  call. That run is the only part that touches 8390/8081.
+
+The capture surface asserts the sink received THAT session's records -
+not just any records, because another transport (zcode) writes the same
+ledger and would false-green a freshness check.
 
 Reasons are stable codes, not prose; the scheduler and console render the
 words. Exit 0 green, 1 red. Every check degrades to a named fail, never a
@@ -34,6 +38,11 @@ BRIDGE_PACKAGE = "@deepseek-ai/dsh-hooks-claude-code"
 PROBE_PORTS = (8390, 8081)
 FINGERPRINT_NAME = "canary_state.json"
 PROFILE_NAME = "headless"
+MODE_FAST = "fast"
+MODE_FULL = "full"
+MODES = (MODE_FAST, MODE_FULL)
+FRESHNESS_WINDOW_S = 1800
+FRESHNESS_SCAN_BYTES = 8 * 1024 * 1024
 
 
 def _state_dir():
@@ -163,6 +172,48 @@ def _ledger_has_session(ledger_path, offset, session_id):
     return False
 
 
+def _freshness_offset(ledger_path):
+    """Start of the ledger tail the freshness scan needs, or 0."""
+    try:
+        size = __import__("os").path.getsize(ledger_path)
+    except OSError:
+        return 0
+    return max(0, size - FRESHNESS_SCAN_BYTES)
+
+
+def _freshness_surface(session_dirs_fn, dsh_home, ledger_path, window_seconds,
+                       now):
+    """Every dsh session started in the window must already be in the sink.
+
+    Real traffic is the cheapest evidence the pipeline records, and it is
+    the only check that stays honest when the model stack is down: the
+    fast canary never boots dsh. No activity is not a failure - silence
+    only means something once somebody starts a session.
+    """
+    cutoff = now - max(0, window_seconds)
+    recent = [entry for entry in session_dirs_fn(dsh_home, cache=False)
+              if (entry.get("mtime") or 0) >= cutoff]
+    if not recent:
+        return {"id": "freshness", "status": "ok",
+                "detail": "no dsh session activity in window"}
+    recorded = set()
+    for record in _ledger_records(ledger_path, _freshness_offset(ledger_path)):
+        task = str(record.get("task") or "")
+        for entry in recent:
+            session_id = entry.get("session_id")
+            if session_id and session_id in task:
+                recorded.add(session_id)
+    missing = [entry["session_id"] for entry in recent
+               if entry.get("session_id") not in recorded]
+    if missing:
+        return {"id": "freshness", "status": "fail",
+                "detail": f"{missing[0]}: session started but no sink record "
+                          "in window",
+                "reason": "capture_silent"}
+    return {"id": "freshness", "status": "ok",
+            "detail": f"{len(recent)} session(s) in window, all recorded"}
+
+
 def _ledger_delegation_record(ledger_path, offset, new_ids):
     """The first subagent lifecycle record naming one of the run's new
     sessions, or None.
@@ -234,9 +285,19 @@ def _capture_surface(runner, session_dirs_fn, dsh_home, ledger_path,
 
 def run_canary(dsh_home=None, profile_manifest=None, ledger_path=None,
                fingerprint_path=None, runner=None, probe=None,
-               session_dirs_fn=None, settle_seconds=None, now=None):
-    """One canary pass. Returns {"verdict", "surfaces", "rebaselined"}."""
+               session_dirs_fn=None, settle_seconds=None, now=None,
+               mode=None):
+    """One canary pass. Returns {"verdict", "surfaces", "rebaselined"}.
+
+    mode="fast" checks drift and freshness only - no network, no dsh.
+    mode="full" adds the endpoint probes and the live capture run. Only a
+    green full pass may baseline the drift fingerprint; a fast pass never
+    records a version change as known-good without capture evidence.
+    """
     now = time.time() if now is None else now
+    mode = MODE_FULL if mode is None else mode
+    if mode not in MODES:
+        raise ValueError(f"unknown canary mode: {mode!r}")
     dsh_home = dsh_home or str(dsh_sessions.dsh_home())
     profile_manifest = profile_manifest or __import__("os").path.join(
         dsh_home, "profiles", PROFILE_NAME, "package.json")
@@ -254,22 +315,36 @@ def run_canary(dsh_home=None, profile_manifest=None, ledger_path=None,
                "bridge_pin": read_bridge_pin(profile_manifest)}
     stored = _read_fingerprint(fingerprint_path)
     surfaces = [_drift_surface(stored, current),
-                _endpoint_surface(probe),
-                _capture_surface(runner, session_dirs_fn, dsh_home,
-                                 ledger_path, settle_seconds)]
+                _freshness_surface(session_dirs_fn, dsh_home, ledger_path,
+                                   FRESHNESS_WINDOW_S, now)]
+    if mode == MODE_FULL:
+        surfaces.insert(1, _endpoint_surface(probe))
+        surfaces.append(_capture_surface(runner, session_dirs_fn, dsh_home,
+                                         ledger_path, settle_seconds))
     failed = [s for s in surfaces if s["status"] == "fail"]
     verdict = "red" if failed else "green"
     rebaselined = False
-    if verdict == "green":
+    if verdict == "green" and mode == MODE_FULL:
         _write_fingerprint(fingerprint_path, current)
         rebaselined = True
-    return {"verdict": verdict, "surfaces": surfaces, "now": now,
+    return {"verdict": verdict, "surfaces": surfaces, "now": now, "mode": mode,
             "rebaselined": rebaselined,
-            "fingerprint": current if verdict == "green" else None}
+            "fingerprint": current if rebaselined else None}
 
 
 if __name__ == "__main__":
+    import argparse
     import sys
-    report = run_canary()
+
+    parser = argparse.ArgumentParser(description="minder capture canary")
+    choice = parser.add_mutually_exclusive_group()
+    choice.add_argument("--fast", dest="mode", action="store_const",
+                        const=MODE_FAST,
+                        help="drift + freshness only (no network, no dsh)")
+    choice.add_argument("--full", dest="mode", action="store_const",
+                        const=MODE_FULL,
+                        help="also probe endpoints and run the live capture")
+    parser.set_defaults(mode=MODE_FULL)
+    report = run_canary(mode=parser.parse_args().mode)
     print(json.dumps(report))
     sys.exit(0 if report["verdict"] == "green" else 1)
