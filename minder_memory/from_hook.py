@@ -7,11 +7,13 @@ reach the directive (constraint 10). Success events close the open episode:
 tests_passed=true, otherwise 'candidate' (never auto-verify — plan PR 5
 test 3).
 """
+import datetime
 import json
 
 import minder
 from minder_core import verification
 from . import canonicalise as canon
+from . import db as _db
 from . import store
 
 
@@ -246,11 +248,66 @@ def _verification_evidence(hook_ev, ev):
             "command": canon.redact(command)[:200]}
 
 
+# The late-upgrade window: a clean run landing this long after an
+# unrelated success closed the episode `candidate` still upgrades it.
+# Measured reach (supply diagnosis, 2026-11-07): 14 of 24 post-gap
+# clean runs landed within 30 minutes of a candidate close; none
+# against older ones. Bounded, so stale episodes are never rewritten.
+UPGRADE_WINDOW_MINUTES = 30
+
+
+def _recent_candidate_episode(task_id, db_path):
+    """The session's most recent episode if it closed `candidate`
+    within the upgrade window; None otherwise."""
+    conn = _db.connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT episode_id, status, closed_at FROM episodes"
+            " WHERE task_id = ?"
+            " ORDER BY opened_at DESC LIMIT 1",
+            (task_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row or row["status"] != "candidate" or not row["closed_at"]:
+        return None
+    try:
+        closed = datetime.datetime.fromisoformat(row["closed_at"])
+        if datetime.timezone.utc.utcoffset(closed) is None:
+            closed = closed.replace(tzinfo=datetime.timezone.utc)
+        age = datetime.datetime.now(datetime.timezone.utc) - closed
+        if age <= datetime.timedelta(minutes=UPGRADE_WINDOW_MINUTES):
+            return dict(row)
+    except ValueError:
+        return None
+    return None
+
+
 def _close_on_success(hook_ev, ev, out, db_path):
     try:
-        ep = store.find_open_episode(ev.get("task_id") or
-                                     ev.get("session_id"), db_path)
+        task_key = ev.get("task_id") or ev.get("session_id")
+        ep = store.find_open_episode(task_key, db_path)
+        upgraded = False
         if not ep:
+            # Break three of the supply diagnosis: the first success in
+            # a session closes the episode `candidate` before the
+            # session's clean verification run lands, so the evidence
+            # found no open episode and 24 post-gap clean runs would
+            # never fire. Late upgrade: same session, candidate within
+            # the window, evidence in the payload -> verified.
+            recent = _recent_candidate_episode(task_key, db_path)
+            if not recent:
+                return out
+            evidence = _verification_evidence(hook_ev, ev)
+            if not evidence:
+                return out
+            store.close_episode(recent["episode_id"], "verified",
+                                db_path=db_path)
+            _record_verification(recent["episode_id"], ev, evidence,
+                                 db_path)
+            out["closed"] = "verified"
+            out["episode_id"] = recent["episode_id"]
+            out["upgraded_from"] = "candidate"
+            _link_consults(recent["episode_id"], db_path)
             return out
         evidence = _verification_evidence(hook_ev, ev)
         if evidence:
