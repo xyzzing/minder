@@ -112,6 +112,8 @@ def test_lessons_injections_labels_misses_as_misses(tmp_path, capsys):
     assert main(["--db", str(dbp), "lessons", "injections"]) == EXIT_OK
     out = " ".join(capsys.readouterr().out.split())
     assert "misses: 2" in out
+    assert "deliveries: 2" in out  # issue #80: the opposite total, named
+    assert "trigger_matched: n/a" in out  # no lesson trigger spec, #15
     assert "les1" in out
     # the miss rows never appear as a lesson with a blank id
     assert "n/a" not in out.split("misses:")[0]

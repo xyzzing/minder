@@ -138,7 +138,9 @@ def injection_counts(db_path=None, limit=50):
 
     Issue #13 acceptance 3: a skill assist also has no lesson_id, but it
     injected something, so it is not a miss. A miss is a row that
-    injected nothing: `digest_injected = 0`."""
+    injected nothing: `digest_injected = 0`. Issue #80: `deliveries` is
+    the opposite total - every row that put text in a digest, lesson or
+    skill - so the console never has to subtract one from a total."""
     try:
         conn = _db.connect(db_path)
         try:
@@ -151,12 +153,16 @@ def injection_counts(db_path=None, limit=50):
             missed = conn.execute(
                 "SELECT COUNT(*) AS n FROM learning_injections"
                 " WHERE digest_injected = 0").fetchone()
+            delivered = conn.execute(
+                "SELECT COUNT(*) AS n FROM learning_injections"
+                " WHERE digest_injected = 1").fetchone()
             return {"lessons": [dict(r) for r in rows],
-                    "misses": int(missed["n"]) if missed else 0}
+                    "misses": int(missed["n"]) if missed else 0,
+                    "deliveries": int(delivered["n"]) if delivered else 0}
         finally:
             conn.close()
     except Exception:  # noqa: BLE001 - pre-015 store: cannot say, not zero
-        return {"lessons": None, "misses": None}
+        return {"lessons": None, "misses": None, "deliveries": None}
 
 
 def injection_miss_count(db_path=None):
