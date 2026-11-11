@@ -44,7 +44,8 @@ def _project_quietly(lesson, db_path):
 
 def promote_lesson(episode_id, instruction, anti_pattern="", verification=None,
                    repo="", failure_key="", actor="operator", db_path=None,
-                   expires_when=""):
+                   expires_when="", producer_profile="unrecorded",
+                   model_specific=0):
     try:
         ep = store.get_episode(episode_id, db_path)
         if not ep:
@@ -69,12 +70,15 @@ def promote_lesson(episode_id, instruction, anti_pattern="", verification=None,
             _db.write(conn, "INSERT INTO lessons (lesson_id, repo,"
                       " failure_key, instruction, anti_pattern,"
                       " verification_json, status, source_episode,"
-                      " valid_from, valid_to, expires_when)"
-                      " VALUES (?, ?, ?, ?, ?, ?, 'verified', ?, ?, NULL, ?)",
+                      " valid_from, valid_to, expires_when,"
+                      " producer_profile, model_specific)"
+                      " VALUES (?, ?, ?, ?, ?, ?, 'verified', ?, ?, NULL, ?,"
+                      " ?, ?)",
                       (lid, repo or ep.get("repo"), failure_key,
                        str(instruction), str(anti_pattern or ""),
                        json.dumps({"actor": actor, **verification}),
-                       episode_id, _now(), expires_when))
+                       episode_id, _now(), expires_when,
+                       producer_profile, int(model_specific)))
             out = _get(lid, conn)
         finally:
             conn.close()
