@@ -526,7 +526,7 @@ slot in around it:
   the engine: certify-before-serve and work backpressure.
 - [windroos](https://github.com/xyzzing/windroos) - the repo agent:
   captures lessons and charts from every run.
-- [mews](https://github.com/xyzzing/mews) (private) - the house of this
+- [mews](https://github.com/xyzzing/mews) - the house of this
   stack: contract-drift tripwires, full-loop shakedown, program map.
 
 ## Development
