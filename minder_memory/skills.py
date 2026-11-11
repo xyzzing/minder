@@ -11,6 +11,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import minder
+
 from . import canonicalise as canon
 from . import db as _db
 from . import store
@@ -90,11 +92,12 @@ def _record(event, fkey, gap_type, db_path=None):
         with _db.transaction(db_path) as conn:
             conn.execute(
                 "INSERT INTO skill_gaps (gap_id, ts, repo, failure_key,"
-                " gap_type, sample_error, status) VALUES (?, ?, ?, ?, ?, ?,"
-                " 'open')",
+                " gap_type, sample_error, evidence, status) VALUES"
+                " (?, ?, ?, ?, ?, ?, ?, 'open')",
                 (f"gap_{uuid.uuid4().hex[:12]}", _now(),
                  event.get("repo"), fkey, gap_type,
-                 canon.redact(str(event.get("error_excerpt", ""))[:300])))
+                 canon.redact(str(event.get("error_excerpt", ""))[:300]),
+                 event.get("evidence")))
         return True
     except Exception:
         return False
@@ -121,14 +124,17 @@ def list_gaps(repo=None, db_path=None, limit=100):
 
 def close_gap(gap_id, reason, db_path=None):
     """Operator close (8B): mark one open gap closed via an explicit CLI
-    decision. Tombstone semantics — the row stays queryable. Returns
+    decision. Tombstone semantics — the row stays queryable, and since
+    migration 019 the reason is persisted on the row it closed. Returns
     (gap_dict, status); never raises. No SKILLS.md is written here or
     anywhere in this module."""
     try:
         conn = _db.connect(db_path)
         try:
-            _db.write(conn, "UPDATE skill_gaps SET status = 'closed'"
-                      " WHERE gap_id = ? AND status = 'open'", (gap_id,))
+            _db.write(conn, "UPDATE skill_gaps SET status = 'closed',"
+                      " close_reason = ?"
+                      " WHERE gap_id = ? AND status = 'open'",
+                      (str(reason), gap_id))
             row = conn.execute("SELECT * FROM skill_gaps WHERE gap_id = ?",
                                (gap_id,)).fetchone()
             if not row:
@@ -140,3 +146,38 @@ def close_gap(gap_id, reason, db_path=None):
             conn.close()
     except Exception as e:
         return None, f"degraded:{type(e).__name__}"
+
+
+def retriage_artifacts(db_path=None):
+    """One-off re-triage (issue #79 acceptance 3): close every open gap
+    whose recorded excerpt carries no structured failure signal under the
+    same rules the capture layer now applies (`minder.failure_evidence`).
+    A gap whose only evidence is a content word - the jobhunter read
+    family, grep excerpts, output blobs - is a capture artifact, not an
+    agent failure. Excerpts with an error envelope, a traceback, or a
+    nonzero tail marker stay open. Rows close as tombstones with reason
+    capture-artifact. Returns the summary counts; never raises."""
+    summary = {"closed": 0, "kept": 0, "already_closed": 0}
+    try:
+        conn = _db.connect(db_path)
+        try:
+            rows = conn.execute(
+                "SELECT gap_id, failure_key, sample_error FROM skill_gaps"
+                " WHERE status = 'open'").fetchall()
+        finally:
+            conn.close()
+    except Exception as e:
+        summary["status"] = f"degraded:{type(e).__name__}"
+        return summary
+    for row in rows:
+        failed, _ = minder.failure_evidence(row["sample_error"] or "")
+        if failed:
+            summary["kept"] += 1
+            continue
+        _, status = close_gap(row["gap_id"], "capture-artifact",
+                              db_path=db_path)
+        if status == "ok":
+            summary["closed"] += 1
+        else:
+            summary["already_closed"] += 1
+    return summary

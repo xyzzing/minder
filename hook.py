@@ -85,7 +85,11 @@ def _policy_wanted(ev, out):
         # declined action has nothing to consult a model about.
         if minder.classify_outcome(text) == minder.OUTCOME_DECLINED:
             return False
-        if minder.is_failure(text):
+        # Structured status before content words (issue #79): a response
+        # with no status evidence - a successful read's file content -
+        # has nothing failure-oriented to consult a model about.
+        failed, _ = minder.failure_evidence(text)
+        if failed:
             return True
         if (ev.get("hook_event_name") or "") != "PostToolUse":
             return True

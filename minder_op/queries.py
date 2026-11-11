@@ -178,6 +178,14 @@ def gaps(path, status_filter="open", limit=100):
     return _rows(path, sql, params)
 
 
+def open_gap_excerpts(path):
+    """Every open gap's id and excerpt, no limit (issue #79 retriage:
+    the dry run must judge the same rows the applied pass will)."""
+    return _rows(path,
+                 "SELECT gap_id, sample_error FROM skill_gaps"
+                 " WHERE status = 'open'")
+
+
 def consults(path, limit=25):
     """Consult traces with their governed labels (frontier_evals)."""
     return _rows(path,

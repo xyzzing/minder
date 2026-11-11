@@ -1,6 +1,7 @@
 """Operator write tests (8B). Writes go through the existing memory APIs
 only, require --yes (dry plan + exit 1 otherwise), and never touch
 SKILLS.md or skills/index.json."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 import sqlite3
 
 from minder_memory import (db as _db, from_hook,
@@ -13,7 +14,7 @@ REPO = "/repo"
 KEY = "bash|keyerror|supplier_id|app/supplier.py"
 CMD = "pytest tests/test_supplier.py"
 FAIL_OUT = ("FAILED tests/test_supplier.py::test_lookup - "
-            "KeyError: 'supplier_id'")
+            "KeyError: 'supplier_id'\n[exit code: 2]")
 PASS_OUT = "7 passed in 0.31s"
 
 

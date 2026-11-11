@@ -114,7 +114,7 @@ def test_duplicate_guard_digest_includes_lesson(tmp_path):
     # two identical failed attempts for the same key, recorded with repo
     raw = {"session_id": "guard-l1", "hook_event_name": "PostToolUse",
            "tool_name": "Bash", "tool_input": {"command": "make lint"},
-           "tool_response": "process failed: exit code 2", "repo": "/repo"}
+           "tool_response": "process failed\n[exit code: 2]", "repo": "/repo"}
     from minder_memory import canonicalise as canon
     for _ in range(2):
         e = policy._as_event(raw)

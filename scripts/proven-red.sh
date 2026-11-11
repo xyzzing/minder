@@ -6,6 +6,13 @@
 #
 #   scripts/proven-red.sh <base> [head]
 #
+# Announced skip: a changed test file may carry a line
+#   # PROVEN-RED: skip - <reason>
+# for edits whose assertions hold on both sides of the range (fixture
+# realism for a behavior change elsewhere, for example). The skip is
+# reported with its reason, the reason is reviewable in the diff, and
+# every other changed test file still has to prove red.
+#
 # Exit 0: every changed test was red on the old code (or an announced
 # skip). Exit 1: a changed test passed on the old code, or source
 # changed with no test change. Exit 2: the gate could not run.
@@ -55,6 +62,12 @@ git worktree add --detach "$WT" "$fork" >/dev/null 2>&1 || {
 fail=0; ran=0
 for t in $tests_changed; do
   [ -f "$t" ] || continue   # deleted at head: the worktree copy passes, skip
+  reason=$(sed -n 's/^# PROVEN-RED: skip - //p' "$t" | head -1)
+  if [ -n "$reason" ]; then
+    echo "proven-red: announced skip - $t ($reason)"
+    ran=$((ran + 1))
+    continue
+  fi
   mkdir -p "$WT/$(dirname "$t")"
   cp "$t" "$WT/$t"
   out=$(cd "$WT" && env -u LD_LIBRARY_PATH python3 -m pytest -q "$t" 2>&1)

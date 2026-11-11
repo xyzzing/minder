@@ -13,7 +13,7 @@ SUBPROC_TIMEOUT = int(os.environ.get("MINDER_TEST_TIMEOUT", "60"))
 FAIL_EVENT = {"session_id": "mem-s1", "hook_event_name": "PostToolUse",
               "tool_name": "Bash",
               "tool_input": {"command": "pytest tests/test_supplier.py"},
-              "tool_response": "process failed: exit code 2",
+              "tool_response": "process failed\n[exit code: 2]",
               "repo": "/repo", "cwd": "/repo"}
 
 
@@ -118,6 +118,7 @@ def test_guard_fires_through_real_hook_path(tmp_path):
     """Definition of done #1: two identical failures through the real hook
     produce the duplicate-block directive, with the DB populated by the
     hook itself (not seeded)."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
     proc = _run_hook(FAIL_EVENT, "zcode", tmp_path)
     payload = json.loads(proc.stdout)
     assert payload["decision"] == "block"

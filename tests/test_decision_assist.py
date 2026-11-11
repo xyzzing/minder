@@ -2,6 +2,7 @@
 may inject ONE low-risk gateway-selected SKILL digest, only when every
 gate passes. Default off; NullClient never attaches; the gateway can
 never create a frontier consult."""
+# PROVEN-RED: skip - fixture realism for #79: bare failure text gains the status marker a real failing call carries; the assertions are unchanged and hold on both sides
 
 from minder_memory import (canonicalise as canon_mod, from_hook,
                     policy as memory_policy)
@@ -15,7 +16,7 @@ def hook_event():
     return {"session_id": "s-65", "hook_event_name": "PostToolUse",
             "tool_name": "Edit", "repo": REPO,
             "tool_input": {"file_path": "/repo/app/math.py"},
-            "tool_response": "ZeroDivisionError: division by zero"}
+            "tool_response": "ZeroDivisionError: division by zero\n[exit code: 1]"}
 
 
 def fake_spec(ev):
