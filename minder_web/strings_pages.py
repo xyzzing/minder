@@ -1,5 +1,5 @@
 """Copy for the pages whose sections were too large for the main
-copy module: /domains and /difficulty (C3, issue #8). app.py merges
+copy module: /domains, /difficulty, /inbox (C3, issue #8, #89). app.py merges
 these dicts into the Jinja global as S.domains and S.difficulty; same
 rules as minder_web.strings_base: code-owned static text, light markup
 allowed, plain hyphens."""
@@ -142,8 +142,26 @@ DIFFICULTY = {
             " ceiling / spend guardrail). Nothing here feeds policy.",
 }
 
+
+INBOX = {
+    "title": "dispatch inbox",
+    "gloss": "(triggers the intake gate would accept, waiting on a"
+             " person; stage 2 will dispatch the approved ones)",
+    "mode_note": "accept mode: {mode}",
+    "empty": "nothing needs you: no would-accept triggers are"
+             " waiting",
+    "col_seen": "seen", "col_trigger": "trigger",
+    "col_repo": "repo", "col_kind": "kind",
+    "col_sender": "sender", "col_choices": "your call",
+    "action_approve": "approve dispatch",
+    "action_observe": "keep observing",
+    "note": "approving records your decision now; the runner that"
+            " executes approved triggers is stage 2 of issue #89."
+            " every choice is attributed to the actor you sign with.",
+}
+
 PAGES = {"domains": DOMAINS, "sessions": SESSIONS,
-         "difficulty": DIFFICULTY}
+         "difficulty": DIFFICULTY, "inbox": INBOX}
 
 TASKS = {
     "title": "task",

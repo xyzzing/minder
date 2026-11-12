@@ -718,3 +718,30 @@ def engine_summary(db_path, window_hours=24):
                       stats["prompt_tokens"])
     return {"name": active, "reuse_pct": reuse,
             "events": (stats or {}).get("events", 0)}
+
+
+def dispatch_accept_mode():
+    """The live dispatch accept mode, or the default when no config
+    exists: the mode is part of what an inbox approval means, so the
+    page and the resolve POST must read the same one."""
+    from minder_op import dispatch_config
+    try:
+        return dispatch_config.load_config(
+            dispatch_config.config_path()).accept_mode
+    except dispatch_config.DispatchConfigError:
+        return dispatch_config.default_config().accept_mode
+
+
+def dispatch_inbox_page(db_path):
+    """The FR-O5 approval inbox's dispatch section (#89, stage 3):
+    unresolved would_accept triggers, each with the CSRF token its
+    resolution form must carry (bound to the item and its revision)."""
+    from minder_op import dispatch_attention
+    from minder_web import writes
+    accept_mode = dispatch_accept_mode()
+    items = dispatch_attention.pending_items(db_path, accept_mode)
+    for item in items:
+        item["csrf_token"] = writes.csrf_token(
+            "inbox_resolve", f'{item["trigger_id"]}|{item["revision"]}')
+    return {"items": items, "accept_mode": accept_mode,
+            "unresolved": len(items)}

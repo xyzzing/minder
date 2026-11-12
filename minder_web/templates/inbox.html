@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ S.inbox.title }}</h1>
+<p class="gloss">{{ S.inbox.gloss }}</p>
+<p class="note">{{ S.inbox.mode_note.format(mode=accept_mode) }}</p>
+{% if items %}
+<table class="stack">
+  <thead>
+    <tr>
+      <th scope="col">{{ S.inbox.col_seen }}</th>
+      <th scope="col">{{ S.inbox.col_trigger }}</th>
+      <th scope="col">{{ S.inbox.col_repo }}</th>
+      <th scope="col">{{ S.inbox.col_kind }}</th>
+      <th scope="col">{{ S.inbox.col_sender }}</th>
+      <th scope="col">{{ S.inbox.col_choices }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for item in items %}
+    <tr>
+      <td>{{ item.ts }}</td>
+      <td><code>{{ item.trigger_id }}</code></td>
+      <td>{{ item.repo }}</td>
+      <td>{{ item.kind }}</td>
+      <td>{{ item.sender or S.common.na }}</td>
+      <td>
+        <form method="post" action="/inbox/{{ item.trigger_id }}/resolve">
+          <input type="hidden" name="csrf_token" value="{{ item.csrf_token }}">
+          <input type="hidden" name="revision" value="{{ item.revision }}">
+          <label class="sr-only" for="actor-{{ loop.index }}">{{ S.common.actor_label }}</label>
+          <input id="actor-{{ loop.index }}" name="actor" value="operator">
+          <button name="choice" value="approve">{{ S.inbox.action_approve }}</button>
+          <button name="choice" value="observe">{{ S.inbox.action_observe }}</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="note">{{ S.inbox.note }}</p>
+{% else %}
+<p class="na">{{ S.inbox.empty }}</p>
+{% endif %}
+{% endblock %}
