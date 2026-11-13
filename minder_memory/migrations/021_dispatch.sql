@@ -2,7 +2,8 @@
 -- the poller saw: what arrived, what the intake gate said, and why, in
 -- stable codes the CLI and console render. Append-only like every
 -- evidence table: a trigger seen is a fact about the past. work_order_id
--- stays NULL until stage 2 binds an admitted trigger to a work order.
+-- stays NULL here forever: stage 2 records the binding as its own
+-- fact (a run row), never an update of this one.
 
 CREATE TABLE dispatch_triggers (
   trigger_id    TEXT PRIMARY KEY,   -- source:notification_id:updated_at

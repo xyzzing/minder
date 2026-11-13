@@ -35,6 +35,9 @@ def record_trigger(db_path, trigger, gate_result):
 
 
 def triggers(db_path, limit=50, decision=None):
+    # SQLite reads a negative LIMIT as no limit; a negative --limit must
+    # not silently turn into "everything"
+    limit = max(1, int(limit))
     sql = "SELECT * FROM dispatch_triggers"
     params = []
     if decision:

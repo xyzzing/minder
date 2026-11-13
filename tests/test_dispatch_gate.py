@@ -62,6 +62,16 @@ def test_unknown_sender_fails_closed():
     assert decision["reason"] == "sender_unknown"
 
 
+def test_sender_match_is_case_insensitive():
+    """GitHub logins are case-insensitive: config "Alice", sender
+    "alice" is the same person, not a fail-closed casing trip."""
+    decision = dispatch_gate.decide(
+        _trigger(sender="alice"),
+        _config(allowed_senders=("Alice",)))
+    assert decision["decision"] == "would_accept"
+    assert decision["sender_class"] == "listed"
+
+
 def test_listed_sender_admitted_in_auto_mode():
     decision = dispatch_gate.decide(
         _trigger(), _config(repo="xyzzing/minder",

@@ -80,3 +80,14 @@ def test_read_returns_recorded_values(tmp_path):
 def test_newest_ts_is_none_on_an_empty_store(tmp_path):
     path = _store(tmp_path)
     assert dispatch_store.newest_ts(path) is None
+
+
+def test_negative_limit_does_not_mean_everything(tmp_path):
+    """SQLite reads a negative LIMIT as no limit; the store clamps so a
+    negative --limit cannot silently return the whole ledger."""
+    path = _store(tmp_path)
+    for n in ("1", "2", "3"):
+        dispatch_store.record_trigger(
+            path, _trigger(tid=f"github:{n}:2026-11-07T10:0{n}:00Z"),
+            _decision())
+    assert len(dispatch_store.triggers(path, limit=-5)) == 1

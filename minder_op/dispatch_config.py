@@ -1,5 +1,6 @@
 """Dispatch config (issue #89, stage 1): what the poller may watch and
-who may start work. Defaults deny everything - no repo, no allowed
+who may start work. Poll cadence is the systemd timer's OnCalendar,
+not a config knob: a field nothing reads would be ignored silently. Defaults deny everything - no repo, no allowed
 senders, observe mode - so an unconfigured deployment watches nothing
 and dispatches nothing. A malformed file is a named error, never a
 silent fallback to permissive values (I1).
@@ -15,9 +16,11 @@ CONFIG_NAME = "dispatch.json"
 ACCEPT_MODE_OBSERVE = "observe"
 ACCEPT_MODE_AUTO = "auto"
 ACCEPT_MODES = (ACCEPT_MODE_OBSERVE, ACCEPT_MODE_AUTO)
-DEFAULT_POLL_INTERVAL_MIN = 30
 
-_REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+# each segment starts alnum: rejects "a/..", "../x", "-a/b"; the
+# value interpolates into a gh endpoint path, so dot segments stay out
+_REPO_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
 class DispatchConfigError(Exception):
@@ -33,7 +36,6 @@ class DispatchConfig:
     repo: object = None                 # owner/name, or None: unwatched
     allowed_senders: tuple = ()         # logins that count as explicit
     accept_mode: str = ACCEPT_MODE_OBSERVE
-    poll_interval_min: int = DEFAULT_POLL_INTERVAL_MIN
 
 
 def default_config():
@@ -81,17 +83,5 @@ def load_config(path):
             "allowed_senders_invalid",
             "allowed_senders must be a list of login strings")
 
-    try:
-        interval = int(raw.get("poll_interval_min",
-                               DEFAULT_POLL_INTERVAL_MIN))
-    except (TypeError, ValueError) as exc:
-        raise DispatchConfigError(
-            "poll_interval_invalid",
-            f"poll_interval_min must be an integer: {exc}") from exc
-    if interval < 1:
-        raise DispatchConfigError(
-            "poll_interval_invalid",
-            f"poll_interval_min must be at least 1: {interval}")
-
     return DispatchConfig(repo=repo, allowed_senders=tuple(senders),
-                          accept_mode=mode, poll_interval_min=interval)
+                          accept_mode=mode)

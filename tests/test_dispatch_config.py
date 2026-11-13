@@ -43,12 +43,32 @@ def test_valid_file_roundtrips(tmp_path):
     path = tmp_path / "dispatch.json"
     path.write_text(json.dumps({
         "repo": "xyzzing/minder", "allowed_senders": ["alice"],
-        "accept_mode": "auto", "poll_interval_min": 15}))
+        "accept_mode": "auto"}))
     cfg = dispatch_config.load_config(path)
     assert cfg.repo == "xyzzing/minder"
     assert cfg.allowed_senders == ("alice",)
     assert cfg.accept_mode == "auto"
-    assert cfg.poll_interval_min == 15
+
+
+def test_dot_segments_are_not_a_repo(tmp_path):
+    """The repo value interpolates into a gh endpoint path: dot or dash
+    leading segments stay out even though the operator owns the file."""
+    path = tmp_path / "dispatch.json"
+    for bad in ("a/..", "../x", "-a/b", "a/-b"):
+        path.write_text(json.dumps({"repo": bad}))
+        with pytest.raises(dispatch_config.DispatchConfigError) as exc:
+            dispatch_config.load_config(path)
+        assert exc.value.code == "repo_invalid"
+
+
+def test_unknown_keys_are_ignored(tmp_path):
+    """A key nothing reads must not fail the config: the cadence knob was
+    removed for being dead; reintroducing one requires a reader."""
+    path = tmp_path / "dispatch.json"
+    path.write_text(json.dumps({"repo": "xyzzing/minder",
+                                "poll_interval_min": 15}))
+    cfg = dispatch_config.load_config(path)
+    assert cfg.repo == "xyzzing/minder"
 
 
 def test_malformed_json_is_a_named_error(tmp_path):

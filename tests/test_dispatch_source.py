@@ -108,6 +108,18 @@ def test_unhandled_subject_type_is_recorded_honestly():
     assert triggers[0]["kind"] == "other"
 
 
+def test_off_origin_subject_url_resolves_no_sender():
+    """The subject URL reaches a gh command line; anything off the API
+    origin is not fetched (defense in depth, the fields are
+    GitHub-canonical today)."""
+    n = _notification(comment_url=(
+        "https://evil.example/repos/xyzzing/minder/issues/comments/999"))
+    gh = FakeGh([n])
+    triggers, _ = dispatch_source.poll(REPO, runner=gh)
+    assert triggers[0]["sender"] is None
+    assert not any("evil.example" in " ".join(c) for c in gh.calls)
+
+
 def test_gh_failure_degrades_to_a_named_error():
     gh = FakeGh([_notification()], rc_fail={
         f"/repos/{REPO}/notifications"})

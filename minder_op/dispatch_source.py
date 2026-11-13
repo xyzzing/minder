@@ -95,6 +95,10 @@ def _sender(subject, runner):
     url = subject.get("latest_comment_url") or subject.get("url")
     if not url:
         return None
+    # defense in depth: the fields are GitHub-canonical today, but this
+    # string reaches a gh command line, so pin the API origin
+    if not str(url).startswith("https://api.github.com/"):
+        return None
     try:
         proc = runner(["gh", "api", str(url)], timeout=POLL_TIMEOUT_S)
     except (OSError, subprocess.SubprocessError):

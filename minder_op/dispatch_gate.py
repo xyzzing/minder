@@ -44,7 +44,11 @@ def classify_sender(sender, allowed):
         return SENDER_CLASS_UNKNOWN
     if str(sender).endswith("[bot]"):
         return SENDER_CLASS_BOT
-    return (SENDER_CLASS_LISTED if sender in allowed
+    # GitHub logins are case-insensitive: config "Alice" must match a
+    # sender "alice", not fail closed on an invisible casing trip
+    folded = str(sender).casefold()
+    listed = {str(name).casefold() for name in allowed}
+    return (SENDER_CLASS_LISTED if folded in listed
             else SENDER_CLASS_UNLISTED)
 
 
