@@ -46,24 +46,55 @@ def test_fresh_store_carries_the_column():
     assert has_idx, "fresh store lacks the skill_name index"
 
 
+def _objects_created_above(version):
+    """Table and index names every migration numbered above `version`
+    creates - so the rewind drops later migrations' objects without a
+    hand-list that rots on each new file (021 broke exactly that)."""
+    import re
+    from minder_memory.db import MIGRATIONS_DIR
+    tables, indexes = set(), set()
+    for sql_file in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        try:
+            num = int(sql_file.name.split("_", 1)[0])
+        except ValueError:
+            continue
+        if num <= version:
+            continue
+        sql = sql_file.read_text()
+        tables.update(re.findall(
+            r"CREATE TABLE (?:IF NOT EXISTS )?(\w+)", sql))
+        indexes.update(re.findall(
+            r"CREATE INDEX (?:IF NOT EXISTS )?(\w+)", sql))
+    return tables, indexes
+
+
 def test_drifted_store_is_repaired_by_migrate(tmp_path):
     """A store whose applied set ends at the edited 015 (the live
     store's exact state: version 16, no skill_name, 017/018 absent)
     converges when migrate runs. Proven red before 020 existed."""
     dbp = tmp_path / "drifted.sqlite"
     _db.connect(dbp).close()  # build at the latest version
+    later_tables, later_indexes = _objects_created_above(16)
     raw = sqlite3.connect(dbp)
-    # rewind to the drifted state: remove everything 017/018 created and
-    # the column + index the in-place 015 edit added
-    raw.execute("DROP INDEX idx_lessons_source_human_input")
-    raw.execute("ALTER TABLE lessons DROP COLUMN source_human_input")
-    raw.execute("DROP TABLE injection_shadow")
-    raw.execute("DROP INDEX idx_learning_injections_skill")
-    raw.execute("ALTER TABLE learning_injections DROP COLUMN skill_name")
+    # rewind to the drifted state: drop everything migrations above the
+    # stamp created (tables before their indexes), plus the column and
+    # index the in-place 015 edit added
+    for name in sorted(later_indexes):
+        raw.execute(f"DROP INDEX IF EXISTS {name}")
+    for name in sorted(later_tables):
+        raw.execute(f"DROP TABLE IF EXISTS {name}")
+
+    def drop_column(table, column):
+        cols = {r[1] for r in raw.execute(f"PRAGMA table_info({table})")}
+        if column in cols:  # a later migration's scan may have removed it
+            raw.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+
+    drop_column("lessons", "source_human_input")
+    drop_column("learning_injections", "skill_name")
     raw.execute("PRAGMA user_version = 16")
     raw.commit()
     raw.close()
-    _db.connect(dbp).close()  # migrate runs on connect: 017, 018, 020
+    _db.connect(dbp).close()  # migrate runs on connect: 017, 018, 020, 021
     has_col, has_idx = _column_exists(dbp)
     assert has_col, "migrate did not repair the drifted store's skill_name"
     assert has_idx, "migrate did not restore the skill_name index"
@@ -73,5 +104,6 @@ def test_drifted_store_is_repaired_by_migrate(tmp_path):
         tables = {r["name"] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
         assert "injection_shadow" in tables
+        assert "dispatch_triggers" in tables
     finally:
         conn.close()
