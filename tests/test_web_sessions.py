@@ -258,11 +258,13 @@ def test_log_stats_are_derived_from_the_log(tmp_path, monkeypatch):
 
 
 def test_route_surface_is_still_get_only():
-    """GET-only except the engine lifecycle switch (issue #3); the write
-    surface must exist and must not grow without updating this pin."""
+    """GET-only except the write paths (engine switch, issue #3; inbox
+    resolve, issue #89 stage 3), and both register through
+    writes.post_route (the section 7.6 preconditions). The write surface
+    must exist and must not grow without updating this pin."""
     from minder_web.app import app
     unsafe = {"PUT", "DELETE", "PATCH"}
-    write_routes = {"/engine/switch"}
+    write_routes = {"/engine/switch", "/inbox/{trigger_id}/resolve"}
     seen_write = set()
     other_write = [r.path for r in app.routes
                    if getattr(r, "methods", None) and
@@ -275,6 +277,10 @@ def test_route_surface_is_still_get_only():
             continue
         if route.path in write_routes:
             assert methods in ({"POST"}, {"GET"}), (route.path, methods)
+            if "POST" in methods:
+                assert getattr(route.endpoint, "_minder_write_guard",
+                               False), (route.path,
+                                        "POST outside writes.post_route")
             seen_write.add(frozenset(methods))
             continue
         assert not (methods & unsafe or "POST" in methods), \
