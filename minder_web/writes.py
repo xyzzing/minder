@@ -60,6 +60,22 @@ def _secret():
     return fresh
 
 
+async def _read_form(request):
+    """urlencoded body -> flat dict of first values.
+
+    The console is zero-JS plain HTML forms: the browser default
+    enctype is application/x-www-form-urlencoded and there are no file
+    uploads, so multipart is out of scope. Parsing with stdlib
+    parse_qs keeps python-multipart out of the [web] extra - the CI
+    test matrix caught exactly that dependency sneaking in via
+    starlette's request.form().
+    """
+    from urllib.parse import parse_qs
+    body = (await request.body()).decode("utf-8", "replace")
+    return {key: values[-1] for key, values in
+            parse_qs(body, keep_blank_values=True).items()}
+
+
 def csrf_token(action, detail):
     """A token that names one action on one item state; the form embeds
     it and the POST must present it unchanged."""
@@ -87,7 +103,7 @@ def post_route(app, path, *, action, detail_fn):
         # __wrapped__ would re-expose the handler's (request, form,
         # actor) params as required query arguments
         async def guarded(request: Request):
-            form = await request.form()
+            form = await _read_form(request)
             detail = detail_fn(request, form)
             if not csrf_ok(action, detail, form.get(TOKEN_FIELD)):
                 raise WriteRefused("csrf_invalid", action)
