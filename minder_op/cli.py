@@ -14,7 +14,8 @@ from pathlib import Path
 
 from minder_op import format as fmt
 from minder_op import queries
-from minder_op import calibrate_cmd, decision_eval
+from minder_op import calibrate_cmd, decision_eval, dispatch_cli
+from minder_op.dispatch_gate import DECISIONS
 from minder_decision import calibrate
 
 EXIT_OK = 0
@@ -121,6 +122,21 @@ def build_parser():
                      help="window in hours (default 24)")
     sc.add_argument("--dsh-home", default=None,
                      help="dsh home to read sessions from (default ~/.dsh)")
+
+    dsp = sub.add_parser("dispatch", help=(
+        "proactive dispatch intake (#89 stage 1): poll gh notifications, "
+        "gate them in code, record triggers; observe mode by default"))
+    dsp_sub = dsp.add_subparsers(dest="subcommand", required=True)
+    for name, help_text in (
+            ("status", "config + gate decision counts (read-only)"),
+            ("ls", "recorded triggers (read-only)"),
+            ("poll", "one poll through source -> gate -> store")):
+        dsp_cmd = dsp_sub.add_parser(name, help=help_text)
+        dsp_cmd.add_argument("--config", default=None,
+                             help="dispatch config path (default the "
+                                  "state dir's dispatch.json)")
+    dsp_sub.choices["ls"].add_argument("--limit", type=int, default=25)
+    dsp_sub.choices["ls"].add_argument("--decision", choices=list(DECISIONS))
 
     ev = sub.add_parser("events", help="raw observed events")
     ev_sub = ev.add_subparsers(dest="subcommand", required=True)
@@ -632,6 +648,10 @@ def _dispatch(args, path):  # noqa: PLR0911, PLR0912, PLR0915 — table walk
         return _cmd_events_ls(args, path)
     if command == "events" and sub == "show":
         return _cmd_events_show(args, path)
+    if command == "dispatch":
+        # the dispatch command table lives in its own module (#89):
+        # cli.py is already over C2, the calibrate_cmd precedent
+        return dispatch_cli.cmd_dispatch(args, path)
     if command == "task" and sub == "declare":
         return _cmd_task_declare(args, path)
     if command == "task" and sub == "status":

@@ -61,8 +61,19 @@ for t in $tests_changed; do
   rc=$?
   ran=$((ran + 1))
   if [ "$rc" -eq 0 ]; then
-    echo "proven-red: FAIL - $t PASSES on pre-change code ($fork)" >&2
-    fail=1
+    # An announced skip excuses a pass: the file carries a marker line
+    # `# proven-red: allow-pass: <reason>` at HEAD (the windroos
+    # precedent, ported 2026-11-07). Gate-relaxation edits cannot be red
+    # by nature; the red for the change must be carried by another test
+    # in the same range.
+    reason=$(grep -m1 'proven-red: allow-pass:' "$t" |
+      sed 's/.*allow-pass: *//')
+    if [ -n "$reason" ]; then
+      echo "proven-red: ok - $t allow-pass (announced: $reason)"
+    else
+      echo "proven-red: FAIL - $t PASSES on pre-change code ($fork)" >&2
+      fail=1
+    fi
     continue
   fi
   if printf '%s' "$out" | grep -qE "AssertionError|AssertionError|^E +assert|FAILED"; then
