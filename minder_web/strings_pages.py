@@ -155,6 +155,8 @@ INBOX = {
     "col_sender": "sender", "col_choices": "your call",
     "action_approve": "approve dispatch",
     "action_observe": "keep observing",
+    "older_note": "and {n} older unresolved beyond the newest"
+                  " shown",
     "note": "approving records your decision now; the runner that"
             " executes approved triggers is stage 2 of issue #89."
             " every choice is attributed to the actor you sign with.",

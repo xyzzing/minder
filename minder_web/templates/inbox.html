@@ -37,6 +37,9 @@
   {% endfor %}
   </tbody>
 </table>
+{% if older %}
+<p class="note">{{ S.inbox.older_note.format(n=older) }}</p>
+{% endif %}
 <p class="note">{{ S.inbox.note }}</p>
 {% else %}
 <p class="na">{{ S.inbox.empty }}</p>

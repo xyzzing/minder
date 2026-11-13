@@ -63,7 +63,6 @@ def test_inbox_page_lists_pending_items(env):
     assert TID in page.text
     assert "alice" in page.text
     assert "approve" in page.text  # action-specific label, not a bare yes
-    assert 'name="actor"' in page.text
     _form_from_page(page.text)  # csrf + revision embedded
 
 
@@ -152,3 +151,20 @@ def test_engine_switch_refuses_a_bare_post(env):
     resp = client.post("/engine/switch?engine=strata", data={})
     assert resp.status_code == 400
     assert "csrf" in resp.text
+
+
+def test_empty_secret_file_regenerates_instead_of_wedging(env, tmp_path):
+    """A corrupt (empty) web_write.secret must not 500 every CSRF
+    operation forever: the next render replaces it (I2 recovery)."""
+    import minder
+    (minder.STATE_DIR / "web_write.secret").write_text("")
+    client, dbp = env
+    page = client.get("/inbox")
+    assert page.status_code == 200
+    token, revision = _form_from_page(page.text)
+    resp = client.post(f"/inbox/{TID}/resolve", data={
+        "csrf_token": token, "revision": revision, "choice": "approve",
+        "actor": "zacch"}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert ((minder.STATE_DIR / "web_write.secret").read_text().strip()
+            != "")

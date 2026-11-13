@@ -735,7 +735,9 @@ def dispatch_accept_mode():
 def dispatch_inbox_page(db_path):
     """The FR-O5 approval inbox's dispatch section (#89, stage 3):
     unresolved would_accept triggers, each with the CSRF token its
-    resolution form must carry (bound to the item and its revision)."""
+    resolution form must carry (bound to the item and its revision).
+    Display is capped at the queue's default; the count is exact, so
+    the page can name what is older without rendering it."""
     from minder_op import dispatch_attention
     from minder_web import writes
     accept_mode = dispatch_accept_mode()
@@ -743,5 +745,7 @@ def dispatch_inbox_page(db_path):
     for item in items:
         item["csrf_token"] = writes.csrf_token(
             "inbox_resolve", f'{item["trigger_id"]}|{item["revision"]}')
+    unresolved = dispatch_attention.unresolved_count(db_path)
     return {"items": items, "accept_mode": accept_mode,
-            "unresolved": len(items)}
+            "unresolved": unresolved,
+            "older": max(0, unresolved - len(items))}

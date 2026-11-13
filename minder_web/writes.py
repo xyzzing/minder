@@ -42,6 +42,14 @@ def _secret_path():
 
 
 def _secret():
+    """The HMAC key for CSRF tokens: read, or create once.
+
+    Degrades nowhere: a missing file is created (O_EXCL so a concurrent
+    creator wins cleanly); a corrupt (empty or whitespace) file is
+    replaced rather than wedging every CSRF operation behind an
+    uncaught EEXIST; os.write is completed through partial writes.
+    All writes are 0600 in the state dir.
+    """
     path = _secret_path()
     try:
         data = path.read_text().strip()
@@ -52,9 +60,22 @@ def _secret():
     import secrets
     fresh = secrets.token_hex(32)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    blob = fresh.encode()
     try:
-        os.write(fd, fresh.encode())
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        # the creation race: another process (or a previous corrupt
+        # file) won the O_EXCL open. Take whatever it holds, and if it
+        # is still unusable, replace it under our own exclusive open.
+        data = path.read_text().strip()
+        if data:
+            return data
+        path.unlink()
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        written = 0
+        while written < len(blob):  # os.write may be partial
+            written += os.write(fd, blob[written:])
     finally:
         os.close(fd)
     return fresh

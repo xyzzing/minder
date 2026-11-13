@@ -127,11 +127,13 @@ def test_revision_binds_the_context_the_operator_saw(tmp_path):
     assert r_observe == dispatch_attention.item_revision(row, "observe")
     ok, code = dispatch_attention.resolve(dbp, "github:1:t1", "approve",
                                           actor="a",
-                                          expected_revision=r_observe)
+                                          expected_revision=r_observe,
+                                          accept_mode="observe")
     assert ok is True
     stale = dispatch_attention.resolve(dbp, "github:9:t9", "approve",
                                        actor="a",
-                                       expected_revision="gone")
+                                       expected_revision="gone",
+                                       accept_mode="observe")
     assert stale == (False, "unknown_trigger")
 
 
@@ -140,9 +142,23 @@ def test_resolve_rejects_a_stale_revision(tmp_path):
     tid = "github:1:t1"
     dispatch_store.record_trigger(dbp, _trigger(tid), _would())
     ok, code = dispatch_attention.resolve(dbp, tid, "approve", actor="a",
-                                          expected_revision="stale")
+                                          expected_revision="stale",
+                                          accept_mode="observe")
     assert ok is False
     assert code == "revision_invalidated"
+    assert _human_rows(dbp) == []
+
+
+def test_revision_without_the_mode_that_rendered_it_is_refused(tmp_path):
+    """A revision digests trigger + accept mode: passing one without
+    the other would check against a meaning the caller never saw."""
+    dbp = _store(tmp_path)
+    tid = "github:1:t1"
+    dispatch_store.record_trigger(dbp, _trigger(tid), _would())
+    ok, code = dispatch_attention.resolve(dbp, tid, "approve", actor="a",
+                                          expected_revision="whatever")
+    assert ok is False
+    assert code == "accept_mode_required"
     assert _human_rows(dbp) == []
 
 
@@ -150,9 +166,21 @@ def test_unresolved_count_tracks_the_queue(tmp_path):
     dbp = _store(tmp_path)
     dispatch_store.record_trigger(dbp, _trigger("github:1:t1"), _would())
     dispatch_store.record_trigger(dbp, _trigger("github:2:t2"), _would())
-    assert dispatch_attention.unresolved_count(dbp, "observe") == 2
+    assert dispatch_attention.unresolved_count(dbp) == 2
     dispatch_attention.resolve(dbp, "github:1:t1", "observe", actor="a")
-    assert dispatch_attention.unresolved_count(dbp, "observe") == 1
+    assert dispatch_attention.unresolved_count(dbp) == 1
+
+
+def test_display_cap_limits_items_but_not_the_count(tmp_path):
+    """The page shows the newest slice; the count stays exact so
+    nothing unresolved disappears behind the cap."""
+    dbp = _store(tmp_path)
+    for n in ("1", "2", "3"):
+        dispatch_store.record_trigger(
+            dbp, _trigger(f"github:{n}:t{n}"), _would())
+    assert len(dispatch_attention.pending_items(dbp, "observe",
+                                                limit=1)) == 1
+    assert dispatch_attention.unresolved_count(dbp) == 3
 
 
 def test_affects_payload_is_structured(tmp_path):
@@ -162,3 +190,30 @@ def test_affects_payload_is_structured(tmp_path):
     dispatch_attention.resolve(dbp, tid, "approve", actor="zacch")
     affects = json.loads(_human_rows(dbp)[0]["affects_json"])
     assert affects == [{"dispatch_trigger": tid}]
+
+
+def test_concurrent_resolves_serialize_to_one_decision(tmp_path):
+    """The first terminal decision stands under interleaving, not just
+    in sequence: check and insert share one BEGIN IMMEDIATE, so a
+    double-click cannot record approved AND deferred."""
+    import threading
+
+    dbp = _store(tmp_path)
+    tid = "github:1:t1"
+    dispatch_store.record_trigger(dbp, _trigger(tid), _would())
+    results = []
+
+    def worker(choice):
+        results.append(dispatch_attention.resolve(dbp, tid, choice,
+                                                  actor="a"))
+
+    threads = [threading.Thread(target=worker, args=(c,))
+               for c in ("approve", "observe")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    outcomes = sorted(results)  # the refused one sorts first (False < True)
+    assert outcomes[0][0] is False  # exactly one loses
+    assert outcomes[1][0] is True  # exactly one decision records
+    assert len(_human_rows(dbp)) == 1

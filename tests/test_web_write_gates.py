@@ -39,6 +39,18 @@ def test_csrf_token_binds_action_and_detail():
     assert not writes.csrf_ok("inbox_resolve", "item|rev1", "")
 
 
-def test_guard_mark_survives_inspection():
-    guarded = writes.csrf_token("x", "y")
-    assert guarded != writes.csrf_token("x", "z")
+def test_post_route_sets_the_guard_marker():
+    """The gate greps for _minder_write_guard on live routes; this
+    pins that post_route itself sets it, on a throwaway app."""
+    from fastapi import FastAPI
+
+    test_app = FastAPI()
+
+    def detail(request, form):
+        return "d"
+
+    @writes.post_route(test_app, "/w", action="a", detail_fn=detail)
+    async def handler(request, form, actor):  # noqa: ARG001
+        return "ok"
+
+    assert getattr(handler, "_minder_write_guard", False) is True
