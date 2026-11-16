@@ -2,8 +2,11 @@
 
 Reuse rules: routes call minder_web.services, which call minder_op
 query/summary functions. No SQL here, no policy. Every route is GET
-except POST /engine/switch, the console's one write path: the engine
-lifecycle switch (stop unit, start unit, health-check, flip config).
+except the write paths, and every write path registers through
+minder_web.writes.post_route (the section 7.6 preconditions, issue
+#89): the engine lifecycle switch (stop unit, start unit, health-check,
+flip config) and the inbox item resolution (appends a human_input_events
+row).
 
 Deployment boundary (docs/operator-web.md): bind 127.0.0.1 only; the
 __main__ entrypoint refuses any non-loopback host. If the web extra is
@@ -23,6 +26,7 @@ from minder_web import answers
 from minder_web import domains
 from minder_web import services
 from minder_web import strings_base
+from minder_web import writes
 from minder_web.strings_pages import PAGES as _PAGES
 from minder_web.strings_scorecard import SCORECARD
 from minder_web.strings_session import SESSION
@@ -234,6 +238,40 @@ def healthz():
     return JSONResponse(services.health(_db_path()))
 
 
+@app.get("/inbox")
+def inbox_page(request: Request):
+    """The FR-O5 approval inbox, dispatch section first (#89, stage 3):
+    would_accept triggers waiting on a person, with the choices the
+    stage-2 runner will honor."""
+    return render(request, "inbox", services.dispatch_inbox_page(
+        _db_path()))
+
+
+def _inbox_resolve_detail(request, form):
+    return f"{request.path_params['trigger_id']}|{form.get('revision', '')}"
+
+
+@writes.post_route(app, "/inbox/{trigger_id}/resolve",
+                   action="inbox_resolve", detail_fn=_inbox_resolve_detail)
+def inbox_resolve(request, form, actor):
+    """Idempotent: the first terminal decision stands, repeats are
+    no-ops, and a stale revision refuses rather than approving what
+    changed meaning."""
+    from minder_op import dispatch_attention
+    ok, code = dispatch_attention.resolve(
+        _db_path(), request.path_params["trigger_id"],
+        str(form.get("choice") or ""), actor,
+        expected_revision=str(form.get("revision") or ""),
+        accept_mode=services.dispatch_accept_mode())
+    if not ok:
+        raise writes.WriteRefused(code)
+    return RedirectResponse("/inbox", status_code=303)
+
+
+app.add_exception_handler(writes.WriteRefused,
+                          writes.write_refused_handler)
+
+
 @app.get("/engine")
 def engine_page(request: Request):
     return render(request, "engine", services.engine_page())
@@ -241,20 +279,28 @@ def engine_page(request: Request):
 
 @app.get("/engine/switch")
 def engine_switch_confirm(request: Request, engine: str = ""):
-    """The confirm step for the console's one write path (issue #12). A
+    """The confirm step for the engine write path (issue #12). A
     GET never switches: it shows what the switch would stop and start,
-    and the form below posts here again. It is a misclick guard, not a
-    security control - the loopback Host guard is the boundary."""
+    and the form below posts here again with the CSRF token and actor
+    the section 7.6 preconditions require (issue #89, stage 3)."""
     ctx = services.engine_page()
     ctx["target"] = services.engine_target(engine)
     ctx["engine"] = (engine or "").strip()
+    ctx["csrf_token"] = writes.csrf_token("engine_switch",
+                                          (engine or "").strip())
     return render(request, "engine_confirm", ctx)
 
 
-@app.post("/engine/switch")
-def engine_switch_route(request: Request, engine: str = ""):
+def _engine_switch_detail(request, form):
+    return (request.query_params.get("engine") or "").strip()
+
+
+@writes.post_route(app, "/engine/switch", action="engine_switch",
+                   detail_fn=_engine_switch_detail)
+def engine_switch_route(request, form, actor):
+    engine = (request.query_params.get("engine") or "").strip()
     try:
-        services.engine_switch((engine or "").strip())
+        services.engine_switch(engine)
         return RedirectResponse("/engine", status_code=303)
     except Exception as e:  # noqa: BLE001 — the page names the failure
         ctx = services.engine_page()

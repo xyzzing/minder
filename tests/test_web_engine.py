@@ -1,12 +1,25 @@
 """Engine console page (issue #3): the engine registry renders with the
-active engine and unit health, and the switch route is the console's
-write path. Loopback-only like every console route."""
+active engine and unit health, and the switch route is a console write
+path (section 7.6 preconditions since issue #89 stage 3: the POST must
+carry the confirm page's CSRF token and an actor). Loopback-only like
+every console route."""
 import json
+import re
 
 import minder
 import minder_web.services as services
 import webseed
 from webseed import SECRET, new_db
+
+
+def _switch_form(client, engine):
+    """The form fields a browser submits: the CSRF token the confirm
+    page embedded for this engine, plus the actor."""
+    page = client.get(f"/engine/switch?engine={engine}")
+    token = re.search(r'name="csrf_token" value="([0-9a-f]+)"',
+                      page.text)
+    assert token, "the confirm page must embed the csrf token"
+    return {"csrf_token": token.group(1), "actor": "operator"}
 
 
 def _registry_config(tmp_path, monkeypatch):
@@ -79,7 +92,9 @@ def test_engine_switch_route_flips(tmp_path, monkeypatch):
                         {"switched": True, "from": "llama", "engine": name})
     dbp = new_db(tmp_path)
     client = webseed.client_for(dbp, monkeypatch)
-    resp = client.post("/engine/switch?engine=strata", follow_redirects=False)
+    resp = client.post("/engine/switch?engine=strata",
+                       data=_switch_form(client, "strata"),
+                       follow_redirects=False)
     assert resp.status_code == 303
     assert seen == ["strata"]
 
@@ -93,9 +108,26 @@ def test_engine_switch_route_names_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(services, "engine_switch", boom)
     dbp = new_db(tmp_path)
     client = webseed.client_for(dbp, monkeypatch)
-    resp = client.post("/engine/switch?engine=nope")
+    resp = client.post("/engine/switch?engine=strata",
+                       data=_switch_form(client, "strata"))
     assert resp.status_code == 200
-    assert "nope" in resp.text
+    assert "strata" in resp.text
+
+
+def test_engine_switch_post_for_unknown_engine_is_refused(tmp_path,
+                                                          monkeypatch):
+    """No confirm page exists for an unknown engine, so no CSRF token
+    was ever issued for it: the section 7.6 guard refuses before the
+    handler can run. The confirm GET is what names the unknown engine."""
+    _registry_config(tmp_path, monkeypatch)
+    dbp = new_db(tmp_path)
+    client = webseed.client_for(dbp, monkeypatch)
+    named = client.get("/engine/switch?engine=nope")
+    assert named.status_code == 200
+    assert "nope" in named.text
+    resp = client.post("/engine/switch?engine=nope",
+                       data={"csrf_token": "0" * 64, "actor": "operator"})
+    assert resp.status_code == 400
 
 
 def minder_op_engines_error(name):

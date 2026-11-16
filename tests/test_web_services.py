@@ -74,13 +74,20 @@ def test_limit_is_bounded(tmp_path):
         "limit"] == services.DEFAULT_LIMIT
 
 
+# proven-red: allow-pass: pins the write surface that already held on
+# pre-change code; the range's only edit here (ce012b2) added the
+# consolidation docstring, no assertion changed.
 def test_http_surface_is_get_only():
-    """GET-only except the engine lifecycle switch (issue #3), the
-    console's single write path; the write surface must exist and must
-    not grow."""
+    """GET-only except the write paths (engine switch, issue #3; inbox
+    resolve, issue #89 stage 3), both behind the writes.post_route
+    preconditions; the write surface must exist and must not grow. The
+    marker-per-POST-route law itself lives app-wide in
+    tests/test_web_write_gates.py - this pin holds the exact surface
+    (the former duplicate in test_web_sessions.py was consolidated
+    here, issue #89 review C4)."""
     from minder_web.app import app
     unsafe = {"PUT", "DELETE", "PATCH"}
-    write_routes = {"/engine/switch"}
+    write_routes = {"/engine/switch", "/inbox/{trigger_id}/resolve"}
     seen_write = set()
     other_write = [r.path for r in app.routes
                    if getattr(r, "methods", None) and
@@ -93,6 +100,10 @@ def test_http_surface_is_get_only():
             continue
         if route.path in write_routes:
             assert methods in ({"POST"}, {"GET"}), (route.path, methods)
+            if "POST" in methods:
+                assert getattr(route.endpoint, "_minder_write_guard",
+                               False), (route.path,
+                                        "POST outside writes.post_route")
             seen_write.add(frozenset(methods))
             continue
         assert not (methods & unsafe or "POST" in methods), \
