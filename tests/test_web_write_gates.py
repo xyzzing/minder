@@ -31,6 +31,24 @@ def test_no_bare_post_registration_in_the_package():
         f"bare POST registrations in: {offenders}; use writes.post_route")
 
 
+def test_actor_prefill_lives_in_the_strings_module():
+    """C2 (C3): both write forms prefill the actor from the strings
+    module default (S.common.actor_default); neither template re-types
+    the literal."""
+    import pathlib
+
+    import minder_web
+    from minder_web import strings_base
+    assert strings_base.S["common"].get("actor_default"), (
+        "the actor prefill default must live in the strings module")
+    pkg = pathlib.Path(minder_web.__file__).parent
+    for name in ("inbox.html", "engine_confirm.html"):
+        text = (pkg / "templates" / name).read_text()
+        assert 'value="operator"' not in text, (
+            f"{name} hardcodes the actor prefill; render"
+            " S.common.actor_default")
+
+
 def test_csrf_token_binds_action_and_detail():
     token = writes.csrf_token("inbox_resolve", "item|rev1")
     assert writes.csrf_ok("inbox_resolve", "item|rev1", token)

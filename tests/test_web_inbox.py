@@ -106,6 +106,20 @@ def test_resolution_affects_key_is_the_exported_constant(env):
         "the audit row's affects key must be the exported constant")
 
 
+def test_inbox_actor_prefill_renders_the_strings_default(env):
+    """C2 (C3): the actor field's prefill is console copy - it renders
+    from the strings module (S.common.actor_default), never a literal
+    re-typed into the template."""
+    client, _dbp = env
+    page = client.get("/inbox")
+    assert page.status_code == 200
+    from minder_web import strings_base
+    default = strings_base.S["common"].get("actor_default")
+    assert (default
+            and f'name="actor" value="{default}"' in page.text), (
+        "the actor prefill must render from the strings module default")
+
+
 def test_inbox_empty_state_names_the_truth(env, tmp_path):
     client, dbp = env
     dispatch_attention.resolve(dbp, TID, "observe", actor="zacch")

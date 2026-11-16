@@ -28,7 +28,7 @@
           <input type="hidden" name="csrf_token" value="{{ item.csrf_token }}">
           <input type="hidden" name="revision" value="{{ item.revision }}">
           <label class="sr-only" for="actor-{{ loop.index }}">{{ S.common.actor_label }}</label>
-          <input id="actor-{{ loop.index }}" name="actor" value="operator">
+          <input id="actor-{{ loop.index }}" name="actor" value="{{ S.common.actor_default }}">
           <button name="choice" value="{{ choice_approve }}">{{ S.inbox.action_approve }}</button>
           <button name="choice" value="{{ choice_observe }}">{{ S.inbox.action_observe }}</button>
         </form>

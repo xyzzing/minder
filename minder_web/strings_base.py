@@ -8,6 +8,7 @@ hyphens, `n/a` means the source is empty or unavailable, never zero.
 """
 NOT_AVAILABLE, NA_LOWER, UNSET, UNKNOWN, DASH = (
     "not available", "n/a", "(unset)", "unknown", "-")
+ACTOR_DEFAULT = "operator"
 RECORDING_OK = "recording: ok"
 RECORDING_STALE = "recording: stale {age}"
 RECORDING_UNKNOWN = "recording: unknown"
@@ -23,6 +24,7 @@ S = {
         "caption": "one row per {unit}, newest first",
         "kv_caption": "one row per {section} measurement",
         "raw_fields": "raw fields", "actor_label": "actor",
+        "actor_default": ACTOR_DEFAULT,
         "raw_note": "the same rows, with the storage field names and the"
                     " values exactly as stored - nothing rounded,"
                     " humanized or renamed.",

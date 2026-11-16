@@ -23,7 +23,7 @@
 <form method="post" action="/engine/switch?engine={{ target.name }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label class="sr-only" for="switch-actor">{{ S.common.actor_label }}</label>
-  <input id="switch-actor" name="actor" value="operator">
+  <input id="switch-actor" name="actor" value="{{ S.common.actor_default }}">
   <button type="submit">{{ S.engine_confirm.confirm.format(name=target.name) }}</button>
   <a class="cancel" href="/engine">{{ S.engine_confirm.cancel }}</a>
 </form>
