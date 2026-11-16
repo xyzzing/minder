@@ -71,7 +71,11 @@ def pending_items(db_path, accept_mode, limit=_DEFAULT_QUEUE_LIMIT):
     """Unresolved would_accept triggers, newest first, each carrying the
     revision the approval binds to; display is capped, the count is
     not (see unresolved_count)."""
-    resolved = _dispatch_decisions(memdb.connect(db_path))
+    conn = memdb.connect(db_path)
+    try:
+        resolved = _dispatch_decisions(conn)
+    finally:
+        conn.close()
     rows = _rows(db_path, "SELECT * FROM dispatch_triggers"
                           " WHERE decision = ?"
                           " ORDER BY ts DESC, trigger_id DESC LIMIT ?",

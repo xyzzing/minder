@@ -52,6 +52,43 @@ def test_pending_lists_only_would_accept_triggers(tmp_path):
     assert items[0]["revision"]
 
 
+def test_pending_items_closes_its_scan_connection(tmp_path, monkeypatch):
+    """The inbox page calls pending_items on every GET: its audit-decision
+    scan opens a memdb connection and must close it in a finally (as
+    unresolved_count does), not leave the handle to the GC."""
+    dbp = _store(tmp_path)
+    dispatch_store.record_trigger(dbp, _trigger("github:1:t1"), _would())
+    opened, closed = [], []
+    real_connect = memdb.connect
+
+    class RecordingConn:
+        """Delegates every call to the real connection and records
+        close(), so the test can see whether the scan released the
+        handle."""
+
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, sql, params=()):
+            return self._conn.execute(sql, params)
+
+        def close(self):
+            closed.append(True)
+            self._conn.close()
+
+    def recording_connect(path=None):
+        opened.append(True)
+        return RecordingConn(real_connect(path))
+
+    # the connect dispatch_attention resolves through its memdb import
+    monkeypatch.setattr(dispatch_attention.memdb, "connect",
+                        recording_connect)
+    items = dispatch_attention.pending_items(dbp, "observe")
+    assert [i["trigger_id"] for i in items] == ["github:1:t1"]
+    assert opened == [True]
+    assert closed == [True]
+
+
 def test_resolve_approve_records_attribution(tmp_path):
     dbp = _store(tmp_path)
     tid = "github:1:t1"
