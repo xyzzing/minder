@@ -4,7 +4,7 @@ Writes through minder_memory/db.py (the sanctioned path), reads through
 the queries helpers, the same split lesson_queries made. Idempotent on
 the stable trigger id: INSERT OR IGNORE, so a poll replayed after a
 restart records nothing new. The table itself is append-only by
-trigger (migration 020): what the gate said about a trigger is a fact
+trigger (migration 021): what the gate said about a trigger is a fact
 about the moment it said it.
 """
 from minder_memory import db as memdb
