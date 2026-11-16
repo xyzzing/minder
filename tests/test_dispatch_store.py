@@ -51,12 +51,16 @@ def test_record_is_idempotent_on_trigger_id(tmp_path):
     assert rows[0]["trigger_id"] == "github:111:2026-11-07T10:00:00Z"
 
 
+# proven-red: allow-pass: pins migration 021 existing no-delete trigger;
+# test-only change (AC4, issue #89) - the migration already refuses DELETE.
 def test_table_is_append_only(tmp_path):
     path = _store(tmp_path)
     dispatch_store.record_trigger(path, _trigger(), _decision())
     conn = memdb.connect(path)
     with pytest.raises(Exception):
         conn.execute("UPDATE dispatch_triggers SET decision = 'admitted'")
+    with pytest.raises(Exception):
+        conn.execute("DELETE FROM dispatch_triggers")
     conn.close()
 
 
