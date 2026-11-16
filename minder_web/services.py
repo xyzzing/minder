@@ -747,5 +747,9 @@ def dispatch_inbox_page(db_path):
             "inbox_resolve", f'{item["trigger_id"]}|{item["revision"]}')
     unresolved = dispatch_attention.unresolved_count(db_path)
     return {"items": items, "accept_mode": accept_mode,
+            # the form's choice values render from the dispatch
+            # constants (C4) - the template re-types neither
+            "choice_approve": dispatch_attention.CHOICE_APPROVE,
+            "choice_observe": dispatch_attention.CHOICE_OBSERVE,
             "unresolved": unresolved,
             "older": max(0, unresolved - len(items))}

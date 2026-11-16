@@ -29,8 +29,8 @@
           <input type="hidden" name="revision" value="{{ item.revision }}">
           <label class="sr-only" for="actor-{{ loop.index }}">{{ S.common.actor_label }}</label>
           <input id="actor-{{ loop.index }}" name="actor" value="operator">
-          <button name="choice" value="approve">{{ S.inbox.action_approve }}</button>
-          <button name="choice" value="observe">{{ S.inbox.action_observe }}</button>
+          <button name="choice" value="{{ choice_approve }}">{{ S.inbox.action_approve }}</button>
+          <button name="choice" value="{{ choice_observe }}">{{ S.inbox.action_observe }}</button>
         </form>
       </td>
     </tr>

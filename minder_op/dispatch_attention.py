@@ -28,6 +28,12 @@ CHOICE_APPROVE = "approve"
 CHOICE_OBSERVE = "observe"
 CHOICES = (CHOICE_APPROVE, CHOICE_OBSERVE)
 
+# the affects_json entry key naming the trigger a human_input_events row
+# decides: one exported constant for the resolve INSERT and the
+# _dispatch_decisions scan, so the write side and the read side cannot
+# drift apart
+DISPATCH_TRIGGER_KEY = "dispatch_trigger"
+
 _CHOICE_DECISIONS = {CHOICE_APPROVE: "approved", CHOICE_OBSERVE: "deferred"}
 _TERMINAL_DECISIONS = ("approved", "rejected", "deferred")
 
@@ -51,7 +57,8 @@ def _dispatch_decisions(conn):
     rows = conn.execute(
         "SELECT affects_json, decision FROM human_input_events"
         " WHERE decision IS NOT NULL"
-        " AND affects_json LIKE '%dispatch_trigger%'").fetchall()
+        " AND affects_json LIKE ?",
+        (f"%{DISPATCH_TRIGGER_KEY}%",)).fetchall()
     for row in rows:
         if row["decision"] not in _TERMINAL_DECISIONS:
             continue
@@ -62,8 +69,8 @@ def _dispatch_decisions(conn):
         if not isinstance(affects, list):
             continue
         for entry in affects:
-            if isinstance(entry, dict) and entry.get("dispatch_trigger"):
-                found[str(entry["dispatch_trigger"])] = row["decision"]
+            if isinstance(entry, dict) and entry.get(DISPATCH_TRIGGER_KEY):
+                found[str(entry[DISPATCH_TRIGGER_KEY])] = row["decision"]
     return found
 
 
@@ -158,7 +165,7 @@ def resolve(db_path, trigger_id, choice, actor, expected_revision=None,
                 (f"hin_{uuid.uuid4().hex[:12]}",
                  datetime.now(timezone.utc).isoformat(), actor,
                  f"dispatch approval: {trigger_id}",
-                 json.dumps([{"dispatch_trigger": trigger_id}]),
+                 json.dumps([{DISPATCH_TRIGGER_KEY: trigger_id}]),
                  decision, f"dispatch inbox {choice}"))
     except Exception as exc:  # noqa: BLE001 - named failure, not a raise
         return False, f"record_failed:{type(exc).__name__}"

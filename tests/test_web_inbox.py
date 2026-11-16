@@ -4,10 +4,13 @@ resolve POST carries the section 7.6 preconditions (CSRF bound to the
 item and its revision, an actor, an audit row). No test touches the
 network or the live state dir.
 """
+import json
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+import minder_web
 from minder_op import dispatch_attention, dispatch_store
 from minder_op.queries import _rows
 from webseed import new_db
@@ -64,6 +67,43 @@ def test_inbox_page_lists_pending_items(env):
     assert "alice" in page.text
     assert "approve" in page.text  # action-specific label, not a bare yes
     _form_from_page(page.text)  # csrf + revision embedded
+
+
+def test_inbox_choice_values_render_from_the_constants(env):
+    """C1 (C4): the resolve form's choice values are dispatch_attention's
+    CHOICE_APPROVE / CHOICE_OBSERVE rendered into the page; the template
+    re-types neither constant, so a constant change cannot strand a
+    mismatched literal in the form."""
+    client, _dbp = env
+    page = client.get("/inbox")
+    assert page.status_code == 200
+    html = (Path(minder_web.__file__).parent / "templates"
+            / "inbox.html").read_text()
+    assert (f'name="choice" value="{dispatch_attention.CHOICE_APPROVE}"'
+            in page.text
+            and f'name="choice" value="{dispatch_attention.CHOICE_OBSERVE}"'
+            in page.text
+            and 'value="approve"' not in html
+            and 'value="observe"' not in html), (
+        "choice values must render from the dispatch constants, not"
+        " template literals")
+
+
+def test_resolution_affects_key_is_the_exported_constant(env):
+    """C1: the resolve INSERT and the _dispatch_decisions audit scan
+    share one exported affects key; the persisted audit row carries that
+    key, so the write side and the scan side cannot drift apart."""
+    client, dbp = env
+    token, revision = _form_from_page(client.get("/inbox").text)
+    resp = client.post(f"/inbox/{TID}/resolve", data={
+        "csrf_token": token, "revision": revision,
+        "choice": dispatch_attention.CHOICE_APPROVE, "actor": "zacch"},
+        follow_redirects=False)
+    assert resp.status_code == 303
+    key = getattr(dispatch_attention, "DISPATCH_TRIGGER_KEY", None)
+    affects = json.loads(_human_rows(dbp)[0]["affects_json"])
+    assert key is not None and list(affects[0]) == [key], (
+        "the audit row's affects key must be the exported constant")
 
 
 def test_inbox_empty_state_names_the_truth(env, tmp_path):
