@@ -257,37 +257,6 @@ def test_log_stats_are_derived_from_the_log(tmp_path, monkeypatch):
         stats["hook_invocations"]
 
 
-def test_route_surface_is_still_get_only():
-    """GET-only except the write paths (engine switch, issue #3; inbox
-    resolve, issue #89 stage 3), and both register through
-    writes.post_route (the section 7.6 preconditions). The write surface
-    must exist and must not grow without updating this pin."""
-    from minder_web.app import app
-    unsafe = {"PUT", "DELETE", "PATCH"}
-    write_routes = {"/engine/switch", "/inbox/{trigger_id}/resolve"}
-    seen_write = set()
-    other_write = [r.path for r in app.routes
-                   if getattr(r, "methods", None) and
-                   (set(getattr(r, "methods")) & (unsafe | {"POST"})) and
-                   r.path not in write_routes]
-    assert other_write == []
-    for route in app.routes:
-        methods = getattr(route, "methods", None)
-        if not methods:
-            continue
-        if route.path in write_routes:
-            assert methods in ({"POST"}, {"GET"}), (route.path, methods)
-            if "POST" in methods:
-                assert getattr(route.endpoint, "_minder_write_guard",
-                               False), (route.path,
-                                        "POST outside writes.post_route")
-            seen_write.add(frozenset(methods))
-            continue
-        assert not (methods & unsafe or "POST" in methods), \
-            (route.path, methods)
-    assert seen_write == {frozenset({"POST"}), frozenset({"GET"})}
-
-
 def test_non_loopback_host_header_is_refused(monkeypatch):
     """DNS-rebinding guard: a page at an attacker domain re-resolved to
     127.0.0.1 sends its own hostname in Host; the console must not answer

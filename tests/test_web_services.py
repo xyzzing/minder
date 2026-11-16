@@ -77,7 +77,11 @@ def test_limit_is_bounded(tmp_path):
 def test_http_surface_is_get_only():
     """GET-only except the write paths (engine switch, issue #3; inbox
     resolve, issue #89 stage 3), both behind the writes.post_route
-    preconditions; the write surface must exist and must not grow."""
+    preconditions; the write surface must exist and must not grow. The
+    marker-per-POST-route law itself lives app-wide in
+    tests/test_web_write_gates.py - this pin holds the exact surface
+    (the former duplicate in test_web_sessions.py was consolidated
+    here, issue #89 review C4)."""
     from minder_web.app import app
     unsafe = {"PUT", "DELETE", "PATCH"}
     write_routes = {"/engine/switch", "/inbox/{trigger_id}/resolve"}
