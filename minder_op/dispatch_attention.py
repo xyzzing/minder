@@ -67,15 +67,23 @@ def _dispatch_decisions(conn):
     return found
 
 
+def _resolved_decisions(db_path):
+    """{dispatch_trigger: terminal decision} for the queue-side scans:
+    one plain connection, opened for the audit scan and closed in a
+    finally (resolve runs the same scan on its transaction connection
+    instead)."""
+    conn = memdb.connect(db_path)
+    try:
+        return _dispatch_decisions(conn)
+    finally:
+        conn.close()
+
+
 def pending_items(db_path, accept_mode, limit=_DEFAULT_QUEUE_LIMIT):
     """Unresolved would_accept triggers, newest first, each carrying the
     revision the approval binds to; display is capped, the count is
     not (see unresolved_count)."""
-    conn = memdb.connect(db_path)
-    try:
-        resolved = _dispatch_decisions(conn)
-    finally:
-        conn.close()
+    resolved = _resolved_decisions(db_path)
     rows = _rows(db_path, "SELECT * FROM dispatch_triggers"
                           " WHERE decision = ?"
                           " ORDER BY ts DESC, trigger_id DESC LIMIT ?",
@@ -96,14 +104,9 @@ def unresolved_count(db_path):
     """Exact pending total, independent of the display cap: every
     would_accept trigger id minus the ones a terminal decision
     covers."""
-    conn = memdb.connect(db_path)
-    try:
-        resolved = _dispatch_decisions(conn)
-        rows = conn.execute(
-            "SELECT trigger_id FROM dispatch_triggers"
-            " WHERE decision = ?", (DECISION_WOULD_ACCEPT,)).fetchall()
-    finally:
-        conn.close()
+    resolved = _resolved_decisions(db_path)
+    rows = _rows(db_path, "SELECT trigger_id FROM dispatch_triggers"
+                          " WHERE decision = ?", (DECISION_WOULD_ACCEPT,))
     return sum(1 for row in rows if row["trigger_id"] not in resolved)
 
 
