@@ -74,6 +74,9 @@ def test_limit_is_bounded(tmp_path):
         "limit"] == services.DEFAULT_LIMIT
 
 
+# proven-red: allow-pass: pins the write surface that already held on
+# pre-change code; the range's only edit here (ce012b2) added the
+# consolidation docstring, no assertion changed.
 def test_http_surface_is_get_only():
     """GET-only except the write paths (engine switch, issue #3; inbox
     resolve, issue #89 stage 3), both behind the writes.post_route

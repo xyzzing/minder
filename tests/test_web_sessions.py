@@ -5,6 +5,9 @@ sorted UUIDs alphabetically and could only say "episodes: yes/no" (1 of 94
 sessions ever matched). These tests pin the replacement against a
 synthetic dsh home, so they never depend on the developer's own ~/.dsh.
 """
+# proven-red: allow-pass: the range's only change here (ce012b2) deleted
+# the duplicate write-surface pin, kept in test_web_services.py; every
+# remaining test is an unchanged pin of pre-existing behavior.
 import os
 import re
 
