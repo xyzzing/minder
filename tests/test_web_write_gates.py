@@ -4,6 +4,10 @@ that enforces the CSRF token and the actor. The gate inspects the live
 app object, so a future bare @app.post fails here regardless of where
 it lands.
 """
+import os
+
+import pytest
+
 from minder_web import writes
 from minder_web.app import app
 
@@ -72,3 +76,63 @@ def test_post_route_sets_the_guard_marker():
         return "ok"
 
     assert getattr(handler, "_minder_write_guard", False) is True
+
+
+class _RacerOS:
+    """A stand-in for the os module minder_web.writes uses: open reaches
+    the real os the first time (the corrupt file answers EEXIST as it
+    does today); from the second call on, a concurrent opener has just
+    (re-)created the path and EEXIST lands again - the exact window
+    between the corrupt file's unlink and the exclusive re-open."""
+
+    def __init__(self, real, path, content):
+        self._real = real
+        self._path = path
+        self._content = content
+        self.calls = 0
+
+    def open(self, path, flags, mode=0o600):
+        self.calls += 1
+        if self.calls == 1:
+            return self._real.open(path, flags, mode)
+        self._path.write_text(self._content)
+        raise FileExistsError(self._path)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def test_secret_replacement_survives_a_concurrent_opener(tmp_path,
+                                                         monkeypatch):
+    """C3: between the corrupt secret's unlink and the exclusive
+    re-open, another opener can create the file again. That second
+    FileExistsError is routine, so it must land on a stable honest
+    outcome - the other opener's usable secret is adopted - never an
+    uncaught crash that re-wedges every CSRF operation (I2)."""
+    import minder
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setattr(minder, "STATE_DIR", state)
+    path = state / writes.SECRET_NAME
+    path.write_text("")  # corrupt: present, but holds no usable key
+    winner = "ab" * 32
+    monkeypatch.setattr(writes, "os", _RacerOS(os, path, winner))
+    assert writes._secret() == winner
+    assert path.read_text().strip() == winner
+
+
+def test_secret_replacement_fails_named_when_it_cannot_win(tmp_path,
+                                                           monkeypatch):
+    """C3, the pathological end: the concurrent opener keeps
+    re-creating a corrupt file, so no attempt can win. The replacement
+    is bounded and ends in a named OSError naming the path - never an
+    uncaught FileExistsError traceback."""
+    import minder
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setattr(minder, "STATE_DIR", state)
+    path = state / writes.SECRET_NAME
+    path.write_text("")
+    monkeypatch.setattr(writes, "os", _RacerOS(os, path, ""))
+    with pytest.raises(OSError, match=r"^web_write\.secret:"):
+        writes._secret()

@@ -25,6 +25,7 @@ from fastapi import Request
 TOKEN_FIELD = "csrf_token"
 ACTOR_FIELD = "actor"
 SECRET_NAME = "web_write.secret"
+_SECRET_CREATE_ATTEMPTS = 5
 
 
 class WriteRefused(Exception):
@@ -41,44 +42,59 @@ def _secret_path():
     return Path(minder.STATE_DIR) / SECRET_NAME
 
 
+def _read_secret(path):
+    """The file's stripped content, or "" when it cannot be read (a
+    concurrent opener may unlink it at any moment)."""
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return ""
+
+
 def _secret():
     """The HMAC key for CSRF tokens: read, or create once.
 
     Degrades nowhere: a missing file is created (O_EXCL so a concurrent
     creator wins cleanly); a corrupt (empty or whitespace) file is
     replaced rather than wedging every CSRF operation behind an
-    uncaught EEXIST; os.write is completed through partial writes.
+    uncaught EEXIST; os.write is completed through partial writes. A
+    second opener can land between the corrupt file's unlink and the
+    exclusive re-open, so FileExistsError on the replacement is routine:
+    the loop adopts the other opener's secret when it wrote a usable
+    one, else replaces again, bounded, and fails with a named OSError
+    that names the path - never an uncaught FileExistsError traceback.
     All writes are 0600 in the state dir.
     """
     path = _secret_path()
-    try:
-        data = path.read_text().strip()
-        if data:
-            return data
-    except OSError:
-        pass
+    data = _read_secret(path)
+    if data:
+        return data
     import secrets
     fresh = secrets.token_hex(32)
     path.parent.mkdir(parents=True, exist_ok=True)
     blob = fresh.encode()
-    try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        # the creation race: another process (or a previous corrupt
-        # file) won the O_EXCL open. Take whatever it holds, and if it
-        # is still unusable, replace it under our own exclusive open.
-        data = path.read_text().strip()
-        if data:
-            return data
-        path.unlink()
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        written = 0
-        while written < len(blob):  # os.write may be partial
-            written += os.write(fd, blob[written:])
-    finally:
-        os.close(fd)
-    return fresh
+    for _ in range(_SECRET_CREATE_ATTEMPTS):
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            # the creation race: another process (or a corrupt file)
+            # won the O_EXCL open. Take whatever it holds, and if it is
+            # still unusable, replace it under our own exclusive open.
+            data = _read_secret(path)
+            if data:
+                return data
+            path.unlink(missing_ok=True)
+            continue
+        try:
+            written = 0
+            while written < len(blob):  # os.write may be partial
+                written += os.write(fd, blob[written:])
+        finally:
+            os.close(fd)
+        return fresh
+    raise OSError(f"web_write.secret: {path} still holds no usable key"
+                  f" after {_SECRET_CREATE_ATTEMPTS} replacement attempts;"
+                  " fix or remove the file by hand")
 
 
 async def _read_form(request):
