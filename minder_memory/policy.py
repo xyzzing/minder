@@ -52,11 +52,13 @@ def _lesson_digest_line(lesson):
 
 
 def _record_injection(ev, fkey, repo, lesson, line, assist_mode,
-                      db_path=None, skill_name=None):
+                      db_path=None, skill_name=None, injected=None):
     """Issue #13: record the injection decision, including the ones that
     found nothing to inject. Ledger-only — it never changes the directive,
     and a ledger failure never changes one either. A skill-section
-    injection carries skill_name instead of a lesson (acceptance 3)."""
+    injection carries skill_name instead of a lesson (acceptance 3).
+    `injected` overrides the lesson_id-presence derivation for rows that
+    name a lesson the digest did not carry (an admission decline)."""
     try:
         ledger.record_injection(
             session_id=(ev.get("session_id") or ev.get("task_id")),
@@ -66,7 +68,7 @@ def _record_injection(ev, fkey, repo, lesson, line, assist_mode,
             skill_name=skill_name,
             tier=ledger.tier_of(lesson, fkey),
             chars_injected=len(line), assist_mode=assist_mode,
-            db_path=db_path)
+            db_path=db_path, injected=injected)
     except Exception:
         pass
 
@@ -181,6 +183,22 @@ def _retrieve_passthrough(event, warden_out, cfg=None, db_path=None,
             _record_injection(ev, fkey, repo, None, "", ledger.MODE_RETRIEVE,
                               db_path=db_path)
             return None
+        # the context-admission gate (issue #100): off by default and
+        # fail-open always — a decline only ever narrows the digest, and
+        # only in gate mode with a validated above-floor opinion
+        from minder_decision import context_admission
+        decision, _reason = context_admission.opinion(
+            ev, fkey, count, lessons[0], cfg)
+        if decision == context_admission.DECLINE:
+            _record_injection(ev, fkey, repo, lessons[0], "",
+                              ledger.MODE_ADMISSION_DECLINED,
+                              db_path=db_path, injected=False)
+            return {"action": (warden_out or {}).get("action"),
+                    "level": (warden_out or {}).get("level"),
+                    "digest": digest,
+                    "frontier_payload":
+                        (warden_out or {}).get("frontier_payload"),
+                    "assist": "retrieve"}
         line = _lesson_digest_line(lessons[0])
         _record_injection(ev, fkey, repo, lessons[0], line,
                           ledger.MODE_RETRIEVE, db_path=db_path)

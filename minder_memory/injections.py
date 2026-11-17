@@ -31,6 +31,9 @@ TIER_NONE = "n/a"
 MODE_RETRIEVE = "retrieve"
 MODE_BLOCK_DUPLICATE = "block_duplicate"
 MODE_SKILL = "skill"
+# The retrieve path reached a lesson and the context-admission gate
+# declined it (issue #100): the row names the lesson it did not inject.
+MODE_ADMISSION_DECLINED = "admission_declined"
 
 # The assist_mode value for a row whose path named itself with nothing.
 # Never empty, so a console cell is never blank; it is not a zero.
@@ -54,17 +57,22 @@ def tier_of(lesson, failure_key):
 def record_injection(session_id=None, event_id=None, failure_key=None,
                      repo=None, lesson_id=None, skill_name=None,
                      tier=TIER_NONE, chars_injected=0, assist_mode="",
-                     db_path=None):
+                     db_path=None, injected=None):
     """Append one injection decision. Returns (injection_id, status);
     never raises. trigger_matched stays NULL until the trigger column of
     issue #15 exists to fill it. A skill-section injection carries
     skill_name and no lesson_id (issue #13 acceptance 3), so the ledger
-    distinguishes a lesson assist from a skill assist."""
+    distinguishes a lesson assist from a skill assist. `injected`
+    overrides the presence-derived digest flag for rows that name a
+    lesson the digest did not carry (an admission decline names what it
+    withheld); None keeps the derivation."""
     try:
         conn = _db.connect(db_path)
         try:
             iid = _uid("inj")
-            injected = 1 if (lesson_id or skill_name) else 0
+            if injected is None:
+                injected = 1 if (lesson_id or skill_name) else 0
+            injected = 1 if injected else 0
             _db.write(
                 conn,
                 "INSERT INTO learning_injections (injection_id, ts,"
