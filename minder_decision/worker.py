@@ -268,7 +268,7 @@ class WorkerDifficultyClient:
             conn = _dial(path, 0.02)  # cheap liveness check only
             if conn is not None:
                 _clear_cooldown()
-            elif not _LIVE_NOTED["dial_refused"]:
+            elif not _LIVE_NOTED.get("dial_refused"):
                 _LIVE_NOTED["dial_refused"] = True
                 _client_fail(path, "dial_refused",
                             f"cooldown, no worker at {path}")

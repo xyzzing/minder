@@ -104,3 +104,44 @@ def task_difficulty_contract():
                         criteria=dict(DIFFICULTY_CRITERIA)),
          ScoreQuestion("difficulty_score", 0, 3,
                        criteria=DIFFICULTY_SCORE_CRITERIA)))
+
+
+# --- context-admission/v1: the lesson-injection gate (issue #100) ---
+#
+# One non-autoregressive pass over the compact lesson payload: a typed
+# admit/decline and a 0-3 match-quality score. The state carries the
+# failure identity and the compact payload retrieval already built, so
+# no raw tool log ever reaches the worker.
+CONTEXT_ADMISSION_ID = "context-admission"
+CONTEXT_ADMISSION_VERSION = "v1"
+
+ADMISSION_OPTIONS = ("admit", "decline")
+
+ADMISSION_CRITERIA = {
+    "admit": ("The lesson names this failure's cause and its fix still "
+              "applies: the failure shape matches, nothing newer "
+              "contradicts it, and the instruction would change the "
+              "next action."),
+    "decline": ("The lesson is stale or incidental: the environment "
+                "changed since verification, the failure shape only "
+                "coincidentally matches (weak tier, different cause), "
+                "or the instruction would not change the next action."),
+}
+
+ADMISSION_SCORE_CRITERIA = (
+    "Different failure; the lesson has nothing to do with this event.",
+    "Same broad area only; following the lesson would not help now.",
+    "Related failure; parts of the lesson apply, parts are stale.",
+    "This exact failure; the lesson's fix is the next action.",
+)
+
+
+def context_admission_contract():
+    """The gate's rubric: one choice over a two-option vocabulary and a
+    match-quality score, answered in the same single system_one pass."""
+    return make_contract(
+        CONTEXT_ADMISSION_ID, CONTEXT_ADMISSION_VERSION,
+        (ChoiceQuestion("admit", ADMISSION_OPTIONS,
+                        criteria=dict(ADMISSION_CRITERIA)),
+         ScoreQuestion("match_quality", 0, 3,
+                       criteria=ADMISSION_SCORE_CRITERIA)))

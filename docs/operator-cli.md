@@ -203,6 +203,20 @@ first to see whether any request was eligible. When it has been,
 (`client_effort`, `escalation_marker`, `no_client`,
 `below_confidence`, `malformed_response`) rather than leaving the
 operator to guess between "never ran" and "ran and did nothing".
+- The context-admission gate's modes (`~/.config/minder/minder.json`,
+`context_admission`, issue #100): `off` (default) never dials the
+worker and the retrieve path behaves exactly as before; `shadow` asks
+whether each retrieved lesson should enter the digest and records the
+opinion without acting; `gate` additionally skips the digest line when
+the opinion is a validated above-floor decline, recording an
+`admission_declined` row in the injection ledger so the
+deliveries/misses split counts the miss with its reason instead of
+dropping it. Every failure of the gate — worker down, malformed reply,
+below the `laya_min_confidence` floor — admits: the gate can only
+narrow what reaches the agent, never widen it, and only in `gate`
+mode. Watch it with `minder-op events ls --type context_admission`:
+`opinion` is what the model said, `decision` what was applied, and
+they differ exactly when shadow records a dissent.
 - `minder-op events ls --type declined` counts the actions the operator
 declined (issue #27). A decline is a third outcome, not a failure: the
 harness writes `Error: The user dismissed the plan review to speak
